@@ -1,0 +1,500 @@
+/* 
+    OmniPack Dark Theme
+    ======================
+    This file centralizes all styling (colors, sizes, fonts, margins)
+    for the entire application.
+*/
+
+/* ==========================================================
+   GLOBAL SETTINGS
+   ========================================================== */
+QMainWindow {
+    background-color: #020202;
+    color: #ffffff;
+}
+
+QWidget {
+    color: #ffffff;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+/* ==========================================================
+   STATUS BAR & TABS
+   ========================================================== */
+QStatusBar {
+    background-color: #161616;
+    color: #ffffff;
+}
+
+QStatusBar QLabel {
+    color: #ffffff;
+    margin-left: 5px;
+}
+
+QStatusBar QLabel#CountLabel {
+    color: #88ff88;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+QStatusBar QPushButton {
+    background-color: transparent;
+    color: #bbbbff;
+    border: none;
+    padding: 2px 8px;
+    margin: 0px;
+    border-radius: 2px;
+}
+
+QStatusBar QPushButton#AppTabButton {
+    min-width: 96px;
+}
+
+QStatusBar QPushButton:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+QStatusBar QPushButton:checked {
+    background-color: rgba(255, 255, 255, 0.2);
+    font-weight: bold;
+    color: #ffffff;
+}
+
+/* ==========================================================
+   SPLITTER (Left/Right Divider)
+   ========================================================== */
+QSplitter::handle {
+    background-color: #eeeeee;
+}
+
+/* ==========================================================
+   BASE PANEL (Left Side)
+   ========================================================== */
+QWidget#LeftToolbar {
+    background-color: #0f0f0f;
+    border-bottom: 1px solid #333;
+    min-height: 36px;
+    max-height: 36px;
+}
+
+QScrollArea#BaseScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#BaseScrollContent {
+    background-color: #020202;
+}
+
+/* Base Panel Search Box */
+QLineEdit#ToolbarSearch {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QLineEdit#ToolbarSearch:focus {
+    border: 1px solid #007acc;
+}
+
+/* ==========================================================
+   BUTTONS (General)
+   ========================================================== */
+QPushButton {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #555;
+    padding: 1px 2px;
+    border-radius: 3px;
+    font-size: 16px;
+}
+
+QPushButton:hover {
+    background-color: #444;
+}
+
+QPushButton:pressed {
+    background-color: #222;
+}
+
+/* Specialized Buttons - Fixed Sizes */
+QPushButton#ActionBtnOutline,
+QPushButton#ActionBtnUpdate,
+QPushButton#ActionBtnRemove,
+QPushButton#ActionBtnInstall,
+QPushButton#PkgUpdateBtn,
+QPushButton#EnvRefreshBtn,
+QPushButton#EnvUpdateAllBtn,
+QWidget#ActionBtnSpacer {
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+}
+
+QPushButton#ActionBtnOutline {
+    background-color: transparent;
+    color: #ccc;
+    font-size: 16px;
+}
+
+QPushButton#ActionBtnOutline:hover {
+    border-color: #888;
+}
+
+QPushButton#ActionBtnBatchUpdate,
+QPushButton#EnvUpdateAllBtn {
+    background-color: #2d6a4f;
+    color: #ffffff;
+    font-size: 16px;
+}
+
+QPushButton#ActionBtnUpdate,
+QPushButton#PkgUpdateBtn {
+    background-color: #2d6a4f;
+    font-weight: bold;
+    font-size: 20px;
+}
+
+QPushButton#ActionBtnUpdate:hover,
+QPushButton#PkgUpdateBtn:hover,
+QPushButton#ActionBtnBatchUpdate:hover,
+QPushButton#EnvUpdateAllBtn:hover {
+    background-color: #388060;
+}
+
+QPushButton#ActionBtnBatchRemove {
+    background-color: #6c1d1d;
+    color: #ffffff;
+    font-size: 16px;
+    padding: 0px 4px;
+}
+
+QPushButton#ActionBtnBatchRemove:hover {
+    background-color: #8c2626;
+}
+
+QPushButton#ActionBtnRemove {
+    background-color: #6c1d1d;
+    color: #ffffff;
+    font-size: 18px;
+}
+
+QPushButton#ActionBtnRemove:hover {
+    background-color: #8c2626;
+}
+
+QPushButton#ActionBtnInstall {
+    background-color: #1a5276;
+    color: #ffffff;
+    font-size: 20px;
+}
+
+QPushButton#ActionBtnInstall:hover {
+    background-color: #2471a3;
+}
+
+/* ==========================================================
+   CHECKBOXES
+   ========================================================== */
+QCheckBox {
+    spacing: 8px;
+    color: #ffffff;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #fff;
+    border-radius: 4px;
+    background-color: #1a1a1a;
+}
+
+QCheckBox::indicator:unchecked:hover {
+    border-color: #007acc;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #007acc;
+    border: 1px solid #fff;
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: #0098ff;
+    border-color: #fff;
+}
+
+/* ==========================================================
+   CARDS (EnvCard, NpmAppCard, PackageCard)
+   ========================================================== */
+QFrame#EnvHeaderFrame,
+QFrame#AppCard {
+    background-color: #2d2d30;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+}
+
+QFrame#EnvHeaderFrame:hover,
+QFrame#AppCard:hover {
+    background-color: #3e3e42;
+    border-color: #52525b;
+}
+
+/* Typography on Cards */
+QLabel#CardTitle {
+    font-weight: bold;
+    font-size: 11pt;
+    color: #e0e0e0;
+}
+
+QLabel#CardVersion {
+    color: #bbb;
+    font-family: Consolas, monospace;
+    font-size: 10pt;
+}
+
+QLabel#CardChannel {
+    font-weight: bold;
+    font-size: 10pt;
+}
+
+/* Environment Header Specific */
+QLabel#ToggleArrow {
+    color: #4cc9f0;
+    font-weight: bold;
+    font-family: 'Segoe UI Symbol', sans-serif;
+    font-size: 14px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    margin-right: 5px;
+}
+
+QLabel#EnvVersion {
+    color: #ada;
+    font-family: Consolas, monospace;
+}
+
+QLabel#EnvBadge {
+    color: #FF9800;
+    font-weight: bold;
+    padding: 2px 6px;
+    border: 1px solid #FF9800;
+    border-radius: 3px;
+    min-width: 40px;
+}
+
+QLabel#EnvCount {
+    color: #aaa;
+}
+
+QPushButton#EnvRefreshBtn {
+    font-family: "Segoe UI Symbol", sans-serif;
+    font-size: 18px;
+}
+
+QLabel#EnvLoadingLbl {
+    color: #888888;
+    font-style: italic;
+}
+
+QLabel#EnvEmptyLbl {
+    color: #666666;
+    font-style: italic;
+    padding-left: 10px;
+}
+
+/* Package Card Form Elements */
+QLineEdit#PkgVersionInput {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+QLineEdit#PkgVersionInput:focus {
+    border: 1px solid #4cc9f0;
+}
+
+/* ==========================================================
+   CONSOLE PANEL (Right Side)
+   ========================================================== */
+QFrame#ConsolePanel {
+    background-color: #000000;
+}
+
+QFrame#ConsoleHeader {
+    background-color: #0f0f0f;
+    border-bottom: 1px solid #333;
+    min-height: 36px;
+    max-height: 36px;
+}
+
+QLabel#ConsoleTitle {
+    color: #efefef;
+    font-weight: bold;
+    font-family: Consolas, monospace;
+}
+
+QTextEdit#ConsoleText {
+    background-color: #000000;
+    border: none;
+    padding: 6px;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+}
+
+QPushButton#ConsoleClearBtn {
+    background-color: transparent;
+    color: #eeeeee;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+    padding: 2px;
+    min-width: 48px;
+    max-width: 48px;
+    min-height: 22px;
+    max-height: 22px;
+}
+
+QPushButton#ConsoleClearBtn:hover {
+    background-color: #333;
+    color: #fff;
+}
+
+/* ==========================================================
+   PACKAGE LIST CARDS
+   ========================================================== */
+QFrame#PackageCard {
+    background-color: #252526;
+    border-radius: 4px;
+    border: 1px solid #333;
+}
+
+QFrame#PackageCard:hover {
+    border-color: #444;
+    background-color: #2d2d30;
+}
+
+QFrame#PackageCard QLabel {
+    font-family: 'Consolas', monospace;
+    font-size: 10pt;
+}
+
+QLabel#PkgName {
+    font-weight: bold;
+    color: #e0e0e0;
+}
+
+QLabel#PkgVersionUpdate {
+    color: #4cc9f0;
+}
+
+QLabel#PkgVersionBase {
+    color: #888;
+}
+
+/* ==========================================================
+   DIALOGS (NpmAppEditDialog, etc)
+   ========================================================== */
+QDialog {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+QFrame#PreviewFrame {
+    background-color: #252526;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+QLabel#DialogLabelBold {
+    font-weight: bold;
+    color: #ffffff;
+}
+
+QLabel#DialogLabelMuted {
+    color: #888;
+}
+
+QLabel#DialogLabelSuccess {
+    color: #6BCB77;
+}
+
+QLineEdit,
+QTextEdit {
+    background-color: #2d2d30;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QLineEdit:focus,
+QTextEdit:focus {
+    border: 1px solid #007acc;
+}
+
+/* ==========================================================
+   NPM CHANNEL TAGS (NpmAppEditDialog)
+   ========================================================== */
+QPushButton#ChannelTag {
+    background-color: transparent;
+    border: 2px solid #555;
+    color: #ffffff;
+    font-family: Consolas, monospace;
+    font-size: 10pt;
+    border-radius: 4px;
+    font-weight: normal;
+}
+
+QPushButton#ChannelTag:hover {
+    background-color: #333;
+}
+
+/* State: Target Only (Filled Grey) */
+QPushButton#ChannelTag[state="target"] {
+    background-color: #666;
+    border-color: #555;
+    font-weight: bold;
+}
+QPushButton#ChannelTag[state="target"]:hover {
+    background-color: #777;
+}
+
+/* State: Installed Only (Outline Blue) */
+QPushButton#ChannelTag[state="installed"] {
+    background-color: transparent;
+    border-color: #4cc9f0;
+    font-weight: bold;
+}
+
+/* State: Both Installed & Target (Filled Blue) */
+QPushButton#ChannelTag[state="both"] {
+    background-color: #4cc9f0;
+    border-color: #4cc9f0;
+    color: #000;
+    font-weight: bold;
+}
+QPushButton#ChannelTag[state="both"]:hover {
+    background-color: #4cc9f0;
+}
+
+/* ==========================================================
+   CONSOLE LOG COLORS (Tokens)
+   ========================================================== */
+/* These are used by ConsolePanel for syntax highlighting */
+QTextEdit#ConsoleText {
+    qproperty-system_color: #6CB4EE;
+    qproperty-cmd_color: #56D6C2;
+    qproperty-stdout_color: #D4D4D4;
+    qproperty-stderr_color: #E8A838;
+    qproperty-success_color: #6BCB77;
+    qproperty-error_color: #FF6B6B;
+    qproperty-divider_color: #555555;
+}
+
+

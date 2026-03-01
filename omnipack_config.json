@@ -1,0 +1,140 @@
+{
+    "version": "1.0.0",
+    "pip_environments": [
+        {
+            "path": "C:/Program Files/Python313/python.exe",
+            "name": "Python 3.13",
+            "type": "system"
+        },
+        {
+            "path": "C:/Program Files/Python314/python.exe",
+            "name": "Python 3.14",
+            "type": "system"
+        },
+        {
+            "path": "C:\\Users\\Leo\\Documents\\Coding\\CoatingWeight\\.venv\\Scripts\\python.exe",
+            "name": "CoatingWeight",
+            "type": "venv"
+        },
+        {
+            "path": "C:\\Users\\Leo\\Documents\\Coding\\ReadyBlow\\.venv\\Scripts\\python.exe",
+            "name": "ReadyBlow",
+            "type": "venv"
+        }
+    ],
+    "npm_apps": {
+        "@anthropic-ai/claude-code": {
+            "display_name": "@anthropic-ai/claude-code",
+            "description": "",
+            "channel": "latest",
+            "channels_available": [
+                "latest",
+                "next",
+                "stable"
+            ]
+        },
+        "@google/gemini-cli": {
+            "display_name": "@google/gemini-cli",
+            "description": "",
+            "channel": "nightly",
+            "channels_available": [
+                "latest",
+                "nightly",
+                "preview"
+            ]
+        },
+        "@iflow-ai/iflow-cli": {
+            "display_name": "@iflow-ai/iflow-cli",
+            "description": "",
+            "channel": "beta",
+            "channels_available": [
+                "latest",
+                "beta"
+            ]
+        },
+        "npm": {
+            "display_name": "npm",
+            "description": "",
+            "channel": "latest",
+            "channels_available": [
+                "latest",
+                "latest-1",
+                "latest-2",
+                "latest-3",
+                "latest-4",
+                "latest-5",
+                "latest-6",
+                "latest-7",
+                "next-10",
+                "next-11",
+                "next-2",
+                "next-3",
+                "next-4",
+                "next-5",
+                "next-6",
+                "next-7",
+                "next-8",
+                "next-9",
+                "v6.14-next"
+            ]
+        },
+        "@tencent-ai/codebuddy-code": {
+            "display_name": "@tencent-ai/codebuddy-code",
+            "description": "",
+            "channel": "latest",
+            "channels_available": [
+                "latest",
+                "beta",
+                "next"
+            ]
+        },
+        "@github/copilot": {
+            "display_name": "@github/copilot",
+            "description": "",
+            "channel": "latest",
+            "channels_available": [
+                "latest",
+                "prerelease"
+            ]
+        },
+        "@qwen-code/qwen-code": {
+            "display_name": "@qwen-code/qwen-code",
+            "description": "",
+            "channel": "nightly",
+            "channels_available": [
+                "latest",
+                "nightly",
+                "preview"
+            ]
+        },
+        "@openai/codex": {
+            "display_name": "@openai/codex",
+            "description": "",
+            "channel": "alpha",
+            "channels_available": [
+                "latest",
+                "alpha",
+                "alpha-darwin-arm64",
+                "alpha-darwin-x64",
+                "alpha-linux-arm64",
+                "alpha-linux-x64",
+                "alpha-win32-arm64",
+                "alpha-win32-x64",
+                "beta",
+                "darwin-arm64",
+                "darwin-x64",
+                "linux-arm64",
+                "linux-x64",
+                "native",
+                "win32-arm64",
+                "win32-x64"
+            ]
+        }
+    },
+    "npm_channels": {},
+    "npm_settings": {},
+    "window_geometry": "01d9d0cb00030000000000ab0000006500000552000002e9000000ab0000008400000552000002e900000000000000000600000000ab0000008400000552000002e9",
+    "window_state": "000000ff00000000fd00000000000004a80000024800000004000000040000000800000008fc00000000",
+    "pip_splitter_state": "000000ff00000001000000020000028e000002190100000001010000000100",
+    "current_tab": 0
+}
