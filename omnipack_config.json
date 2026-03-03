@@ -20,6 +20,16 @@
             "path": "C:\\Users\\Leo\\Documents\\Coding\\ReadyBlow\\.venv\\Scripts\\python.exe",
             "name": "ReadyBlow",
             "type": "venv"
+        },
+        {
+            "path": "C:\\Users\\Leo\\Documents\\Coding\\ProofRead\\.venv\\Scripts\\python.exe",
+            "name": "ProofRead",
+            "type": "venv"
+        },
+        {
+            "path": "C:\\Users\\Leo\\Documents\\Coding\\CanMaker\\.venv\\Scripts\\python.exe",
+            "name": "CanMaker",
+            "type": "venv"
         }
     ],
     "npm_apps": {
@@ -133,8 +143,8 @@
     },
     "npm_channels": {},
     "npm_settings": {},
-    "window_geometry": "01d9d0cb00030000000000ab0000006500000552000002e9000000ab0000008400000552000002e900000000000000000600000000ab0000008400000552000002e9",
-    "window_state": "000000ff00000000fd00000000000004a80000024800000004000000040000000800000008fc00000000",
-    "pip_splitter_state": "000000ff00000001000000020000028e000002190100000001010000000100",
+    "window_geometry": "01d9d0cb00030000fffff790fffffd49fffffd2f0000071ffffff7deffffffd1fffffc140000043c000000010200000005a0fffff790fffffd67fffffd2f0000071f",
+    "window_state": "000000ff00000000fd00000000000005a00000099a00000004000000040000000800000008fc00000000",
+    "pip_splitter_state": "000000ff00000001000000020000025e000001d70100000001010000000100",
     "current_tab": 0
 }

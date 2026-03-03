@@ -397,6 +397,68 @@ QLabel#PkgVersionBase {
     color: #888;
 }
 
+/* Dependency Tree Node Styles */
+QLabel#PkgToggleArrow {
+    color: #4cc9f0;
+    font-weight: bold;
+    font-family: 'Segoe UI Symbol', sans-serif;
+    font-size: 11px;
+}
+
+QLabel#PkgLeafDot {
+    color: #555;
+    font-size: 8px;
+}
+
+QLabel#PkgConstraint {
+    color: #8888cc;
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    padding: 0px 4px;
+}
+
+QLabel#PkgMissingLabel {
+    color: #FF6B6B;
+    font-weight: bold;
+    font-size: 9pt;
+    padding: 1px 6px;
+    border: 1px solid #FF6B6B;
+    border-radius: 3px;
+}
+
+QLabel#PkgNameMissing {
+    color: #888;
+    font-family: Consolas, monospace;
+    font-size: 10pt;
+    font-style: italic;
+}
+
+/* Ghost / Missing Package Card */
+QFrame#MissingPackageCard {
+    background-color: rgba(40, 30, 30, 0.6);
+    border-radius: 4px;
+    border: 1px dashed #553333;
+}
+
+QFrame#MissingPackageCard:hover {
+    border-color: #FF6B6B;
+    background-color: rgba(50, 35, 35, 0.8);
+}
+
+/* Tree Summary Label */
+QLabel#EnvTreeSummary {
+    color: #777;
+    font-size: 9pt;
+    font-style: italic;
+    padding: 2px 0px;
+}
+
+/* Tree Badge */
+QLabel#TreeBadge {
+    font-size: 12px;
+    padding: 0px 2px;
+}
+
 /* ==========================================================
    DIALOGS (NpmAppEditDialog, etc)
    ========================================================== */

@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, Signal, QThread, Slot
 import re
 
 from core.manager_base import PackageManager, Environment, Package
+from core.dep_resolver import resolve_dependencies_subprocess, merge_dependency_info
 from core.utils import find_system_pythons
 
 # Use 'uv' as the backend executor, just like in pip_manager.pyw
@@ -223,7 +224,22 @@ class ScanWorker(QThread):
                     pkg.latest_version = outdated_map[pkg.name]
                     pkg.has_update = True
                     count_updates += 1
-            
+
+            # 4. Resolve dependency tree
+            self._log(f"Resolving dependency tree for {self.env.name}...", "system")
+            dep_data = resolve_dependencies_subprocess(py_exe)
+            if dep_data:
+                pkgs, dep_graph = merge_dependency_info(pkgs, dep_data)
+                self.env.dep_graph = dep_graph
+                top_level_count = sum(1 for p in pkgs if p.is_top_level and not p.is_missing)
+                missing_count = sum(1 for p in pkgs if p.is_missing)
+                self._log(f"Dependency tree: {top_level_count} top-level, {len(pkgs) - top_level_count} transitive"
+                          + (f", {missing_count} missing" if missing_count else ""), "stdout")
+            else:
+                self._log(f"Warning: Could not resolve dependency tree for {self.env.name}", "stderr")
+                # Fallback: treat all as top-level
+                self.env.dep_graph = {pkg.norm_name: pkg for pkg in pkgs}
+
             self.env.python_version = py_ver
             self.env.packages = pkgs
             self.env.is_scanned = True
@@ -353,7 +369,7 @@ class RemoveWorker(QThread):
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
-            cmd = [uv_path, "pip", "uninstall", "-y", self.pkg_name] + args
+            cmd = [uv_path, "pip", "uninstall", self.pkg_name] + args
             self._log(f"> {' '.join(cmd)}", "cmd")
             
             process = subprocess.Popen(

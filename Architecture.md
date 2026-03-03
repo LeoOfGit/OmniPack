@@ -24,6 +24,7 @@
 - `core/config.py` - 全局配置管理器 `ConfigManager`，利用 `dataclasses` 保障 JSON 持久化的结构化和强类型安全。同时维护了界面留存的最后一次打开页面位置 (current_tab) 和相关组件尺寸状态。
 - `core/manager_base.py` - 提供高度抽象的环境（`Environment`）和基础包状态（`Package` 基类）等协议级抽象。
 - `core/models.py` - 包管理器的进一步数据类定义支持。
+- `core/dep_resolver.py` - **拓扑依赖解析引擎**。核心资产。通过子进程在目标环境中运行 `importlib.metadata` 扫描，构建 `{requires, required_by}` 双向图。支持合并多重版本约束，并精准识别 Top-level 包。
 - `core/utils.py` - 包含通用系统辅助函数，如通过系统注册表与路径扫描来快速探测系统内的基础 Python 及虚拟执行入口的环境探测等。
 
 ### /managers - 业务逻辑执行引擎
@@ -46,8 +47,8 @@
 #### /ui/widgets - 轻量复用卡块片
 在重型面板的 Scroll 区中大量实例化的颗粒组件。
 - `ui/widgets/console_panel.py` - 全应用右半边的伪终端文本框容器（嵌入在基类中），负责响应信号流并且提供了 ANSI 式的高亮染色标记规则（`system`, `success`, `error`, `divider`）。
-- `ui/widgets/env_card.py` - 专属 Python 面板的一个被包装过的隔离环境“套壳”，本身包含头部件用来一键折叠或展开内部所扫描发现的一系列 `PackageCard`。
-- `ui/widgets/package_card.py` - `Pip 面板`内部最小原子级的库名称行记录，显示当前及其能升至最新版本。
+- `ui/widgets/env_card.py` - 专属 Python 面板。重构为**层级树容器**。支持按需懒加载 Top-level 包。具备“环境聚焦搜索”逻辑：仅在展开状态下启动深度递归路径搜索，平衡性能与体验。
+- `ui/widgets/package_card.py` - **递归树节点**。支持 `expand_sync()` 同步展开逻辑。集成了版本约束检测、幽灵依赖 (Ghost) 样式提示及跨实例 Checkbox 状态同步。
 - `ui/widgets/npm_app_card.py` - 渲染于 `Npm 面板` 列表中的 NPM 工具项记录卡，集成了多频道智能展示文字色，并拥有能够快捷点出操作弹窗的入口按钮。
 
 ---
