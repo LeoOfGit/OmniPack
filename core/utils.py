@@ -2,7 +2,24 @@ import os
 import shutil
 import platform
 import subprocess
+import sys
 from pathlib import Path
+
+def get_app_root():
+    """
+    Returns the root directory of the application source/resources.
+    In a frozen environment, this points to the bundle directory.
+    """
+    return Path(__file__).parent.parent.absolute()
+
+def get_persistent_root():
+    """
+    Returns the directory where persistent data (config) should be stored.
+    In a frozen (Nuitka) environment, this is the directory containing the .exe.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent.absolute()
+    return get_app_root()
 
 def find_system_pythons():
     """
@@ -48,8 +65,6 @@ def find_system_pythons():
                     exe = d / "python.exe"
                     if exe.exists():
                         add_python(str(exe), f"Python {d.name.replace('Python', '')} (User)")
-            
-            # Check Scripts folder in PATH for uv/pip if needed, but here we only want interpreters
             
     return pythons
 

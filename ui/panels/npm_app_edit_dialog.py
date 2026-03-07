@@ -107,7 +107,7 @@ class NpmAppEditDialog(QDialog):
         
         if self.app:
             del_btn = QPushButton("Delete")
-            del_btn.setObjectName("ActionBtnRemove")
+            del_btn.setObjectName("DialogActionBtnRemove")
             del_btn.clicked.connect(self._on_delete)
             btn_layout.addWidget(del_btn)
             

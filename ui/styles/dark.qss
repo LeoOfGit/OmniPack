@@ -99,15 +99,15 @@ QLineEdit#ToolbarSearch:focus {
 }
 
 /* ==========================================================
-   BUTTONS (General)
+   BUTTONS (General & Shared Themes)
    ========================================================== */
 QPushButton {
     background-color: #333;
     color: #ffffff;
     border: 1px solid #555;
-    padding: 1px 2px;
-    border-radius: 3px;
-    font-size: 16px;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 15px;
 }
 
 QPushButton:hover {
@@ -118,7 +118,73 @@ QPushButton:pressed {
     background-color: #222;
 }
 
-/* Specialized Buttons - Fixed Sizes */
+/* 1. Theme: Success / Update (Green) */
+QPushButton#ActionBtnBatchUpdate,
+QPushButton#EnvUpdateAllBtn,
+QPushButton#ActionBtnUpdate,
+QPushButton#PkgUpdateBtn {
+    background-color: #2d6a4f;
+    color: #ffffff;
+}
+
+QPushButton#ActionBtnBatchUpdate:hover,
+QPushButton#EnvUpdateAllBtn:hover,
+QPushButton#ActionBtnUpdate:hover,
+QPushButton#PkgUpdateBtn:hover {
+    background-color: #388060;
+}
+
+/* 2. Theme: Danger / Remove (Red) */
+QPushButton#ActionBtnBatchRemove,
+QPushButton#DialogActionBtnRemove,
+QPushButton#ActionBtnRemove {
+    background-color: #6c1d1d;
+    color: #ffffff;
+}
+
+QPushButton#ActionBtnBatchRemove:hover,
+QPushButton#DialogActionBtnRemove:hover,
+QPushButton#ActionBtnRemove:hover {
+    background-color: #8c2626;
+}
+
+/* 3. Theme: Install (Blue) */
+QPushButton#ActionBtnInstall {
+    background-color: #1a5276;
+    color: #ffffff;
+}
+
+QPushButton#ActionBtnInstall:hover {
+    background-color: #2471a3;
+}
+
+/* 4. Theme: Outline / Ghost */
+QPushButton#ActionBtnOutline {
+    background-color: transparent;
+    color: #ccc;
+    font-size: 16px;
+}
+
+QPushButton#ActionBtnOutline:hover {
+    border-color: #888;
+}
+
+/* 5. Theme: Neutral Toolbar Button (Grey) */
+QPushButton#ActionBtnRefresh {
+    background-color: #3e3e42;
+    color: #ffffff;
+    border: 1px solid #555;
+}
+
+QPushButton#ActionBtnRefresh:hover {
+    background-color: #4e4e52;
+}
+
+/* ==========================================================
+   BUTTONS (Layout Variations)
+   ========================================================== */
+
+/* Variant: Fixed Icon Button (30x30 square) */
 QPushButton#ActionBtnOutline,
 QPushButton#ActionBtnUpdate,
 QPushButton#ActionBtnRemove,
@@ -131,68 +197,61 @@ QWidget#ActionBtnSpacer {
     max-width: 30px;
     min-height: 30px;
     max-height: 30px;
+    padding: 0px;
 }
 
-QPushButton#ActionBtnOutline {
-    background-color: transparent;
-    color: #ccc;
-    font-size: 16px;
-}
-
-QPushButton#ActionBtnOutline:hover {
-    border-color: #888;
-}
-
-QPushButton#ActionBtnBatchUpdate,
-QPushButton#EnvUpdateAllBtn {
-    background-color: #2d6a4f;
-    color: #ffffff;
-    font-size: 16px;
-}
-
+/* Special font sizes for Icon Buttons (symbols) */
 QPushButton#ActionBtnUpdate,
-QPushButton#PkgUpdateBtn {
-    background-color: #2d6a4f;
-    font-weight: bold;
+QPushButton#PkgUpdateBtn,
+QPushButton#ActionBtnInstall {
     font-size: 20px;
-}
-
-QPushButton#ActionBtnUpdate:hover,
-QPushButton#PkgUpdateBtn:hover,
-QPushButton#ActionBtnBatchUpdate:hover,
-QPushButton#EnvUpdateAllBtn:hover {
-    background-color: #388060;
-}
-
-QPushButton#ActionBtnBatchRemove {
-    background-color: #6c1d1d;
-    color: #ffffff;
-    font-size: 16px;
-    padding: 0px 4px;
-}
-
-QPushButton#ActionBtnBatchRemove:hover {
-    background-color: #8c2626;
+    font-weight: bold;
 }
 
 QPushButton#ActionBtnRemove {
-    background-color: #6c1d1d;
-    color: #ffffff;
     font-size: 18px;
+    font-weight: bold;
 }
 
-QPushButton#ActionBtnRemove:hover {
-    background-color: #8c2626;
+/* Variant: Batch / Toolbar Text Buttons */
+QPushButton#ActionBtnBatchUpdate,
+QPushButton#ActionBtnBatchRemove,
+QPushButton#DialogActionBtnRemove,
+QPushButton#ActionBtnRefresh {
+    padding: 3px 12px;
+    font-size: 16px;
 }
 
-QPushButton#ActionBtnInstall {
-    background-color: #1a5276;
-    color: #ffffff;
-    font-size: 20px;
+/* ==========================================================
+   CONTEXTUAL OVERRIDES (Specific Layout Areas)
+   ========================================================== */
+
+/* 1. Left Toolbar Buttons Alignment */
+/* Unify heights for all buttons inside the toolbar to ensure a clean line */
+QWidget#LeftToolbar QPushButton {
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 14px;
+    /* Slightly smaller for tight toolbar space */
 }
 
-QPushButton#ActionBtnInstall:hover {
-    background-color: #2471a3;
+/* Force Icon and Text Buttons inside toolbar to be exactly the same Height */
+QWidget#LeftToolbar QPushButton#ActionBtnOutline,
+QWidget#LeftToolbar QPushButton#ActionBtnBatchUpdate,
+QWidget#LeftToolbar QPushButton#ActionBtnBatchRemove,
+QWidget#LeftToolbar QPushButton#ActionBtnRefresh {
+    min-height: 26px;
+    max-height: 26px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    font-size: 13px;
+    /* Smaller font to fit symbols without expanding */
+}
+
+/* Force square shape for icons in toolbar */
+QWidget#LeftToolbar QPushButton#ActionBtnOutline {
+    min-width: 26px;
+    max-width: 26px;
 }
 
 /* ==========================================================
@@ -523,6 +582,7 @@ QPushButton#ChannelTag[state="target"] {
     border-color: #555;
     font-weight: bold;
 }
+
 QPushButton#ChannelTag[state="target"]:hover {
     background-color: #777;
 }
@@ -541,6 +601,7 @@ QPushButton#ChannelTag[state="both"] {
     color: #000;
     font-weight: bold;
 }
+
 QPushButton#ChannelTag[state="both"]:hover {
     background-color: #4cc9f0;
 }
@@ -558,5 +619,3 @@ QTextEdit#ConsoleText {
     qproperty-error_color: #FF6B6B;
     qproperty-divider_color: #555555;
 }
-
-

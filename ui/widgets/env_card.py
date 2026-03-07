@@ -100,12 +100,6 @@ class EnvCard(QFrame):
 
         h_layout.addStretch()
 
-        # Tree mode indicator
-        self.tree_badge = QLabel("🌲")
-        self.tree_badge.setObjectName("TreeBadge")
-        self.tree_badge.setToolTip("Dependency tree view")
-        h_layout.addWidget(self.tree_badge)
-
         # Status Badges
         self.badge_lbl = QLabel()
         self.badge_lbl.setObjectName("EnvBadge")
@@ -125,11 +119,12 @@ class EnvCard(QFrame):
 
         self.up_all_btn = QPushButton("⇧")
         self.up_all_btn.setObjectName("EnvUpdateAllBtn")
+        self.up_all_btn.setToolTip("Update all packages")
         self.up_all_btn.clicked.connect(lambda: self.update_all_requested.emit(env.path))
         h_layout.addWidget(self.up_all_btn)
 
-        self.add_pkg_btn = QPushButton("➕")
-        self.add_pkg_btn.setObjectName("EnvRefreshBtn")
+        self.add_pkg_btn = QPushButton("+")
+        self.add_pkg_btn.setObjectName("ActionBtnInstall")
         self.add_pkg_btn.setToolTip("Add dependency (e.g., vtk, gmsh vtk==9.5.2)")
         self.add_pkg_btn.clicked.connect(self._on_add_package_clicked)
         h_layout.addWidget(self.add_pkg_btn)
@@ -196,8 +191,8 @@ class EnvCard(QFrame):
                 self._start_lazy_load()
             
             # Re-apply filters when expanding to ensure 
-            # search context is correctly applied to the newly visible UI
-            if self._search_query:
+            # filter context is correctly applied to the newly visible UI
+            if self._search_query or self._outdated_only:
                 self._apply_filters()
 
     def _start_lazy_load(self):
@@ -275,19 +270,43 @@ class EnvCard(QFrame):
         self._search_timer.start(300)
 
     def _apply_filters(self):
-        """Core filter application logic with focused deep search."""
+        """Core filter application logic with focused deep search and outdated tracing."""
         if not self.env.is_scanned:
             return
 
         # Optimization (Strategy 3): 
         # Only perform heavy deep-search context calculation if the card is expanded.
-        # This prevents lag when multiple environments are present but only one is being focused.
         match_context = None
         if self.is_expanded and self._search_query:
             match_context = self._get_match_context(self._search_query)
+
+        # Tracing context for Outdated Only mode
+        outdated_context = None
+        if self.is_expanded and self._outdated_only:
+            outdated_context = self._get_outdated_context()
         
-        # Apply recursion (if match_context is None, it acts like a basic filter)
-        self._apply_filters_recursive(self.content_layout, match_context)
+        # Apply recursion
+        self._apply_filters_recursive(self.content_layout, match_context, outdated_context)
+
+    def _get_outdated_context(self):
+        """
+        Build a context dictionary identifying outdated packages and their ancestors.
+        Returns: { 'outdated': set(norm_names), 'ancestors': set(norm_names) }
+        """
+        outdated_names = set()
+        for pkg in self.env.packages:
+            if pkg.has_update or pkg.is_missing:
+                outdated_names.add(pkg.norm_name)
+        
+        # Traverse up from outdated packages to find all ancestors
+        ancestor_names = set()
+        for o_norm in outdated_names:
+            self._get_all_ancestors(o_norm, ancestor_names)
+            
+        return {
+            'outdated': outdated_names,
+            'ancestors': ancestor_names
+        }
 
     def _get_match_context(self, query: str):
         """
@@ -309,42 +328,55 @@ class EnvCard(QFrame):
             'ancestors': ancestor_names
         }
 
-    def _apply_filters_recursive(self, layout, match_context):
+    def _apply_filters_recursive(self, layout, match_context, outdated_context=None):
         """Recursively apply filters and handle auto-expansion."""
         for i in range(layout.count()):
             widget = layout.itemAt(i).widget()
             if isinstance(widget, PackageCard):
                 pkg = widget.pkg
                 
-                # Default visibility logic
-                visible = True
-                should_expand = False
-                
-                # Check Outdated Filter
-                if self._outdated_only and not (pkg.has_update or pkg.is_missing):
-                    visible = False
-                
-                # Check Search Filter (Apply Strategy 3 Logic)
+                # Rule 1: Outdated Filter Visibility
+                is_outdated_visible = True
+                is_outdated_branch = False
+                if self._outdated_only:
+                    if outdated_context:
+                        is_self_outdated = pkg.norm_name in outdated_context['outdated']
+                        is_outdated_ancestor = pkg.norm_name in outdated_context['ancestors']
+                        
+                        if is_self_outdated or is_outdated_ancestor:
+                            is_outdated_visible = True
+                            is_outdated_branch = is_outdated_ancestor
+                        else:
+                            is_outdated_visible = False
+                    else:
+                        # Fallback for collapsed env: basic check
+                        is_outdated_visible = pkg.has_update or pkg.is_missing
+
+                # Rule 2: Search Filter Visibility
+                is_search_visible = True
+                is_search_branch = False
                 if self._search_query:
                     if match_context:
-                        # Focused Search Mode: Use deep context
-                        is_match = pkg.norm_name in match_context['matches']
-                        is_ancestor = pkg.norm_name in match_context['ancestors']
+                        is_self_match = pkg.norm_name in match_context['matches']
+                        is_search_ancestor = pkg.norm_name in match_context['ancestors']
                         
-                        if is_match or is_ancestor:
-                            visible = True
-                            if is_ancestor and not is_match:
-                                should_expand = True
-                            elif is_match:
-                                should_expand = is_ancestor
+                        if is_self_match or is_search_ancestor:
+                            is_search_visible = True
+                            is_search_branch = is_search_ancestor
                         else:
-                            visible = False
+                            is_search_visible = False
                     else:
-                        # Silent/Collapsed Mode: Simple top-level match only
-                        visible = self._search_query in pkg.name.lower() or self._search_query in pkg.version.lower()
-                else:
-                    # No active search query
-                    visible = True
+                        is_search_visible = self._search_query in pkg.name.lower() or self._search_query in pkg.version.lower()
+
+                # Final decision: Both filters must pass
+                visible = is_outdated_visible and is_search_visible
+                
+                # Auto-expansion: If it's a branch for either filter, we should move deeper
+                # Note: We only auto-expand if the package itself is NOT the final match/outdated target, 
+                # OR if it is also a branch for another target deeper down.
+                should_expand = False
+                if visible and (is_outdated_branch or is_search_branch):
+                    should_expand = True
 
                 if visible:
                     widget.show()
@@ -352,7 +384,7 @@ class EnvCard(QFrame):
                         # Heavy lifting only for the 'focused' environment
                         widget.expand_sync()
                         if widget._children_loaded:
-                            self._apply_filters_recursive(widget.children_layout, match_context)
+                            self._apply_filters_recursive(widget.children_layout, match_context, outdated_context)
                 else:
                     widget.hide()
 
@@ -368,15 +400,15 @@ class EnvCard(QFrame):
             card.install_requested.connect(lambda p: self._on_install_missing(p))
             card.selection_changed.connect(self._on_pkg_selection_changed)
 
-            matches_search = not getattr(self, '_search_query', '') or getattr(self, '_search_query', '') in pkg.name.lower()
-            matches_outdated = not self._outdated_only or pkg.has_update or pkg.is_missing
-            if not (matches_search and matches_outdated):
-                card.hide()
             self.content_layout.addWidget(card)
             count += 1
 
         if self._pkg_load_queue:
             QTimer.singleShot(5, self._process_load_queue)
+        else:
+            # All top-level cards created, now apply filters (search/outdated) 
+            # to handle deep expansion/visibility correctly.
+            self._apply_filters()
 
     def _on_pkg_selection_changed(self, pkg_name, is_selected):
         """Forward selection change for a specific package."""

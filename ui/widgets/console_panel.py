@@ -1,6 +1,24 @@
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit
 from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat, QFont
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, Property
+
+class LogTextEdit(QTextEdit):
+    """Subclass to support custom QSS properties without warnings."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._props = {}
+
+    def _get_prop(self, name): return self._props.get(name, "")
+    def _set_prop(self, name, val): self._props[name] = val
+
+    # Color properties used by QSS
+    system_color = Property(str, fget=lambda s: s._get_prop("system_color"), fset=lambda s, v: s._set_prop("system_color", v))
+    cmd_color = Property(str, fget=lambda s: s._get_prop("cmd_color"), fset=lambda s, v: s._set_prop("cmd_color", v))
+    stdout_color = Property(str, fget=lambda s: s._get_prop("stdout_color"), fset=lambda s, v: s._set_prop("stdout_color", v))
+    stderr_color = Property(str, fget=lambda s: s._get_prop("stderr_color"), fset=lambda s, v: s._set_prop("stderr_color", v))
+    success_color = Property(str, fget=lambda s: s._get_prop("success_color"), fset=lambda s, v: s._set_prop("success_color", v))
+    error_color = Property(str, fget=lambda s: s._get_prop("error_color"), fset=lambda s, v: s._set_prop("error_color", v))
+    divider_color = Property(str, fget=lambda s: s._get_prop("divider_color"), fset=lambda s, v: s._set_prop("divider_color", v))
 
 class ConsolePanel(QFrame):
     """Terminal-style console panel with colored output logging."""
@@ -36,7 +54,7 @@ class ConsolePanel(QFrame):
 
         layout.addWidget(header)
 
-        self.text_edit = QTextEdit()
+        self.text_edit = LogTextEdit()
         self.text_edit.setObjectName("ConsoleText")
         self.text_edit.setReadOnly(True)
         

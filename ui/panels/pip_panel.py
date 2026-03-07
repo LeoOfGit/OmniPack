@@ -31,10 +31,13 @@ class PipPanel(BasePanel):
 
     def _build_pip_ui(self):
         self.outdated_only_checkbox = QCheckBox("Outdated Only")
-        self.outdated_only_checkbox.setChecked(True)
+        self.outdated_only_checkbox.setToolTip("Show only outdated packages")
+        self.outdated_only_checkbox.setChecked(False)
         self.outdated_only_checkbox.stateChanged.connect(self._toggle_outdated_only)
 
         settings_btn = QPushButton("⚙ Envs")
+        settings_btn.setObjectName("ActionBtnRefresh")
+        settings_btn.setToolTip("Add/Remove Environments")
         settings_btn.clicked.connect(self._open_settings)
 
         self._setup_common_toolbar(

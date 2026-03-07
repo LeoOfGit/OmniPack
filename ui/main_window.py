@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 
 from core.config import ConfigManager
+from core.utils import get_app_root
 
 
 class OmniPackWindow(QMainWindow):
@@ -67,9 +68,9 @@ class OmniPackWindow(QMainWindow):
         self._restore_ui_state()
 
     def _set_app_icon(self):
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "OmniPack.ico")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        icon_path = get_app_root() / "resources" / "OmniPack.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         
         # Ensure Windows taskbar displays the correct icon instead of Python's default
         try:
@@ -197,8 +198,7 @@ class OmniPackWindow(QMainWindow):
         
         # Setup Hot Reloading
         from ui.styles.live_reload import StyleReloader
-        # Correct path for main_window.py being in ui/
-        qss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "styles", "dark.qss")
-        if os.path.exists(qss_path):
-            self._style_watcher = StyleReloader(qss_path, parent=self)
+        qss_path = get_app_root() / "ui" / "styles" / "dark.qss"
+        if qss_path.exists():
+            self._style_watcher = StyleReloader(str(qss_path), parent=self)
             self._style_watcher.style_changed.connect(self.setStyleSheet)

@@ -85,14 +85,14 @@ class NpmAppCard(QFrame):
             layout.addWidget(upd_btn)
 
             # Uninstall
-            rm_btn = QPushButton("✕")
+            rm_btn = QPushButton("-")
             rm_btn.setObjectName("ActionBtnRemove")
             rm_btn.setToolTip(f"Uninstall {self.app.name}")
             rm_btn.clicked.connect(lambda: self.action_requested.emit(self.app.name, "uninstall"))
             layout.addWidget(rm_btn)
         else:
             # Install
-            inst_btn = QPushButton("⇩")
+            inst_btn = QPushButton("+")
             inst_btn.setObjectName("ActionBtnInstall")
             inst_btn.setToolTip(f"Install {self.app.name}")
             inst_btn.clicked.connect(lambda: self.action_requested.emit(self.app.name, "install"))

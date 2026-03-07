@@ -83,6 +83,25 @@ class NpmExecutor:
         return None
 
     @classmethod
+    def find_corepack(cls) -> Optional[str]:
+        """Find corepack command path, prioritizing proximity to npm."""
+        npm_path = cls.find_npm()
+        if npm_path:
+            dirname = os.path.dirname(npm_path)
+            basename = os.path.basename(npm_path)
+            if "npm" in basename.lower():
+                cp_name = basename.lower().replace("npm", "corepack")
+                path = os.path.join(dirname, cp_name)
+                if os.path.exists(path):
+                    return path
+
+        for cmd in ["corepack.cmd", "corepack"]:
+            cp_path = shutil.which(cmd)
+            if cp_path:
+                return cp_path
+        return None
+
+    @classmethod
     def run_command(
         cls,
         cmd: list[str],
@@ -197,13 +216,16 @@ class NpmExecutor:
 
         # Detect corepack
         if "corepack" not in packages:
-            success_cp, cp_out = cls.run_command(["corepack", "--version"], log_callback=log_callback)
-            if success_cp:
-                ver = cp_out.strip()
-                if re.match(r"^\d+\.\d+\.\d+", ver):
-                    packages["corepack"] = ver
-                    if log_callback:
-                        log_callback(f"Detected system corepack: {ver}", "success")
+            cp_path = cls.find_corepack()
+            if cp_path:
+                # Use log_callback=None to keep the probe silent in the UI if it fails
+                success_cp, cp_out = cls.run_command([cp_path, "--version"], log_callback=None)
+                if success_cp:
+                    ver = cp_out.strip()
+                    if re.match(r"^\d+\.\d+\.\d+", ver):
+                        packages["corepack"] = ver
+                        if log_callback:
+                            log_callback(f"Detected system corepack: {ver}", "success")
 
         if log_callback:
             log_callback(f"Found {len(packages)} global package(s)", "success")
@@ -335,7 +357,7 @@ class NpmManager(QObject):
     """
     log_msg = Signal(str, str)          # text, tag
     scan_done = Signal(dict, str)       # packages, error
-    updates_checked = Signal(dict)      # all_tags
+    updates_checked = Signal(dict, list)      # all_tags, checked_app_names
     action_done = Signal(str, str, bool)  # name, action, success
 
     def __init__(self, config_mgr):
@@ -411,15 +433,23 @@ class NpmManager(QObject):
 
     # ── Update Check ──
 
-    def check_updates(self):
-        apps_to_check = list(self.apps.values())
+    def check_updates(self, app_names: list[str] = None):
+        if app_names:
+            apps_to_check = [self.apps[name] for name in app_names if name in self.apps]
+        else:
+            apps_to_check = list(self.apps.values())
+            
         if not apps_to_check:
             return
 
         def do_check():
-            self._log("Checking latest channel versions from npm registry...", "system")
+            if app_names:
+                self._log(f"Checking latest channel versions for {', '.join(app_names)}...", "system")
+            else:
+                self._log("Checking latest channel versions from npm registry...", "system")
+                
             all_tags = NpmExecutor.get_latest_versions(apps_to_check, log_callback=self._log)
-            self.updates_checked.emit(all_tags)
+            self.updates_checked.emit(all_tags, app_names or [])
 
         threading.Thread(target=do_check, daemon=True).start()
 
@@ -515,7 +545,16 @@ class NpmManager(QObject):
         self.config_mgr.save_config()
 
     def add_app(self, app: NpmApp):
-        self.apps[app.name] = app
+        if app.name in self.apps:
+            existing = self.apps[app.name]
+            existing.display_name = app.display_name
+            existing.description = app.description
+            existing.channel = app.channel
+            for ch in app.channels_available:
+                if ch not in existing.channels_available:
+                    existing.channels_available.append(ch)
+        else:
+            self.apps[app.name] = app
         self._save_apps()
 
     def update_app(self, name: str, **kwargs):

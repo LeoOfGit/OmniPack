@@ -114,7 +114,7 @@ class PackageCard(QFrame):
                 row_layout.addWidget(spacer)
 
             # Remove Button
-            rm_btn = QPushButton("➖")
+            rm_btn = QPushButton("-")
             rm_btn.setObjectName("ActionBtnRemove")
             rm_btn.setCursor(Qt.PointingHandCursor)
             rm_btn.setToolTip(f"Remove {pkg.name}")

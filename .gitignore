@@ -2,3 +2,9 @@ clean_cache.py
 __pycache__/
 npm.code-workspace
 Git.pyw
+OmniPack.png
+check_packages.py
+build_exe.py
+OmniPack_config.json
+dist/
+.gitignore

@@ -8,8 +8,31 @@ import ctypes
 from PySide6.QtWidgets import QApplication
 
 
+def is_admin():
+    """Check if the current process has administrator privileges."""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except Exception:
+        return False
+
+
+def hide_console():
+    """Hide the console window if it exists."""
+    # Only relevant on Windows
+    if os.name == 'nt':
+        # Get the handle to the console window
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            # SW_HIDE = 0
+            ctypes.windll.user32.ShowWindow(hwnd, 0)
+
+
 def run_main():
     """Application entry point with global exception catching."""
+    hide_console()
+    # Suppress spurious QSS property warnings to keep the startup clean
+    os.environ["QT_LOGGING_RULES"] = "*.warning=false"
+    
     try:
         app = QApplication(sys.argv)
         
@@ -28,29 +51,22 @@ def run_main():
 
 
 if __name__ == "__main__":
-    # Check for Admin rights per standard fix requirements
-    if not ctypes.windll.shell32.IsUserAnAdmin():
-        python_exe = sys.executable
-        if python_exe.lower().endswith("python.exe"):
-            target_pw = python_exe.lower().replace("python.exe", "pythonw.exe")
-            if os.path.exists(target_pw):
-                python_exe = target_pw
+    # Immediately attempt to hide the console if we were started from one
+    hide_console()
+    
+    # If not running as admin, request elevation to ensure package managers work correctly.
+    # CRITICAL: If frozen (packaged as EXE), we skip this because Nuitka's --windows-uac-admin 
+    # handles elevation via manifest. Re-launching here can lose Nuitka's environment variables.
+    if not is_admin() and not getattr(sys, "frozen", False):
+        # Re-run the application with 'runas' verb to trigger Windows UAC
+        params = ' '.join([f'"{arg}"' for arg in sys.argv])
+        # nShow: 0 = SW_HIDE (Hidden)
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 0)
+        sys.exit(0)
 
-        script = os.path.abspath(sys.argv[0])
-        params = f'"{script}"'
-        if len(sys.argv) > 1:
-            params += " " + " ".join(f'"{arg}"' for arg in sys.argv[1:])
-
-        # Re-launch current script with "runas" (elevated)
-        # SW_SHOW (5) ensures the new window is visible
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", python_exe, params, None, 5
-        )
-        if ret > 32:
-            sys.exit(0) # Elevated child started successfully, close this one
-        else:
-            # Elevation failed/denied, attempt running in current context anyway
-            run_main()
-    else:
-        # Already running as admin
-        run_main()
+    # Redirect stdout/stderr to devnull to ensure no console allocation occurs
+    if getattr(sys, "frozen", False) or "__nuitka_binary_dir" in globals():
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        
+    run_main()

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict
+from core.utils import get_persistent_root
 
 
 @dataclass
@@ -26,7 +27,7 @@ class AppConfig:
 
 class ConfigManager:
     def __init__(self):
-        self.config_path = Path(__file__).parent.parent / "omnipack_config.json"
+        self.config_path = get_persistent_root() / "omnipack_config.json"
         self.config = self._load_config()
 
     def _load_config(self) -> AppConfig:
@@ -68,9 +69,20 @@ class ConfigManager:
         }
 
     def save_config(self):
-        data = asdict(self.config)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        try:
+            data = asdict(self.config)
+            # Ensure the directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            # Fallback logging to temp directory if main config fails
+            import tempfile
+            log_path = Path(tempfile.gettempdir()) / "omnipack_config_error.log"
+            with open(log_path, "a", encoding="utf-8") as f:
+                import datetime
+                f.write(f"[{datetime.datetime.now()}] Failed to save config to {self.config_path}: {str(e)}\n")
 
     # ── Pip helpers ──
 

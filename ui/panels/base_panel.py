@@ -76,7 +76,7 @@ class BasePanel(QWidget):
     def _log(self, msg: str, tag: str = "stdout"):
         self.console.log(msg, tag)
 
-    def _setup_search_input(self, placeholder="Search..."):
+    def _setup_search_input(self, placeholder="Search & Filter"):
         search_input = QLineEdit()
         search_input.setPlaceholderText(placeholder)
         search_input.setFixedWidth(150)
@@ -95,13 +95,15 @@ class BasePanel(QWidget):
         """Builds the uniform toolbar layout with customizable injections."""
         # Batch Selection
         select_all_btn = QPushButton("☑")
-        select_all_btn.setFixedWidth(28)
+        select_all_btn.setObjectName("ActionBtnOutline")
         select_all_btn.clicked.connect(self._select_all)
+        select_all_btn.setToolTip("Select all")
         self.tb_layout.addWidget(select_all_btn)
 
         clear_btn = QPushButton("☐")
-        clear_btn.setFixedWidth(28)
+        clear_btn.setObjectName("ActionBtnOutline")
         clear_btn.clicked.connect(self._deselect_all)
+        clear_btn.setToolTip("Clear selection")
         self.tb_layout.addWidget(clear_btn)
 
         if extra_widgets_before_search:
@@ -111,23 +113,28 @@ class BasePanel(QWidget):
         # Search
         self.search_input = self._setup_search_input()
         self.search_input.textChanged.connect(search_callback)
+        self.search_input.setToolTip("Search & Filter")
         self.tb_layout.addWidget(self.search_input)
 
         # Refresh
         self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn.setObjectName("ActionBtnRefresh")
         self.refresh_btn.setFixedWidth(85)
         self.refresh_btn.clicked.connect(refresh_callback)
+        self.refresh_btn.setToolTip("Refresh")
         self.tb_layout.addWidget(self.refresh_btn)
 
         # Actions
-        batch_btn = QPushButton("📦 Batch Update")
+        batch_btn = QPushButton("⇧ Update")
         batch_btn.setObjectName("ActionBtnBatchUpdate")
         batch_btn.clicked.connect(batch_update_callback)
+        batch_btn.setToolTip("Update all selected packages")
         self.tb_layout.addWidget(batch_btn)
 
-        batch_rm_btn = QPushButton("🗑 Batch Remove")
+        batch_rm_btn = QPushButton("- Remove")
         batch_rm_btn.setObjectName("ActionBtnBatchRemove")
         batch_rm_btn.clicked.connect(batch_remove_callback)
+        batch_rm_btn.setToolTip("Remove all selected packages")
         self.tb_layout.addWidget(batch_rm_btn)
 
         if extra_widgets_end:

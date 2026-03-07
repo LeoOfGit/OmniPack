@@ -32,7 +32,9 @@ class NpmPanel(BasePanel):
         self._connect_signals()
 
     def _build_npm_ui(self):
-        add_btn = QPushButton("＋ Add")
+        add_btn = QPushButton("⚙ Add")
+        add_btn.setObjectName("ActionBtnRefresh")
+        add_btn.setToolTip("Add new npm app")
         add_btn.clicked.connect(self._add_app)
 
         self._setup_common_toolbar(
@@ -99,11 +101,57 @@ class NpmPanel(BasePanel):
         # Trigger update check
         self.npm_mgr.check_updates()
 
-    def _on_updates_checked(self, all_tags: dict):
+    def _on_updates_checked(self, all_tags: dict, checked_app_names: list[str]):
         self.npm_mgr.on_updates_checked(all_tags)
-        self._rebuild_card_list()
+        
+        if checked_app_names:
+            for name in checked_app_names:
+                self._rebuild_single_card(name)
+            self._update_status_counts()
+        else:
+            self._rebuild_card_list()
 
     # ── Card List ────────────────────────────────────────────────────────
+
+    def _rebuild_single_card(self, name: str):
+        app = self.npm_mgr.apps.get(name)
+        old_card = self.app_cards.get(name)
+        
+        if not app:
+            if old_card:
+                index = self.scroll_layout.indexOf(old_card)
+                if index != -1:
+                    item = self.scroll_layout.takeAt(index)
+                    if item.widget():
+                        item.widget().deleteLater()
+                del self.app_cards[name]
+            return
+            
+        channels = self.config_mgr.config.npm_channels
+        new_card = NpmAppCard(app, channels)
+        new_card.action_requested.connect(self._on_action)
+        new_card.select_toggled.connect(self._on_select)
+        
+        search_widget = self.findChild(QLineEdit)
+        search_text = search_widget.text().lower() if search_widget else ""
+        visible = True
+        if search_text:
+            visible = search_text in app.name.lower() or search_text in app.display_name.lower() or search_text in app.description.lower()
+        new_card.setVisible(visible)
+
+        if old_card:
+            index = self.scroll_layout.indexOf(old_card)
+            if index != -1:
+                item = self.scroll_layout.takeAt(index)
+                if item.widget():
+                    item.widget().deleteLater()
+                self.scroll_layout.insertWidget(index, new_card)
+            else:
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, new_card)
+        else:
+            self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, new_card)
+            
+        self.app_cards[name] = new_card
 
     def _rebuild_card_list(self):
         # Clear existing
@@ -175,8 +223,8 @@ class NpmPanel(BasePanel):
                         channel=dialog.result_app.channel,
                         channels_available=dialog.result_app.channels_available,
                     )
-                    self.npm_mgr.check_updates()
-                self._rebuild_card_list()
+                    self.npm_mgr.check_updates(app_names=[name])
+                self._rebuild_single_card(name)
             return
 
         if action == "uninstall":
@@ -267,6 +315,6 @@ class NpmPanel(BasePanel):
         if dialog.exec() == QDialog.Accepted and dialog.result_app:
             self.npm_mgr.add_app(dialog.result_app)
             self._log(f"Added {dialog.result_app.name} to config", "system")
-            self._rebuild_card_list()
+            self._rebuild_single_card(dialog.result_app.name)
             # Immediately trigger an update check to populate its channels
-            self.npm_mgr.check_updates()
+            self.npm_mgr.check_updates(app_names=[dialog.result_app.name])
