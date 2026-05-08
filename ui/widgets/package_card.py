@@ -3,19 +3,21 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from core.manager_base import Package
+from core.trace_logger import trace_event, is_trace_enabled
 
 
 class PackageCard(QFrame):
     """
     Component: Single Package Row (Tree Node)
-    [▶] [Checkbox] [Name] [Constraint] [Version -> Latest] [Update/Install/Remove Button]
-    Supports collapsible children for dependency tree display.
+    [▶] [Checkbox] [Name] [Constraint] [Version -> Latest] [Channel] [Update/Install/Remove Button]
+    Supports collapsible children for dependency tree display (Pip) and Channel badges (NPM).
     """
 
     selection_changed = Signal(str, bool)          # pkg_name, is_selected
-    update_requested = Signal(str)                 # pkg_name
+    update_requested = Signal(str, str)            # pkg_name, channel
     remove_requested = Signal(str)                 # pkg_name
     install_requested = Signal(str)                # pkg_name (for missing deps)
+    config_requested = Signal(str)                 # pkg_name
 
     def __init__(self, pkg: Package, depth: int = 0, env=None):
         super().__init__()
@@ -65,7 +67,8 @@ class PackageCard(QFrame):
             self.checkbox = None
 
         # Name
-        name_lbl = QLabel(pkg.name)
+        display_name = pkg.metadata.get("display_name", pkg.name) if pkg.metadata else pkg.name
+        name_lbl = QLabel(display_name)
         name_lbl.setObjectName("PkgNameMissing" if pkg.is_missing else "PkgName")
         row_layout.addWidget(name_lbl, 1)  # Stretch
 
@@ -80,7 +83,7 @@ class PackageCard(QFrame):
             status_lbl = QLabel("Not Installed")
             status_lbl.setObjectName("PkgMissingLabel")
             row_layout.addWidget(status_lbl)
-        elif pkg.latest_version and pkg.is_outdated:
+        elif pkg.latest_version and pkg.has_update:
             ver_text = f"{pkg.version} ➜ {pkg.latest_version}"
             ver_lbl = QLabel(ver_text)
             ver_lbl.setObjectName("PkgVersionUpdate")
@@ -90,23 +93,43 @@ class PackageCard(QFrame):
             ver_lbl.setObjectName("PkgVersionBase")
             row_layout.addWidget(ver_lbl)
 
+        # NPM Channel Badge (if available in metadata)
+        channel = pkg.metadata.get("channel") if pkg.metadata else None
+        if channel:
+            ch_lbl = QLabel(f"[{channel.capitalize()}]")
+            ch_lbl.setObjectName(f"PkgChannelBadge_{channel}")
+            # Color is typically handled by QSS based on object name or we can inline style later.
+            if channel != "latest":
+                ch_lbl.setStyleSheet("color: #4cc9f0; font-weight: bold;")
+            else:
+                ch_lbl.setStyleSheet("color: #888;")
+            row_layout.addWidget(ch_lbl)
+
         # Action Buttons
         if pkg.is_missing:
             # Install button for missing deps
-            install_btn = QPushButton("📥")
+            install_btn = QPushButton("+")
             install_btn.setObjectName("ActionBtnInstall")
             install_btn.setCursor(Qt.PointingHandCursor)
             install_btn.setToolTip(f"Install {pkg.name}")
             install_btn.clicked.connect(lambda: self.install_requested.emit(pkg.name))
             row_layout.addWidget(install_btn)
         else:
+            if pkg.metadata and "channels_available" in pkg.metadata:
+                conf_btn = QPushButton("⚙")
+                conf_btn.setObjectName("ActionBtnConfig")
+                conf_btn.setToolTip(f"Configure {pkg.name}")
+                conf_btn.setCursor(Qt.PointingHandCursor)
+                conf_btn.clicked.connect(lambda: self.config_requested.emit(pkg.name))
+                row_layout.addWidget(conf_btn)
             # Update Button (Only if update available)
-            if pkg.is_outdated:
+            if pkg.has_update:
                 up_btn = QPushButton("⇧")
                 up_btn.setObjectName("PkgUpdateBtn")
                 up_btn.setCursor(Qt.PointingHandCursor)
                 up_btn.setToolTip(f"Update {pkg.name}")
-                up_btn.clicked.connect(lambda: self.update_requested.emit(pkg.name))
+                target_channel = channel or "latest"
+                up_btn.clicked.connect(lambda: self.update_requested.emit(pkg.name, target_channel))
                 row_layout.addWidget(up_btn)
             else:
                 spacer = QWidget()
@@ -133,12 +156,35 @@ class PackageCard(QFrame):
         main_layout.addWidget(self.children_container)
 
     def _on_check_changed(self, state):
-        self.pkg.is_selected = (state == Qt.Checked.value if hasattr(Qt.Checked, 'value') else state == Qt.Checked or state == 2)
+        checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
+
+        self.pkg.is_selected = (state == checked_val)
         self.selection_changed.emit(self.pkg.name, self.pkg.is_selected)
+        if is_trace_enabled():
+            trace_event(
+                "package_card",
+                "checkbox_change",
+                pkg_name=self.pkg.name,
+                norm_name=self.pkg.norm_name,
+                state=int(state),
+                is_selected=self.pkg.is_selected,
+                has_update=getattr(self.pkg, "has_update", False),
+                is_missing=getattr(self.pkg, "is_missing", False),
+            )
 
     def set_checked(self, checked: bool):
         if self.checkbox:
+            self.pkg.is_selected = checked
+            self.checkbox.blockSignals(True)
             self.checkbox.setChecked(checked)
+            self.checkbox.blockSignals(False)
+
+    def set_check_state(self, state):
+        if not self.checkbox:
+            return
+
+        checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
+        self.set_checked(state == checked_val)
 
     def _toggle_children(self):
         """Toggle expand/collapse of child dependencies."""
@@ -162,7 +208,7 @@ class PackageCard(QFrame):
 
     def _load_children(self, sync=False):
         """Lazy-load child dependency cards."""
-        if not self.env or not self.pkg.requires:
+        if not self.env or not getattr(self.pkg, 'requires', None):
             return
 
         self._children_loaded = True
@@ -179,7 +225,10 @@ class PackageCard(QFrame):
             dep_req = self._child_load_queue.pop(0)
 
             # Look up the actual package in the environment
-            child_pkg = self.env.get_package_by_norm_name(dep_req.norm_name)
+            if hasattr(self.env, "get_package_by_norm_name"):
+                child_pkg = self.env.get_package_by_norm_name(dep_req.norm_name)
+            else:
+                child_pkg = None
 
             if child_pkg is None:
                 # Create a ghost/missing package for display
@@ -193,7 +242,6 @@ class PackageCard(QFrame):
                 )
             else:
                 # Create a display copy with constraint from parent
-                # We don't mutate the original, just set constraint for display
                 child_pkg = Package(
                     name=child_pkg.name,
                     version=child_pkg.version,
@@ -206,6 +254,7 @@ class PackageCard(QFrame):
                     is_missing=child_pkg.is_missing,
                     version_constraint=dep_req.constraint,
                     norm_name=child_pkg.norm_name,
+                    metadata=child_pkg.metadata
                 )
 
             card = PackageCard(child_pkg, depth=self.depth + 1, env=self.env)
@@ -215,6 +264,7 @@ class PackageCard(QFrame):
             card.remove_requested.connect(self.remove_requested)
             card.install_requested.connect(self.install_requested)
             card.selection_changed.connect(self.selection_changed)
+            card.config_requested.connect(self.config_requested)
 
             self._child_cards.append(card)
             self.children_layout.addWidget(card)

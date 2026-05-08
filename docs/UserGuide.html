@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniPack User Guide</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #d4d4d4;
+            --header-zh: #569cd6;
+            --header-en: #9cdcfe;
+            --accent-color: #4ec9b0;
+            --border-color: #444;
+            --code-bg: #2d2d2d;
+            --link-color: #3794ff;
+            --missing-bg: rgba(255, 196, 0, 0.12);
+            --missing-border: rgba(255, 196, 0, 0.4);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 40px;
+            max-width: 950px;
+            margin: 0 auto;
+            line-height: 1.6;
+            scroll-behavior: smooth;
+        }
+
+        #lang-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            background: #252526;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 4px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+        }
+
+        .lang-btn {
+            padding: 6px 18px;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+            color: #888;
+            user-select: none;
+        }
+
+        .lang-btn.active {
+            background-color: var(--link-color);
+            color: white;
+        }
+
+        h1 {
+            color: var(--header-zh);
+            border-bottom: 2px solid var(--header-zh);
+            padding-bottom: 12px;
+            font-size: 28pt;
+            margin-bottom: 30px;
+        }
+
+        [data-lang="en"] h1 {
+            color: var(--header-en);
+            border-bottom-color: var(--header-en);
+        }
+
+        h2 {
+            color: var(--header-en);
+            border-bottom: 1px solid var(--border-color);
+            margin-top: 55px;
+            padding-bottom: 10px;
+            font-size: 22pt;
+        }
+
+        [data-lang="en"] h2 {
+            color: var(--header-zh);
+        }
+
+        h3 {
+            color: var(--accent-color);
+            margin-top: 35px;
+            font-size: 18pt;
+        }
+
+        code {
+            background-color: var(--code-bg);
+            color: #ce9178;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.95em;
+        }
+
+        img {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin: 30px 0;
+            display: block;
+        }
+
+        .image-wrap {
+            display: flex;
+            justify-content: center;
+        }
+
+        ul, ol {
+            margin-left: 12px;
+            margin-top: 15px;
+        }
+
+        li {
+            margin-bottom: 12px;
+        }
+
+        a {
+            color: var(--link-color);
+            text-decoration: none;
+            transition: border-bottom 0.2s;
+        }
+
+        a:hover {
+            border-bottom: 1px solid var(--link-color);
+        }
+
+        blockquote {
+            border-left: 5px solid #007acc;
+            background-color: #252526;
+            padding: 18px 25px;
+            margin: 25px 0;
+            font-style: italic;
+            border-radius: 0 8px 8px 0;
+            color: #9cdcfe;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 30px 0;
+            border: 1px solid var(--border-color);
+            background-color: #252526;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 14px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #333;
+            color: #fff;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 60px 0;
+        }
+
+        [data-lang="zh"] .lang-en {
+            display: none;
+        }
+
+        [data-lang="en"] .lang-zh {
+            display: none;
+        }
+
+        .missing-translation {
+            background: var(--missing-bg);
+            outline: 1px dashed var(--missing-border);
+        }
+    </style>
+</head>
+<body data-lang="en">
+    <div id="lang-toggle">
+        <div class="lang-btn" onclick="switchLang('zh')">简体中文</div>
+        <div class="lang-btn active" onclick="switchLang('en')">English</div>
+    </div>
+
+    <!-- START OF CHINESE CONTENT -->
+<section class="lang-zh">
+<h1 id="omnipack-v4-用户指南-user-guide">OmniPack V4 用户指南 (User Guide)</h1>
+<div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
+<p>欢迎使用 <b>OmniPack</b>！愿本程序成为您管理 Python 虚拟环境与 Node.js 项目依赖的得力工具。</p>
+<hr>
+<h2 id="目录">目录</h2>
+<ol>
+<li><a href="#1-界面布局全解析">界面布局全解析</a>
+</li>
+<li><a href="#2-环境管理">环境管理 (Environments)</a>
+</li>
+<li><a href="#3-python-uvpip-深度管理">Python (uv/pip) 深度管理</a>
+</li>
+<li><a href="#4-nodejs-npm-项目管理">Node.js (npm) 项目管理</a>
+</li>
+<li><a href="#5-设置中心">设置中心 (Settings Center)</a>
+</li>
+<li><a href="#6-高级配置与环境变量参考">高级配置与环境变量参考</a>
+</li>
+<li><a href="#7-常见问题解答-faq">常见问题解答 (FAQ)</a>
+</li>
+</ol>
+<hr>
+<h2 id="1-界面布局全解析">1. 界面布局全解析</h2>
+<p>OmniPack 的主界面经过精心设计，分为四个核心交互区域。</p>
+<h3 id="11-顶层工具栏-global-toolbar">1.1 顶层工具栏 (Global Toolbar)</h3>
+<p>这是执行全局搜索、过滤与批量指令的指挥中心。</p>
+<ul>
+<li><b>选择控制 (All/None)</b>：快速全选或全取消当前主界面中所有可见的包。
+</li>
+<li><b>搜索框 (Search)</b>：实时过滤各个环境卡片中显示的包名，支持模糊匹配。
+</li>
+<li><b>待更新过滤 (Only Show Outdated)</b>：一键隐藏所有已是最新版本的包，让您可以集中处理需要升级的项目。
+</li>
+<li><b>全局刷新 (Refresh All)</b>：重新扫描所有配置环境的本地包列表，并查询云端最新版本。
+</li>
+<li><b>批量更新 (Batch Update)</b>：对当前所有【已勾选】且【云端有新版本】的包发起并行升级指令。
+</li>
+<li><b>批量卸载 (Batch Remove)</b>：对所有当前勾选的包发起卸载指令（会有二次确认弹窗）。
+</li>
+<li><b>设置 (Settings)</b>：直接跳转至环境配置与系统设置页面。
+</li>
+</ul>
+<h3 id="12-环境主体卡片-env-canvas">1.2 环境主体卡片 (Env Canvas)</h3>
+<p>左侧区域，以卡片形式展示每一个 Python 虚拟环境或 Node.js 项目。</p>
+<ul>
+<li><b>环境信息</b>：每张卡片顶部显示环境的别名、物理路径和 Python/Node 版本。
+</li>
+<li><b>操作按钮</b>：卡片内部集成“添加包”、“局部刷新”和“局部更新全部”等快捷入口。
+</li>
+<li><b>包列表</b>：列出当前环境下安装的所有包及其版本。
+</li>
+</ul>
+<h3 id="13-实时控制台-live-console">1.3 实时控制台 (Live Console)</h3>
+<p>右侧区域，实时流式输出底层包管理器的执行详情。</p>
+<ul>
+<li><b>分色输出</b>：系统消息（蓝色）、标准输出（白色）、标准错误（橙色）、失败报告（红色）。
+</li>
+<li><b>右键功能</b>：支持“清空控制台”、“复制选区”以及“打开日志文件所在目录”。
+</li>
+</ul>
+<h3 id="14-状态栏反馈-status-bar">1.4 状态栏反馈 (Status Bar)</h3>
+<p>位于窗口最底部，提供实时的统计与全局功能入口。</p>
+<ul>
+<li><b>左侧统计区</b>：<code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>。实时反映当前扫描出的环境总数、包总数及待更新统计。
+</li>
+<li><b>中间状态区</b>：显示当前正在执行的操作（如 &quot;Ready&quot;, &quot;Scanning...&quot;, &quot;Installing...&quot;）。
+</li>
+<li><b>右侧切换区</b>：
+<ul>
+<li><b>Python / Node.js 按钮</b>：用于在两种包管理面板间快速切换。
+</li>
+<li><b>💡 Guide 按钮</b>：点击即可弹出本用户指南窗口。
+</li>
+</ul>
+</li>
+</ul>
+<blockquote><b>注意</b>：若程序获得了管理员权限，<b>(Admin)</b> 标识会显示在窗口的<b>最上方标题栏</b>。</blockquote>
+<div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="823"></div>
+<hr>
+<h2 id="2-环境管理">2. 环境管理</h2>
+<h3 id="21-统一导入流程-unified-intake">2.1 统一导入流程 (Unified Intake)</h3>
+<p>在 <b>Settings -&gt; Python/NPM Environments</b> 中，您可以管理项目的生命周期。</p>
+<ul>
+<li><b>Python 环境 (Pip/uv)</b>：
+<ul>
+<li><b>Detect System</b>：扫描 PATH、注册表及桌面/用户目录下的 Python 解释器。
+</li>
+<li><b>Add Manually</b>：支持指向具体的 <code>python.exe</code> 解释器，或直接拖入包含 <code>.venv</code> 或 <code>venv</code> 的项目根目录。
+</li>
+</ul>
+</li>
+<li><b>Node.js 环境 (NPM)</b>：
+<ul>
+<li><b>Add Manually</b>：支持指向 <code>package.json</code> 文件或其所在的任意父目录。OmniPack 会自动溯源至项目根节点并解析项目名。
+</li>
+</ul>
+</li>
+<li><b>Batch Paste (批量导入)</b>：您可以用Everything等搜索工具直接复制得到包含多个路径的多行文本，然后粘贴到输入框中，内置的 <code>env_detector</code> 引擎会自动执行去重、有效性验证和智能命名。。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
+<h3 id="22-环境操作说明">2.2 环境操作说明</h3>
+<ul>
+<li><b>拖拽重排</b>：在列表项上长按图标即可上下拖动，调整环境在主界面的首选顺序。
+</li>
+<li><b>编辑环境</b>：双击任意项可修改显示别名或修正因移动文件夹导致的路径变化。
+</li>
+</ul>
+<hr>
+<h2 id="3-python-uvpip-深度管理">3. Python (uv/pip) 深度管理</h2>
+<h3 id="31-极速-uv-引擎">3.1 极速 uv 引擎</h3>
+<p>OmniPack 原生集成了一流的 <a href="https://github.com/astral-sh/uv">uv</a> 引擎。</p>
+<ul>
+<li><b>性能优势</b>：对于复杂的依赖解析和大规模包安装，由于 uv 采用 Rust 编写且具备高效缓存，其速度通常是 <code>pip</code> 的数十倍。
+</li>
+<li><b>引擎更新</b>：在  <code>Settings</code> -&gt; <code>Backend</code> 设置中，可以一键触发 <code>Check for Update</code> 异步检查并在线更新 <code>uv</code> 引擎，无需重装程序。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="823"></div>
+<h3 id="32-依赖查询与依赖树">3.2 依赖查询与依赖树</h3>
+<ul>
+<li><b>层级展开</b>：点击包名前的箭头，可无限向下展示该包引入的子依赖（Dependency Tree）。
+</li>
+<li><b>顶层视图</b>：默认仅显示您主动安装的包，隐藏由于级联关系引入的被动安装包，极大减少视觉噪音。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
+<h3 id="33-本地缓存驱动的包搜索">3.3 本地缓存驱动的包搜索</h3>
+<ul>
+<li><b>秒开响应</b>：OmniPack 内置了超过 50 万笔热门 PyPI 包的数据缓存。在主界面或“添加包”对话框搜索时，其响应速度堪比本地文件搜索。
+</li>
+<li><b>搜索增强</b>：搜索时支持对结果按版本范围进行筛选。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<hr>
+<h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) 项目管理</h2>
+<h3 id="41-项目深度溯源">4.1 项目深度溯源</h3>
+<p>当您向 OmniPack 提供一个含有 Node.js 模块的任意深层文件夹时，它能自动确定真正的项目根目录，并精准展示出本地安装的模块版本。</p>
+<h3 id="42-在线搜索npm包">4.2 在线搜索npm包</h3>
+<ul>
+<li><b>在线搜索</b>：从npm源搜索包，支持模糊匹配。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="300"></div>
+<h3 id="43-dist-tags-精准分发">4.3 Dist-Tags 精准分发</h3>
+<p>OmniPack 将 NPM 的 <code>Dist-Tags</code> 机制进行了 GUI 封装。</p>
+<ul>
+<li><b>标签切换</b>：在添加或更新包时，界面会整齐排列出所有远程 Release 通道（如 <code>latest</code>, <code>beta</code>, <code>next</code>, <code>lts</code>）。
+</li>
+<li><b>一键更新</b>：点击对应标签卡片，系统会自动构造出如 <code>npm install lodash@beta</code> 这样的精准命令并执行。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<hr>
+<h2 id="5-设置中心-settings-center">5. 设置中心 (Settings Center)</h2>
+<p>设置对话框是 OmniPack 的后台核心，按功能划分为五个清晰的选项卡：</p>
+<ol>
+<li><b>Python/NPM Environments</b>：环境列表维护区，支持增删改查及排序。
+</li>
+<li><b>Sources (注册表/镜像源)</b>：
+<ul>
+<li><b>Follow System</b>：尊重系统原有的配置。
+</li>
+<li><b>Official</b>：使用官方源。
+</li>
+<li><b>Custom Preset</b>：内置清华、阿里、华为等顶级镜像，一键切换。
+</li>
+<li><b>独立性</b>：此处的设置仅针对 OmniPack 调用的命令生效，不会修改您的系统全局配置。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="580"></div>
+<ol>
+<li><b>Backend (核心引擎与缓存)</b>：
+<ul>
+<li><b>uv 路径管理</b>：手动指定或自动发现 <code>uv</code> 解释器。
+</li>
+<li><b>PyPI Cache 同步</b>：提供可视化的同步日志流。支持在程序运行期间静默同步几千万条记录，并可以随时随时暂停或取消。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="580"></div>
+<ol>
+<li><b>Proxy (代理配置)</b>：
+<ul>
+<li><b>协议分离</b>：支持独立的 HTTP 和 HTTPS 代理设置。后台命令多数情况会使用https，建议两个都填。
+</li>
+<li><b>颗粒度控制</b>：可单独勾选哪些域名（PyPI / NPM / GitHub）需要通过代理服务器。
+</li>
+<li><b>连通性测试</b>：一键执行 Direct vs Proxy 响应延迟对比。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="580"></div>
+<hr>
+<h2 id="6-高级配置与环境变量参考">6. 高级配置与环境变量参考</h2>
+<p>通过设置系统环境变量，您可以进一步解锁 OmniPack 的潜在功能：</p>
+<table>
+<tr>
+<th>变量名</th>
+<th>描述</th>
+<th>默认行为</th>
+<th>备注</th>
+</tr>
+<tr>
+<td><code>OMNIPACK_LIVE_RELOAD</code></td>
+<td>启用样式的热重载</td>
+<td>关</td>
+<td>源码运行下修改 .qss 文件可即时生效</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
+<td>强制使用便携模式</td>
+<td>自动</td>
+<td>优先级高于系统路径自动判定</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_TRACE_SELECTION</code></td>
+<td>调试日志导出</td>
+<td>关</td>
+<td>将主界面所有的点击路径记录为 jsonl 文件</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
+<td>提权申请策略</td>
+<td>自动</td>
+<td>设置为 0 可停止自动发起的 UAC 申请</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
+<td>屏蔽 Qt 重复警告</td>
+<td>关</td>
+<td>帮助保持终端/日志简洁</td>
+</tr>
+</table>
+<hr>
+<h2 id="7-常见问题解答-faq">7. 常见问题解答 (FAQ)</h2>
+<p><b>Q: 某些npm应用已经发布新版本，但程序未能检测到</b><br>A: 很多npm的镜像源对nightly、preview等非正式版本的更新不及时，换用官方源即可。</p>
+<p><b>Q: 为什么“状态栏”中的统计数量和卡片中看到的不一致？</b><br>A: 状态栏统计的是背景线程中所有已识别环境的总和，而卡片中显示的可能是经过“搜索框”过滤后的结果。</p>
+<p><b>Q: 如何让我的 Python 环境显示在 Settings 列表最前面？</b><br>A: 在 Settings 对话框中，点击环境项左侧的拖拽手柄，将其移动到第一行并保存即可。</p>
+<p><b>Q: “控制台”显示更新失败，但包版本却变了？</b><br>A: 这可能是由于底层工具（如 npm）在某些网络环境下报告了非零返回码。您可以点击对应卡片的“刷新”按钮查看环境的真实最新状态。</p>
+<p><b>Q: (Admin) 状态是什么触发的？</b><br>A: 当 OmniPack 检测到您正在安装包的环境位于系统保护目录（如 <code>C:\Program Files</code>）时，它会自动请求管理员提权。此时标题栏和状态栏均会显示 <code>(Admin)</code> 标记。</p>
+<hr>
+<p><i>OmniPack - 您手边最专业的全平台包管理专家。</i></p>
+</section>
+    <!-- END OF CHINESE CONTENT -->
+
+    <!-- START OF ENGLISH CONTENT -->
+<section class="lang-en">
+<h1 id="omnipack-v4-用户指南-user-guide">OmniPack V4 User Guide</h1>
+<div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
+<p>Welcome to <b>OmniPack</b>! We hope this application becomes your go-to tool for managing Python virtual environments and Node.js project dependencies.</p>
+<hr>
+<h2 id="目录">Table of Contents</h2>
+<ol>
+<li><a href="#1-interface-layout-overview">Interface Layout Overview</a>
+</li>
+<li><a href="#2-environment-management">Environment Management (Environments)</a>
+</li>
+<li><a href="#3-python-uvpip-advanced-management">Python (uv/pip) Advanced Management</a>
+</li>
+<li><a href="#4-nodejs-npm-project-management">Node.js (npm) Project Management</a>
+</li>
+<li><a href="#5-settings-center">Settings Center</a>
+</li>
+<li><a href="#6-advanced-configuration--environment-variables-reference">Advanced Configuration &amp; Environment Variables Reference</a>
+</li>
+<li><a href="#7-frequently-asked-questions-faq">Frequently Asked Questions (FAQ)</a>
+</li>
+</ol>
+<hr>
+<h2 id="1-界面布局全解析">1. Interface Layout Overview</h2>
+<p>The OmniPack main interface is meticulously designed and divided into four core interactive areas.</p>
+<h3 id="11-顶层工具栏-global-toolbar">1.1 Global Toolbar</h3>
+<p>This is the command center for performing global searches, filtering, and batch operations.</p>
+<ul>
+<li><b>Selection Control (All/None)</b>: Quickly select or deselect all visible packages in the current main interface.
+</li>
+<li><b>Search Box</b>: Real-time filtering of package names displayed in each environment card, supporting fuzzy matching.
+</li>
+<li><b>Filter Outdated</b>: Hide all up-to-date packages with one click, allowing you to focus on projects that need upgrading.
+</li>
+<li><b>Refresh All</b>: Rescan local package lists for all configured environments and query the latest versions online.
+</li>
+<li><b>Batch Update</b>: Initiate parallel upgrade commands for all currently [checked] packages that have newer versions available online.
+</li>
+<li><b>Batch Remove</b>: Initiate uninstallation commands for all currently checked packages (a confirmation dialog will appear).
+</li>
+<li><b>Settings</b>: Jump directly to environment configuration and system settings pages.
+</li>
+</ul>
+<h3 id="12-环境主体卡片-env-canvas">1.2 Environment Canvas (Env Canvas)</h3>
+<p>The left area displays each Python virtual environment or Node.js project as a card.</p>
+<ul>
+<li><b>Environment Info</b>: The top of each card shows the environment alias, physical path, and Python/Node version.
+</li>
+<li><b>Action Buttons</b>: Cards integrate shortcuts such as &quot;Add Package,&quot; &quot;Local Refresh,&quot; and &quot;Local Update All.&quot;
+</li>
+<li><b>Package List</b>: Lists all packages installed in the current environment along with their versions.
+</li>
+</ul>
+<h3 id="13-实时控制台-live-console">1.3 Live Console</h3>
+<p>The right area provides real-time streaming output of execution details from underlying package managers.</p>
+<ul>
+<li><b>Color-coded Output</b>: System messages (Blue), Standard output (White), Standard error (Orange), Failure reports (Red).
+</li>
+<li><b>Right-click context menu</b>: Supports &quot;Clear Console,&quot; &quot;Copy Selection,&quot; and &quot;Open Log Directory.&quot;
+</li>
+</ul>
+<h3 id="14-状态栏反馈-status-bar">1.4 Status Bar Feedback</h3>
+<p>Located at the very bottom of the window, providing real-time statistics and global feature entries.</p>
+<ul>
+<li><b>Left Statistics Area</b>: <code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>. Reflects the total number of scanned environments, total packages, and pending updates in real-time.
+</li>
+<li><b>Middle Status Area</b>: Displays the current operation being executed (e.g., &quot;Ready&quot;, &quot;Scanning...&quot;, &quot;Installing...&quot;).
+</li>
+<li><b>Right Switching Area</b>:
+<ul>
+<li><b>Python / Node.js Buttons</b>: Used for quickly switching between the two package management panels.
+</li>
+<li><b>💡 Guide Button</b>: Click to pop up this User Guide window.
+</li>
+</ul>
+</li>
+</ul>
+<blockquote><b>Note</b>: If the program has obtained administrator privileges, the <b>(Admin)</b> indicator will be displayed in the <b>top title bar</b> of the window.</blockquote>
+<div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="823"></div>
+<hr>
+<h2 id="2-环境管理">2. Environment Management</h2>
+<h3 id="21-统一导入流程-unified-intake">2.1 Unified Intake Process</h3>
+<p>In <b>Settings -&gt; Python/NPM Environments</b>, you can manage the lifecycle of your projects.</p>
+<ul>
+<li><b>Python Environments (Pip/uv)</b>:
+<ul>
+<li><b>Detect System</b>: Scans PATH, registry, and desktop/user directories for Python interpreters.
+</li>
+<li><b>Add Manually</b>: Supports pointing to a specific <code>python.exe</code> interpreter or directly dragging in a project root directory containing <code>.venv</code> or <code>venv</code>.
+</li>
+</ul>
+</li>
+<li><b>Node.js Environments (NPM)</b>:
+<ul>
+<li><b>Add Manually</b>: Supports pointing to a <code>package.json</code> file or any of its parent directories. OmniPack will automatically trace back to the project root and parse the project name.
+</li>
+</ul>
+</li>
+<li><b>Batch Paste</b>: You can copy multi-line text containing multiple paths using tools like Everything and paste it into the input box. The built-in <code>env_detector</code> engine will automatically perform deduplication, validity verification, and intelligent naming.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
+<h3 id="22-环境操作说明">2.2 Environment Operations</h3>
+<ul>
+<li><b>Drag to Reorder</b>: Long-press the icon on a list item to drag it up or down, adjusting the preferred order of environments on the main interface.
+</li>
+<li><b>Edit Environment</b>: Double-click any item to modify the display alias or correct path changes caused by moving folders.
+</li>
+</ul>
+<hr>
+<h2 id="3-python-uvpip-深度管理">3. Python (uv/pip) Advanced Management</h2>
+<h3 id="31-极速-uv-引擎">3.1 High-Speed uv Engine</h3>
+<p>OmniPack natively integrates the top-tier <a href="https://github.com/astral-sh/uv">uv</a> engine.</p>
+<ul>
+<li><b>Performance Advantage</b>: For complex dependency resolution and large-scale package installations, uv is typically dozens of times faster than <code>pip</code> because it is written in Rust and features efficient caching.
+</li>
+<li><b>Engine Updates</b>: In <code>Settings</code> -&gt; <code>Backend</code>, you can trigger a <code>Check for Update</code> with one click to asynchronously check and update the <code>uv</code> engine online without reinstalling the application.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="876"></div>
+<h3 id="32-依赖查询与依赖树">3.2 Dependency Query and Tree</h3>
+<ul>
+<li><b>Hierarchical Expansion</b>: Click the arrow before a package name to infinitely expand and display the sub-dependencies introduced by that package (Dependency Tree).
+</li>
+<li><b>Top-level View</b>: By default, only packages you explicitly installed are shown, while passively installed packages from cascading dependencies are hidden, significantly reducing visual noise.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
+<h3 id="33-本地缓存驱动的包搜索">3.3 Local Cache-Driven Package Search</h3>
+<ul>
+<li><b>Instant Response</b>: OmniPack features built-in data caching for over 500,000 popular PyPI packages. When searching on the main interface or in the &quot;Add Package&quot; dialog, response speeds are comparable to local file searches.
+</li>
+<li><b>Enhanced Search</b>: Search results support filtering by version range.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<hr>
+<h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) Project Management</h2>
+<h3 id="41-项目深度溯源">4.1 Deep Project Tracing</h3>
+<p>When you provide OmniPack with any deep folder containing Node.js modules, it automatically determines the actual project root and accurately displays the locally installed module versions.</p>
+<h3 id="42-在线搜索npm包">4.2 Online Search for NPM Packages</h3>
+<ul>
+<li><b>Online Search</b>: Search for packages from the NPM registry with support for fuzzy matching.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="300"></div>
+<h3 id="43-dist-tags-精准分发">4.3 Precise Distribution via Dist-Tags</h3>
+<p>OmniPack provides a GUI wrapper for NPM&#x27;s <code>Dist-Tags</code> mechanism.</p>
+<ul>
+<li><b>Tag Switching</b>: When adding or updating packages, the interface neatly displays all remote release channels (e.g., <code>latest</code>, <code>beta</code>, <code>next</code>, <code>lts</code>).
+</li>
+<li><b>One-click Update</b>: Click a tag card and the system automatically constructs and executes precise commands like <code>npm install lodash@beta</code>.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<hr>
+<h2 id="5-设置中心-settings-center">5. Settings Center</h2>
+<p>The Settings dialog is the backend core of OmniPack, divided into five clear tabs by function:</p>
+<ol>
+<li><b>Python/NPM Environments</b>: Environment list maintenance area, supporting CRUD operations and reordering.
+</li>
+<li><b>Sources (Registries/Mirrors)</b>:
+<ul>
+<li><b>Follow System</b>: Respect existing system configurations.
+</li>
+<li><b>Official</b>: Use official registries.
+</li>
+<li><b>Custom Preset</b>: Built-in top-tier mirrors like Tsinghua, Alibaba, and Huawei for one-click switching.
+</li>
+<li><b>Independence</b>: Settings here only apply to commands invoked by OmniPack and will not modify your global system configuration.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="580"></div>
+<ol>
+<li><b>Backend (Core Engine &amp; Cache)</b>:
+<ul>
+<li><b>uv Path Management</b>: Manually specify or automatically discover the <code>uv</code> interpreter.
+</li>
+<li><b>PyPI Cache Sync</b>: Provides a visual sync log stream. Supports silent synchronization of tens of millions of records while the program is running, with the ability to pause or cancel at any time.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="580"></div>
+<ol>
+<li><b>Proxy (Proxy Configuration)</b>:
+<ul>
+<li><b>Protocol Separation</b>: Supports independent HTTP and HTTPS proxy settings. Since backend commands mostly use HTTPS, it is recommended to fill both.
+</li>
+<li><b>Granular Control</b>: Individually select which domains (PyPI / NPM / GitHub) should go through the proxy server.
+</li>
+<li><b>Connectivity Test</b>: One-click execution of Direct vs. Proxy response latency comparison.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="580"></div>
+<hr>
+<h2 id="6-高级配置与环境变量参考">6. Advanced Configuration &amp; Environment Variables Reference</h2>
+<p>By setting system environment variables, you can unlock further potential features of OmniPack:</p>
+<table>
+<tr>
+<th>Variable Name</th>
+<th>Description</th>
+<th>Default Behavior</th>
+<th>Remarks</th>
+</tr>
+<tr>
+<td><code>OMNIPACK_LIVE_RELOAD</code></td>
+<td>Enable style hot-reloading</td>
+<td>Off</td>
+<td>Modifications to .qss files take effect immediately when running from source</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
+<td>Force portable mode</td>
+<td>Auto</td>
+<td>Takes precedence over automatic system path determination</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_TRACE_SELECTION</code></td>
+<td>Export debug logs</td>
+<td>Off</td>
+<td>Records all clickable paths from the main interface into a jsonl file</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
+<td>Privilege elevation request strategy</td>
+<td>Auto</td>
+<td>Set to 0 to stop automatically initiated UAC requests</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
+<td>Squelch repetitive Qt warnings</td>
+<td>Off</td>
+<td>Helps keep the terminal/logs clean</td>
+</tr>
+</table>
+<hr>
+<h2 id="7-常见问题解答-faq">7. Frequently Asked Questions (FAQ)</h2>
+<p><b>Q: Some NPM packages have new versions released, but the program fails to detect them.</b><br>A: Many NPM mirrors are not updated in time for non-official versions like nightly or preview; switching to the official registry should resolve this.</p>
+<p><b>Q: Why is the count in the &quot;Status Bar&quot; different from what I see in the cards?</b><br>A: The status bar counts the total of all identified environments in the background thread, whereas the cards might show results filtered by the &quot;Search Box.&quot;</p>
+<p><b>Q: How can I make my Python environment appear at the top of the Settings list?</b><br>A: In the Settings dialog, click and hold the drag handle on the left side of the environment item, move it to the first row, and save.</p>
+<p><b>Q: The &quot;Console&quot; shows an update failure, but the package version has changed?</b><br>A: This might happen if the underlying tool (like NPM) reports a non-zero exit code in certain network environments. You can click the &quot;Refresh&quot; button on the corresponding card to see the actual updated status of the environment.</p>
+<p><b>Q: What triggers the (Admin) status?</b><br>A: When OmniPack detects that the environment where you are installing packages is located in a system-protected directory (e.g., <code>C:\Program Files</code>), it automatically requests administrator elevation. At this point, both the title bar and status bar will display the <code>(Admin)</code> marker.</p>
+<hr>
+<p><i>OmniPack - Your most professional cross-platform package management expert at your fingertips.</i></p>
+</section>
+    <!-- END OF ENGLISH CONTENT -->
+
+    <script>
+        function switchLang(lang) {
+            document.body.setAttribute('data-lang', lang);
+
+            const buttons = document.querySelectorAll('.lang-btn');
+            buttons.forEach(btn => {
+                const isZh = btn.innerText.includes('中文');
+                if ((lang === 'zh' && isZh) || (lang === 'en' && !isZh)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            localStorage.setItem('omnipack-lang', lang);
+        }
+
+        const savedLang = localStorage.getItem('omnipack-lang') || 'en';
+        switchLang(savedLang);
+    </script>
+</body>
+</html>

@@ -7,19 +7,21 @@ import ctypes
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
     QStackedWidget, QStatusBar, QLabel, QPushButton, QHBoxLayout,
-    QApplication
+    QApplication, QFrame
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QIcon, QDesktopServices
 
 from core.config import ConfigManager
-from core.utils import get_app_root
+from core.pypi_cache import start_background_refresh_if_needed
+from core.utils import get_app_root, is_admin
 
 
 class OmniPackWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("OmniPack - Universal Package Manager")
+        admin_suffix = " (Admin)" if is_admin() else ""
+        self.setWindowTitle(f"OmniPack - Developer Package Manager{admin_suffix}")
         self.resize(1100, 700)
 
         # Config
@@ -31,6 +33,9 @@ class OmniPackWindow(QMainWindow):
         # Central Stack
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
+
+        # Tab button registry for state persistence
+        self.tab_buttons = []
 
         # Status Bar + Tab Switcher
         self.status_bar = QStatusBar()
@@ -46,10 +51,30 @@ class OmniPackWindow(QMainWindow):
         self.switcher_widget = QWidget()
         self.switcher_layout = QHBoxLayout(self.switcher_widget)
         self.switcher_layout.setContentsMargins(0, 0, 10, 0)
-        self.switcher_layout.setSpacing(2)
+        self.switcher_layout.setSpacing(0)
 
-        self._add_app_tab("pip (Python)", 0)
-        self._add_app_tab("npm (Node)", 1)
+        self._add_app_tab("Python", 0)
+        self.switcher_layout.addSpacing(2)
+        self._add_app_tab("Node.js", 1)
+        
+        # Double Line Separator
+        self.switcher_layout.addSpacing(10)
+        for _ in range(2):
+            line = QFrame()
+            line.setFrameShape(QFrame.VLine)
+            line.setFrameShadow(QFrame.Plain)
+            line.setStyleSheet("background-color: #666;") # Muted color
+            line.setFixedWidth(1)
+            line.setFixedHeight(21) # Shorter for elegance
+            self.switcher_layout.addWidget(line)
+            self.switcher_layout.addSpacing(5) # Gap between the two lines
+        self.switcher_layout.addSpacing(7) # Combined with 3 to keep roughly 10 offset
+
+        self.help_btn = QPushButton("💡 Guide")
+        self.help_btn.setObjectName("HelpButton")
+        self.help_btn.setFixedHeight(22)
+        self.help_btn.clicked.connect(self._show_help)
+        self.switcher_layout.addWidget(self.help_btn)
 
         self.status_bar.addPermanentWidget(self.switcher_widget)
 
@@ -66,6 +91,7 @@ class OmniPackWindow(QMainWindow):
 
         # Restore UI State (this sets the active tab and triggers scan)
         self._restore_ui_state()
+        self._schedule_pypi_cache_refresh()
 
     def _set_app_icon(self):
         icon_path = get_app_root() / "resources" / "OmniPack.ico"
@@ -95,8 +121,11 @@ class OmniPackWindow(QMainWindow):
         btn.setObjectName("AppTabButton")
         btn.setCheckable(True)
         btn.setAutoExclusive(True)
+        btn.setFixedHeight(22) # Explicit common height
+        btn.setFixedWidth(80) # Restoring fixed width for visual consistency
         btn.clicked.connect(lambda: self._switch_tab(index, btn))
         self.switcher_layout.addWidget(btn)
+        self.tab_buttons.append(btn)
 
     def _switch_tab(self, index: int, btn: QPushButton):
         self.stack.setCurrentIndex(index)
@@ -144,15 +173,16 @@ class OmniPackWindow(QMainWindow):
             self.npm_panel.splitter.restoreState(state_bytes)
 
         saved_tab = self.config_mgr.config.current_tab
-        if 0 <= saved_tab < self.switcher_layout.count():
-            btn = self.switcher_layout.itemAt(saved_tab).widget()
+        if 0 <= saved_tab < len(self.tab_buttons):
+            btn = self.tab_buttons[saved_tab]
             btn.setChecked(True)
             self._switch_tab(saved_tab, btn)
         else:
             # Fallback
-            btn = self.switcher_layout.itemAt(0).widget()
-            btn.setChecked(True)
-            self._switch_tab(0, btn)
+            if self.tab_buttons:
+                btn = self.tab_buttons[0]
+                btn.setChecked(True)
+                self._switch_tab(0, btn)
 
     def _save_ui_state(self):
         self.config_mgr.config.window_geometry = self.saveGeometry().toHex().data().decode()
@@ -162,6 +192,23 @@ class OmniPackWindow(QMainWindow):
         self.config_mgr.config.pip_splitter_state = active_panel.splitter.saveState().toHex().data().decode()
         self.config_mgr.config.current_tab = self.stack.currentIndex()
         self.config_mgr.save_config()
+
+    def _schedule_pypi_cache_refresh(self):
+        cache_settings = getattr(self.config_mgr.config, "pypi_cache_settings", {}) or {}
+        if not bool(cache_settings.get("auto_refresh_on_start", True)):
+            return
+        stale_after_hours = int(cache_settings.get("stale_after_hours", 24) or 24)
+        proxy_settings = getattr(self.config_mgr.config, "proxy_settings", {}) or {}
+        pip_settings = getattr(self.config_mgr.config, "pip_settings", {}) or {}
+        QTimer.singleShot(
+            1500,
+            lambda: start_background_refresh_if_needed(
+                proxy_settings=proxy_settings,
+                stale_after_hours=stale_after_hours,
+                timeout=None,
+                pip_settings=pip_settings,
+            ),
+        )
 
     def _ensure_visible_on_screen(self):
         """Ensure window is visible and within screen bounds."""
@@ -196,9 +243,23 @@ class OmniPackWindow(QMainWindow):
         theme_str = load_theme("dark")
         self.setStyleSheet(theme_str)
         
-        # Setup Hot Reloading
-        from ui.styles.live_reload import StyleReloader
-        qss_path = get_app_root() / "ui" / "styles" / "dark.qss"
-        if qss_path.exists():
-            self._style_watcher = StyleReloader(str(qss_path), parent=self)
-            self._style_watcher.style_changed.connect(self.setStyleSheet)
+        # Setup Hot Reloading (Dev only)
+        import sys
+        is_frozen = getattr(sys, "frozen", False)
+        env_reload = os.environ.get("OMNIPACK_LIVE_RELOAD", "1") == "1"
+
+        if not is_frozen and env_reload:
+            from ui.styles.live_reload import StyleReloader
+            qss_path = get_app_root() / "ui" / "styles" / "dark.qss"
+            if qss_path.exists():
+                self._style_watcher = StyleReloader(str(qss_path), parent=self)
+                self._style_watcher.style_changed.connect(self.setStyleSheet)
+
+    # ── Help System ──────────────────────────────────────────────────────
+
+    def _show_help(self):
+        # Open the local HTML guide directly in the system's default browser.
+        # This keeps the binary light by avoiding heavy built-in browser engines.
+        guide_path = get_app_root() / "./docs/UserGuide.html"
+        if guide_path.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(guide_path.absolute())))

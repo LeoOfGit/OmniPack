@@ -39,7 +39,7 @@ QStatusBar QLabel#CountLabel {
 
 QStatusBar QPushButton {
     background-color: transparent;
-    color: #bbbbff;
+    color: #666666;
     border: none;
     padding: 2px 8px;
     margin: 0px;
@@ -47,17 +47,36 @@ QStatusBar QPushButton {
 }
 
 QStatusBar QPushButton#AppTabButton {
-    min-width: 96px;
+    /* Auto width based on content */
 }
 
 QStatusBar QPushButton:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 255, 255, 0.2);
 }
 
 QStatusBar QPushButton:checked {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 255, 255, 0.4);
     font-weight: bold;
     color: #ffffff;
+}
+
+/* Specific: Guide Button */
+QStatusBar QPushButton#HelpButton {
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #E0E0E0;
+    border: none;
+    border-radius: 3px;
+    padding: 0px 8px;
+}
+
+QStatusBar QPushButton#HelpButton:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+QStatusBar QPushButton#HelpButton:pressed {
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 /* ==========================================================
@@ -158,6 +177,17 @@ QPushButton#ActionBtnInstall:hover {
     background-color: #2471a3;
 }
 
+/* 3b. Theme: Runtime Update (Amber) */
+QPushButton#EnvRuntimeUpdateBtn {
+    background-color: #7a5a00;
+    color: #ffffff;
+    border-color: #9b7708;
+}
+
+QPushButton#EnvRuntimeUpdateBtn:hover {
+    background-color: #8f6a02;
+}
+
 /* 4. Theme: Outline / Ghost */
 QPushButton#ActionBtnOutline {
     background-color: transparent;
@@ -192,6 +222,7 @@ QPushButton#ActionBtnInstall,
 QPushButton#PkgUpdateBtn,
 QPushButton#EnvRefreshBtn,
 QPushButton#EnvUpdateAllBtn,
+QPushButton#EnvRuntimeUpdateBtn,
 QWidget#ActionBtnSpacer {
     min-width: 30px;
     max-width: 30px;
@@ -205,6 +236,11 @@ QPushButton#ActionBtnUpdate,
 QPushButton#PkgUpdateBtn,
 QPushButton#ActionBtnInstall {
     font-size: 20px;
+    font-weight: bold;
+}
+
+QPushButton#EnvRuntimeUpdateBtn {
+    font-size: 11px;
     font-weight: bold;
 }
 
@@ -281,6 +317,16 @@ QCheckBox::indicator:checked {
 
 QCheckBox::indicator:checked:hover {
     background-color: #0098ff;
+    border-color: #fff;
+}
+
+QCheckBox::indicator:indeterminate {
+    background-color: #ff9800;
+    border: 1px solid #fff;
+}
+
+QCheckBox::indicator:indeterminate:hover {
+    background-color: #ffad33;
     border-color: #fff;
 }
 
@@ -604,6 +650,96 @@ QPushButton#ChannelTag[state="both"] {
 
 QPushButton#ChannelTag[state="both"]:hover {
     background-color: #4cc9f0;
+}
+
+/* ==========================================================
+   SETTINGS SOURCE MODE CARDS
+   ========================================================== */
+QPushButton#SourceModeCard {
+    background-color: #1f1f23;
+    border: 1px solid #494a52;
+    color: #e8e8e8;
+    border-radius: 6px;
+    padding: 6px 8px;
+    min-height: 32px;
+    max-width: 200px;
+    text-align: left;
+    font-size: 11px;
+}
+
+QPushButton#SourceModeCard:hover {
+    border-color: #6f7080;
+    background-color: #25262b;
+}
+
+QPushButton#SourceModeCard:checked {
+    border: 2px solid #4cc9f0;
+    background-color: #193848;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QPushButton#SourcePresetBtn {
+    background-color: #2a2b31;
+    border: 1px solid #4f5060;
+    color: #f0f0f0;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    min-height: 24px;
+}
+
+QPushButton#SourcePresetBtn:hover {
+    background-color: #343642;
+    border-color: #73758a;
+}
+
+QLineEdit[readonly="true"] {
+    color: #aab2be;
+    background-color: #1a1d22;
+    border: 1px solid #3f4652;
+}
+
+/* ==========================================================
+   NPM TAG CARDS (Configure Package)
+   ========================================================== */
+QPushButton#NpmTagCard {
+    background-color: #1f1f23;
+    border: 1px solid #4b4b55;
+    color: #e7e7e7;
+    border-radius: 6px;
+    padding: 8px;
+    text-align: left;
+    font-family: Consolas, monospace;
+    font-size: 10pt;
+}
+
+QPushButton#NpmTagCard:hover {
+    border-color: #7a7b88;
+    background-color: #27282d;
+}
+
+/* Current config */
+QPushButton#NpmTagCard[state="current"] {
+    border: 2px solid #4cc9f0;
+    background-color: #1f1f23;
+    color: #e7f7ff;
+}
+
+/* Target config */
+QPushButton#NpmTagCard[state="target"] {
+    border: 2px solid #ffb74d;
+    background-color: #3b311f;
+    color: #fff0d4;
+    font-weight: bold;
+}
+
+/* Current + Target */
+QPushButton#NpmTagCard[state="both"] {
+    border: 2px solid #4cc9f0;
+    background-color: #184258;
+    color: #ffffff;
+    font-weight: bold;
 }
 
 /* ==========================================================

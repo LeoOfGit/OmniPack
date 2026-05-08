@@ -20,6 +20,7 @@ class Package:
     description: str = ""
     has_update: bool = False
     is_selected: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Dependency tree fields
     requires: List[DepRequirement] = field(default_factory=list)    # Direct dependencies
@@ -50,6 +51,13 @@ class Environment:
     name: str
     type: str  # system, venv, user
     python_version: str = ""
+    runtime_name: str = ""
+    runtime_version: str = ""
+    runtime_cycle: str = ""
+    runtime_latest_version: str = ""
+    runtime_has_update: bool = False
+    runtime_update_error: str = ""
+    tags: List[str] = field(default_factory=list)
     packages: List[Package] = None  # Will be initialized in __post_init__ or similar
     is_scanned: bool = False
     # Dependency graph: norm_name -> Package (for quick lookup)

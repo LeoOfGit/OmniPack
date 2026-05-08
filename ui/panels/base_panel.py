@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QScrollArea, QFrame, QHBoxLayout, QLineEdit, QPushButton
+import os
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QScrollArea, QFrame, QHBoxLayout, QLineEdit, QPushButton, QCheckBox
 from PySide6.QtCore import Qt, Signal
 
 class BasePanel(QWidget):
@@ -86,25 +87,23 @@ class BasePanel(QWidget):
     def _setup_common_toolbar(
         self,
         search_callback,
+        outdated_callback,
         refresh_callback,
         batch_update_callback,
         batch_remove_callback,
+        manage_envs_callback,
         extra_widgets_before_search=None,
         extra_widgets_end=None
     ):
         """Builds the uniform toolbar layout with customizable injections."""
-        # Batch Selection
-        select_all_btn = QPushButton("☑")
-        select_all_btn.setObjectName("ActionBtnOutline")
-        select_all_btn.clicked.connect(self._select_all)
-        select_all_btn.setToolTip("Select all")
-        self.tb_layout.addWidget(select_all_btn)
-
-        clear_btn = QPushButton("☐")
-        clear_btn.setObjectName("ActionBtnOutline")
-        clear_btn.clicked.connect(self._deselect_all)
-        clear_btn.setToolTip("Clear selection")
-        self.tb_layout.addWidget(clear_btn)
+        # Batch Selection (Tri-state)
+        self.selection_checkbox = QCheckBox("Select")
+        self.selection_checkbox.setTristate(True)
+        self.selection_checkbox.setCheckState(Qt.Unchecked)
+        self.selection_checkbox.setObjectName("ToolbarCheckbox")
+        self.selection_checkbox.setToolTip("Select/Clear all packages")
+        self.selection_checkbox.stateChanged.connect(self._on_selection_checkbox_changed)
+        self.tb_layout.addWidget(self.selection_checkbox)
 
         if extra_widgets_before_search:
             for w in extra_widgets_before_search:
@@ -115,6 +114,24 @@ class BasePanel(QWidget):
         self.search_input.textChanged.connect(search_callback)
         self.search_input.setToolTip("Search & Filter")
         self.tb_layout.addWidget(self.search_input)
+
+        # Outdated Only
+        self.outdated_checkbox = QCheckBox("Outdated")
+        self.outdated_checkbox.setTristate(True)
+        self.outdated_checkbox.setCheckState(Qt.Unchecked)
+        self.outdated_checkbox.setObjectName("ToolbarCheckbox")
+        self.outdated_checkbox.setToolTip("Only show packages that have updates available")
+        self.outdated_checkbox.stateChanged.connect(outdated_callback)
+        self.tb_layout.addWidget(self.outdated_checkbox)
+
+        # Space before right-aligned buttons
+        self.tb_layout.addStretch()
+
+        # Settings
+        self.manage_envs_btn = QPushButton("⚙ Settings")
+        self.manage_envs_btn.setObjectName("ActionBtnRefresh")
+        self.manage_envs_btn.clicked.connect(manage_envs_callback)
+        self.tb_layout.addWidget(self.manage_envs_btn)
 
         # Refresh
         self.refresh_btn = QPushButton("↻ Refresh")
@@ -141,8 +158,6 @@ class BasePanel(QWidget):
             for w in extra_widgets_end:
                 self.tb_layout.addWidget(w)
 
-        self.tb_layout.addStretch()
-
     def _select_all(self):
         """Implemented by subclasses to handle 'Select All' action."""
         pass
@@ -150,3 +165,65 @@ class BasePanel(QWidget):
     def _deselect_all(self):
         """Implemented by subclasses to handle 'Clear Selection' action."""
         pass
+
+    def _on_selection_checkbox_changed(self, state):
+        checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
+        partial_val = Qt.PartiallyChecked.value if hasattr(Qt.PartiallyChecked, "value") else 1
+
+        if state == partial_val:
+            # Treat partial as checked when user clicks; partial is display-only.
+            self.selection_checkbox.blockSignals(True)
+            self.selection_checkbox.setCheckState(Qt.Checked)
+            self.selection_checkbox.blockSignals(False)
+            state = checked_val
+
+        if state == checked_val or state == Qt.Checked:
+            self._select_all()
+        else:
+            self._deselect_all()
+
+    def _set_selection_checkbox_state(self, state):
+        if not hasattr(self, "selection_checkbox"):
+            return
+        self.selection_checkbox.blockSignals(True)
+        self.selection_checkbox.setCheckState(state)
+        self.selection_checkbox.blockSignals(False)
+
+    def _clear_env_card_widgets(self):
+        """Clear all env cards while keeping the trailing stretch item."""
+        while self.scroll_layout.count() > 1:
+            item = self.scroll_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _apply_current_filters_to_card(self, card):
+        """Apply global toolbar filters to a card."""
+        if hasattr(self, "outdated_checkbox"):
+            state = self.outdated_checkbox.checkState()
+            outdated_on = state != Qt.Unchecked
+            card.set_outdated_only(outdated_on, selection_mode="keep")
+        if hasattr(self, "search_input"):
+            card.filter_packages(self.search_input.text())
+
+    @staticmethod
+    def _path_key(path: str) -> str:
+        return os.path.normcase(os.path.normpath(str(path)))
+
+    def _find_env_by_path(self, environments, env_path: str):
+        target_key = self._path_key(env_path)
+        return next((e for e in environments if self._path_key(e.path) == target_key), None)
+
+    def _emit_status_counts(self, environments):
+        total_envs = len(environments)
+        scanned_envs = sum(1 for e in environments if getattr(e, "is_scanned", False))
+
+        pkgs = 0
+        updates = 0
+        for env in environments:
+            if getattr(env, "is_scanned", False):
+                pkgs += len(getattr(env, "packages", []))
+                updates += sum(1 for p in getattr(env, "packages", []) if getattr(p, "has_update", False))
+
+        status = f"Scanned {scanned_envs}/{total_envs} Envs"
+        counts = f"Packages: {pkgs} | Updates: {updates}"
+        self.status_changed.emit(status, counts)

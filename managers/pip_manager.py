@@ -1,17 +1,82 @@
 import os
 import subprocess
-import threading
 import json
-import shutil
-from PySide6.QtCore import QObject, Signal, QThread, Slot
-import re
+from PySide6.QtCore import Signal
 
 from core.manager_base import PackageManager, Environment, Package
 from core.dep_resolver import resolve_dependencies_subprocess, merge_dependency_info
-from core.utils import find_system_pythons
+from core.network_proxy import merge_env_for_command
+from core.runtime_update import (
+    build_python_runtime_update_command,
+    check_runtime_patch_update,
+    compare_versions,
+    parse_cycle,
+    parse_python_version,
+)
+from core.source_profiles import PYPI_OFFICIAL_INDEX
+from core.utils import find_system_pythons, get_uv_path
+from managers.base_worker import BaseCmdWorker
 
 # Use 'uv' as the backend executor, just like in pip_manager.pyw
 UV_CMD = "uv" 
+
+
+def build_pip_source_args(config_mgr):
+    settings = getattr(config_mgr.config, "pip_settings", {}) or {}
+    mode = str(settings.get("source_mode", "system")).strip().lower()
+    if mode == "official":
+        return ["--index-url", PYPI_OFFICIAL_INDEX]
+    if mode == "custom":
+        url = str(settings.get("index_url", "")).strip()
+        if url:
+            return ["--index-url", url]
+    return []
+
+
+def resolve_python_executable(env: Environment) -> str:
+    env_path = os.path.normpath(str(env.path or "").strip().strip('"').strip("'"))
+    if not env_path:
+        return env_path
+
+    # UNC/mapped-network paths can occasionally fail os.path.isfile() checks even
+    # when they are valid. If the configured path itself looks like a Python
+    # executable, use it directly instead of treating it as an environment root.
+    exe_basename = os.path.basename(env_path).lower()
+    if exe_basename in {"python", "python.exe", "python3", "python3.exe"}:
+        return env_path
+
+    if os.path.isfile(env_path):
+        return env_path
+
+    exe_name = "python.exe" if os.name == "nt" else "python"
+    scripts_dir = "Scripts" if os.name == "nt" else "bin"
+    py_exe = os.path.join(env_path, scripts_dir, exe_name)
+    if not os.path.exists(py_exe):
+        py_exe = os.path.join(env_path, "bin", "python")
+    return os.path.normpath(py_exe)
+
+
+def read_venv_cfg_version(py_exe: str) -> str:
+    """Read version from pyvenv.cfg when available."""
+    try:
+        scripts_dir = os.path.dirname(py_exe)
+        venv_root = os.path.dirname(scripts_dir)
+        cfg_path = os.path.join(venv_root, "pyvenv.cfg")
+        if not os.path.exists(cfg_path):
+            return ""
+        with open(cfg_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key.strip().lower() not in {"version", "version_info"}:
+                    continue
+                parsed = parse_python_version(value.strip())
+                if parsed:
+                    return parsed
+    except Exception:
+        pass
+    return ""
 
 class PipManager(PackageManager):
     """
@@ -26,39 +91,44 @@ class PipManager(PackageManager):
         self._load_envs()
 
     def _load_envs(self):
-        # Normalize keys to handle slash/casing differences on Windows
-        old_envs = {os.path.normpath(e.path).lower(): e for e in self.environments}
+        old_envs = {os.path.normcase(os.path.normpath(e.path)): e for e in self.environments}
         self.environments.clear()
         
-        # 1. From Config
-        for env_dict in self.config_mgr.config.pip_environments:
-            path = os.path.normpath(env_dict.get("path"))
-            name = env_dict.get("name")
-            env_type = env_dict.get("type", "venv")
-            
-            key = path.lower()
-            if key in old_envs:
-                # Retain existing state
-                env = old_envs[key]
-                env.path = path # Update path in case slashes changed
-                env.name = name # Update name in case user changed it
-                env.type = env_type
-                self.environments.append(env)
-            else:
-                self.environments.append(
-                    Environment(path=path, name=name, type=env_type)
-                )
-            
-        # 2. auto-discover system pythons if none in config
-        if not any(e.type == "system" for e in self.environments):
+        # 1. auto-discover system pythons strictly on FIRST RUN
+        if not getattr(self.config_mgr.config, "pip_scanned_once", False):
             sys_pythons = find_system_pythons()
             for py in sys_pythons:
                 py_path = os.path.normpath(py["path"])
-                # Check for duplicates by path
-                if not any(os.path.normpath(e.path).lower() == py_path.lower() for e in self.environments):
-                    self.config_mgr.add_pip_env(path=py_path, name=py["name"], env_type="system")
+                self.config_mgr.add_pip_env(
+                    path=py_path, 
+                    name=py["name"], 
+                    env_type="system", 
+                    tags=py.get("tags", []), 
+                    save=False
+                )
+            self.config_mgr.config.pip_scanned_once = True
+            self.config_mgr.save_config()
+
+        # 2. loads from config
+        if hasattr(self.config_mgr.config, "pip_environments"):
+            for env_dict in self.config_mgr.config.pip_environments:
+                path = os.path.normpath(env_dict.get("path", ""))
+                if not path: continue
+                name = env_dict.get("name")
+                env_type = env_dict.get("type", "venv")
+                tags = env_dict.get("tags", [])
+                
+                key = os.path.normcase(path)
+                if key in old_envs:
+                    env = old_envs[key]
+                    env.path = path 
+                    env.name = name 
+                    env.type = env_type
+                    env.tags = tags
+                    self.environments.append(env)
+                else:
                     self.environments.append(
-                        Environment(path=py_path, name=py["name"], type="system")
+                        Environment(path=path, name=name, type=env_type, tags=tags)
                     )
     
     def reload_envs(self):
@@ -76,7 +146,12 @@ class PipManager(PackageManager):
 
     def scan_environment(self, env: Environment):
         """Async scan trigger"""
-        worker = ScanWorker(env)
+        worker = ScanWorker(
+            env,
+            source_args=build_pip_source_args(self.config_mgr),
+            uv_path=get_uv_path(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
@@ -85,7 +160,13 @@ class PipManager(PackageManager):
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
 
     def update_package(self, env: Environment, pkg_name: str):
-        worker = UpdateWorker(env, pkg_name)
+        worker = UpdateWorker(
+            env,
+            pkg_name,
+            source_args=build_pip_source_args(self.config_mgr),
+            uv_path=get_uv_path(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
         worker.start()
@@ -94,7 +175,12 @@ class PipManager(PackageManager):
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg_name, worker.success)])
 
     def remove_package(self, env: Environment, pkg_name: str):
-        worker = RemoveWorker(env, pkg_name)
+        worker = RemoveWorker(
+            env,
+            pkg_name,
+            uv_path=get_uv_path(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
         worker.start()
@@ -102,47 +188,57 @@ class PipManager(PackageManager):
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.remove_done.emit(env.path, pkg_name, worker.success)])
 
     def install_package(self, env: Environment, pkg_names: str, force_reinstall: bool = False):
-        worker = InstallWorker(env, pkg_names, force_reinstall)
+        worker = InstallWorker(
+            env,
+            pkg_names,
+            force_reinstall,
+            source_args=build_pip_source_args(self.config_mgr),
+            uv_path=get_uv_path(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
         worker.start()
         self._active_workers.append(worker)
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.install_done.emit(env.path, pkg_names, worker.success)])
 
+    def update_runtime(self, env: Environment):
+        worker = RuntimeUpdateWorker(env)
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(
+            lambda: [
+                self._active_workers.remove(worker) if worker in self._active_workers else None,
+                self.runtime_update_done.emit(env.path, worker.success, worker.result_message),
+            ]
+        )
+
     update_done = Signal(str, str, bool) # env_path, pkg_name, success
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
+    runtime_update_done = Signal(str, bool, str) # env_path, success, message
 
 
 
-class ScanWorker(QThread):
+class ScanWorker(BaseCmdWorker):
     """Worker thread to run 'uv pip list' and 'outdated'"""
     
     env_scanned = Signal(Environment) 
-    log_msg = Signal(str, str)
-    log_batch = Signal(list)
 
-    def __init__(self, env: Environment):
+    def __init__(self, env: Environment, source_args=None, uv_path="uv", proxy_settings=None):
         super().__init__()
         self.env = env
-        self._log_buffer = []
-
-    def _log(self, msg, tag):
-        self._log_buffer.append((msg, tag))
+        self.source_args = list(source_args or [])
+        self.uv_path = uv_path
+        self.proxy_settings = proxy_settings or {}
     
     def run(self):
         try:
             # Determine python executable for this env
             env_path = os.path.normpath(self.env.path)
-            if os.path.isfile(env_path):
-                py_exe = env_path
-            else:
-                # venv root provided
-                py_exe = os.path.join(env_path, "Scripts", "python.exe")
-                if not os.path.exists(py_exe):
-                    py_exe = os.path.join(env_path, "bin", "python")
-            
-            py_exe = os.path.normpath(py_exe)
+            py_exe = resolve_python_executable(self.env)
             self._log(f"Scanning {self.env.name} using {py_exe}...", "system")
             
             if not os.path.exists(py_exe):
@@ -152,18 +248,55 @@ class ScanWorker(QThread):
             # 1. Version Check
             ver_cmd = [py_exe, "--version"]
             self._log(f"> {' '.join(ver_cmd)}", "cmd")
-            res = subprocess.run(ver_cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            py_ver = res.stdout.strip().split(" ")[1] if res.returncode == 0 else "?"
-            if res.stdout.strip():
-                self._log(res.stdout.strip(), "stdout")
+            res = subprocess.run(
+                ver_cmd,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=merge_env_for_command(ver_cmd, proxy_settings=self.proxy_settings),
+            )
+            raw_ver = (res.stdout or "").strip() or (res.stderr or "").strip()
+            py_ver = parse_python_version(raw_ver) if res.returncode == 0 and raw_ver else ""
+            if str(self.env.type or "").lower() != "system":
+                cfg_ver = read_venv_cfg_version(py_exe)
+                if cfg_ver:
+                    if py_ver and compare_versions(cfg_ver, py_ver) != 0:
+                        self._log(
+                            f"Detected venv metadata version {cfg_ver} (runtime reports {py_ver}); using metadata version for display.",
+                            "stderr",
+                        )
+                    py_ver = cfg_ver
+            if not py_ver:
+                py_ver = "?"
+            if raw_ver:
+                self._log(raw_ver, "stdout")
+
+            cycle, latest_ver, runtime_has_update, runtime_err = check_runtime_patch_update(
+                "python",
+                py_ver,
+                proxy_settings=self.proxy_settings,
+            )
+            if runtime_has_update:
+                self._log(
+                    f"Python runtime update available in {self.env.name}: {py_ver} -> {latest_ver}",
+                    "system",
+                )
+            elif runtime_err:
+                self._log(f"Python runtime update check skipped: {runtime_err}", "stderr")
             
             # 2. List Packages
-            uv_path = shutil.which("uv") or "uv"
+            uv_path = self.uv_path
             # Verify uv
             try:
                 uv_cmd = [uv_path, "--version"]
                 self._log(f"> {' '.join(uv_cmd)}", "cmd")
-                uv_res = subprocess.run(uv_cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                uv_res = subprocess.run(
+                    uv_cmd,
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=merge_env_for_command(uv_cmd, proxy_settings=self.proxy_settings),
+                )
                 if uv_res.stdout.strip():
                     self._log(uv_res.stdout.strip(), "stdout")
             except FileNotFoundError:
@@ -174,7 +307,13 @@ class ScanWorker(QThread):
             
             cmd = [uv_path, "pip", "list", "--format", "json"] + args
             self._log(f"> {' '.join(cmd)}", "cmd")
-            res = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
+            )
             
             pkgs = []
             if res.returncode == 0:
@@ -196,9 +335,15 @@ class ScanWorker(QThread):
                      self._log(res.stderr.strip(), "stderr")
             
             # 3. Check Updates
-            cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + args
+            cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
             self._log(f"> {' '.join(cmd_outdated)}", "cmd")
-            res_outdated = subprocess.run(cmd_outdated, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            res_outdated = subprocess.run(
+                cmd_outdated,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=merge_env_for_command(cmd_outdated, proxy_settings=self.proxy_settings),
+            )
             
             outdated_map = {}
             if res_outdated.returncode == 0:
@@ -241,6 +386,12 @@ class ScanWorker(QThread):
                 self.env.dep_graph = {pkg.norm_name: pkg for pkg in pkgs}
 
             self.env.python_version = py_ver
+            self.env.runtime_name = "Python"
+            self.env.runtime_version = py_ver
+            self.env.runtime_cycle = cycle or parse_cycle("python", py_ver)
+            self.env.runtime_latest_version = latest_ver
+            self.env.runtime_has_update = runtime_has_update
+            self.env.runtime_update_error = runtime_err
             self.env.packages = pkgs
             self.env.is_scanned = True
             
@@ -252,77 +403,76 @@ class ScanWorker(QThread):
             
         finally:
             self.env_scanned.emit(self.env)
-            if self._log_buffer:
-                self.log_batch.emit(self._log_buffer)
+            self._flush_logs()
+
+
+class RuntimeUpdateWorker(BaseCmdWorker):
+    """Worker to update Python runtime itself (not packages)."""
+
+    def __init__(self, env: Environment):
+        super().__init__()
+        self.env = env
+        self.result_message = ""
+
+    def run(self):
+        try:
+            current_ver = self.env.runtime_version or self.env.python_version
+            cycle = self.env.runtime_cycle or parse_cycle("python", current_ver)
+            latest = self.env.runtime_latest_version
+            self._log(
+                f"Updating Python runtime for {self.env.name} ({current_ver or 'unknown'}"
+                + (f" -> {latest}" if latest else "")
+                + ")...",
+                "system",
+            )
+
+            cmd, reason = build_python_runtime_update_command(self.env.type, self.env.path, cycle)
+            if not cmd:
+                self.success = False
+                self.result_message = reason or "No runnable command for Python runtime update."
+                self._log(self.result_message, "error")
+                return
+
+            self._run_command(cmd)
+            if self.success:
+                self.result_message = "Python runtime update command completed."
+                self._log(f"✓ {self.result_message}", "success")
+            else:
+                self.result_message = "Python runtime update command failed."
+                self._log(f"✗ {self.result_message}", "error")
+        except Exception as exc:
+            self.success = False
+            self.result_message = f"Python runtime update error: {exc}"
+            self._log(self.result_message, "error")
+        finally:
+            self._flush_logs()
 
 
 
-class UpdateWorker(QThread):
+class UpdateWorker(BaseCmdWorker):
     """Worker to run `uv pip install -U <pkg>`"""
     
-    log_msg = Signal(str, str)
-    log_batch = Signal(list)
-    
-    def __init__(self, env: Environment, pkg_name: str):
+    def __init__(self, env: Environment, pkg_name: str, source_args=None, uv_path="uv", proxy_settings=None):
         super().__init__()
         self.env = env
         self.pkg_name = pkg_name
-        self.success = False
-        self._log_buffer = []
-
-    def _log(self, msg, tag):
-        self._log_buffer.append((msg, tag))
+        self.source_args = list(source_args or [])
+        self.uv_path = uv_path
+        self.proxy_settings = proxy_settings or {}
 
     def run(self):
         try:
             self._log(f"Updating {self.pkg_name} in {self.env.name}...", "system")
-            uv_path = shutil.which("uv") or "uv"
+            uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
-            
-            if os.path.isfile(env_path):
-                py_exe = env_path
-            else:
-                py_exe = os.path.join(env_path, "Scripts", "python.exe")
-                if not os.path.exists(py_exe):
-                    py_exe = os.path.join(env_path, "bin", "python")
-            
-            py_exe = os.path.normpath(py_exe)
+            py_exe = resolve_python_executable(self.env)
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
-            cmd = [uv_path, "pip", "install", "-U", self.pkg_name] + args
-            self._log(f"> {' '.join(cmd)}", "cmd")
+            cmd = [uv_path, "pip", "install", "-U"] + self.source_args + [self.pkg_name] + args
             
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            )
-
-            ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
-
-            def read_stream(stream, tag):
-                try:
-                    for raw_line in stream:
-                        line = ANSI_ESCAPE.sub("", raw_line).rstrip()
-                        if line:
-                            self._log(line, tag)
-                except Exception:
-                    pass
-
-            stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout"), daemon=True)
-            stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr"), daemon=True)
-            stdout_t.start()
-            stderr_t.start()
-            process.wait()
-            stdout_t.join(timeout=5)
-            stderr_t.join(timeout=5)
+            self._run_command(cmd)
             
-            self.success = (process.returncode == 0)
             if self.success:
                 self._log(f"✓ Updated {self.pkg_name} in {self.env.name}", "success")
             else:
@@ -332,76 +482,32 @@ class UpdateWorker(QThread):
             self._log(f"Error during update: {e}", "error")
             self.success = False
         finally:
-            if self._log_buffer:
-                self.log_batch.emit(self._log_buffer)
+            self._flush_logs()
 
 
-class RemoveWorker(QThread):
+class RemoveWorker(BaseCmdWorker):
     """Worker to run `uv pip uninstall <pkg>`"""
     
-    log_msg = Signal(str, str)
-    log_batch = Signal(list)
-    
-    def __init__(self, env: Environment, pkg_name: str):
+    def __init__(self, env: Environment, pkg_name: str, uv_path="uv", proxy_settings=None):
         super().__init__()
         self.env = env
         self.pkg_name = pkg_name
-        self.success = False
-        self._log_buffer = []
-
-    def _log(self, msg, tag):
-        self._log_buffer.append((msg, tag))
+        self.uv_path = uv_path
+        self.proxy_settings = proxy_settings or {}
 
     def run(self):
         try:
             self._log(f"Uninstalling {self.pkg_name} from {self.env.name}...", "system")
-            uv_path = shutil.which("uv") or "uv"
+            uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
-            
-            if os.path.isfile(env_path):
-                py_exe = env_path
-            else:
-                py_exe = os.path.join(env_path, "Scripts", "python.exe")
-                if not os.path.exists(py_exe):
-                    py_exe = os.path.join(env_path, "bin", "python")
-            
-            py_exe = os.path.normpath(py_exe)
+            py_exe = resolve_python_executable(self.env)
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
             cmd = [uv_path, "pip", "uninstall", self.pkg_name] + args
-            self._log(f"> {' '.join(cmd)}", "cmd")
             
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            )
-
-            ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
-
-            def read_stream(stream, tag):
-                try:
-                    for raw_line in stream:
-                        line = ANSI_ESCAPE.sub("", raw_line).rstrip()
-                        if line:
-                            self._log(line, tag)
-                except Exception:
-                    pass
-
-            stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout"), daemon=True)
-            stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr"), daemon=True)
-            stdout_t.start()
-            stderr_t.start()
-            process.wait()
-            stdout_t.join(timeout=5)
-            stderr_t.join(timeout=5)
+            self._run_command(cmd)
             
-            self.success = (process.returncode == 0)
             if self.success:
                 self._log(f"✓ Uninstalled {self.pkg_name} from {self.env.name}", "success")
             else:
@@ -411,82 +517,39 @@ class RemoveWorker(QThread):
             self._log(f"Error during uninstall: {e}", "error")
             self.success = False
         finally:
-            if self._log_buffer:
-                self.log_batch.emit(self._log_buffer)
+            self._flush_logs()
 
 
-class InstallWorker(QThread):
+class InstallWorker(BaseCmdWorker):
     """Worker to run `uv pip install <pkgs>`"""
     
-    log_msg = Signal(str, str)
-    log_batch = Signal(list)
-    
-    def __init__(self, env: Environment, pkg_names: str, force_reinstall: bool = False):
+    def __init__(self, env: Environment, pkg_names: str, force_reinstall: bool = False, source_args=None, uv_path="uv", proxy_settings=None):
         super().__init__()
         self.env = env
         self.pkg_names = pkg_names
         self.force_reinstall = force_reinstall
-        self.success = False
-        self._log_buffer = []
-
-    def _log(self, msg, tag):
-        self._log_buffer.append((msg, tag))
+        self.source_args = list(source_args or [])
+        self.uv_path = uv_path
+        self.proxy_settings = proxy_settings or {}
 
     def run(self):
         try:
             self._log(f"Installing {self.pkg_names} in {self.env.name}...", "system")
-            uv_path = shutil.which("uv") or "uv"
+            uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
-            
-            if os.path.isfile(env_path):
-                py_exe = env_path
-            else:
-                py_exe = os.path.join(env_path, "Scripts", "python.exe")
-                if not os.path.exists(py_exe):
-                    py_exe = os.path.join(env_path, "bin", "python")
-            
-            py_exe = os.path.normpath(py_exe)
+            py_exe = resolve_python_executable(self.env)
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
             cmd = [uv_path, "pip", "install"]
+            cmd.extend(self.source_args)
             if self.force_reinstall:
                 cmd.append("--force-reinstall")
             cmd.extend(self.pkg_names.split())
             cmd.extend(args)
             
-            self._log(f"> {' '.join(cmd)}", "cmd")
+            self._run_command(cmd)
             
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            )
-
-            ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
-
-            def read_stream(stream, tag):
-                try:
-                    for raw_line in stream:
-                        line = ANSI_ESCAPE.sub("", raw_line).rstrip()
-                        if line:
-                            self._log(line, tag)
-                except Exception:
-                    pass
-
-            stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout"), daemon=True)
-            stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr"), daemon=True)
-            stdout_t.start()
-            stderr_t.start()
-            process.wait()
-            stdout_t.join(timeout=5)
-            stderr_t.join(timeout=5)
-            
-            self.success = (process.returncode == 0)
             if self.success:
                 self._log(f"✓ Installed {self.pkg_names} in {self.env.name}", "success")
             else:
@@ -496,5 +559,4 @@ class InstallWorker(QThread):
             self._log(f"Error during install: {e}", "error")
             self.success = False
         finally:
-            if self._log_buffer:
-                self.log_batch.emit(self._log_buffer)
+            self._flush_logs()

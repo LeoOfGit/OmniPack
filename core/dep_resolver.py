@@ -23,17 +23,44 @@ import re
 import sys
 
 def normalize(name):
-    return re.sub(r'[-_.]+', '-', name).lower()
+    if name is None:
+        return ''
+    return re.sub(r'[-_.]+', '-', str(name)).lower()
+
+def get_dist_name(dist):
+    name = None
+    try:
+        name = dist.metadata.get('Name')
+    except Exception:
+        name = None
+    if not name:
+        name = getattr(dist, 'name', None)
+    if not name:
+        return None
+    return str(name).strip()
+
+def get_dist_version(dist):
+    version = None
+    try:
+        version = dist.metadata.get('Version')
+    except Exception:
+        version = None
+    if not version:
+        version = getattr(dist, 'version', '')
+    return str(version or '').strip()
 
 def build_graph():
     all_dists = list(importlib.metadata.distributions())
     installed = {}
+    dist_entries = []
 
     for dist in all_dists:
-        name = dist.metadata['Name']
-        version = dist.metadata['Version']
+        name = get_dist_name(dist)
+        if not name:
+            continue
+        version = get_dist_version(dist)
         norm = normalize(name)
-        if norm in installed:
+        if not norm or norm in installed:
             continue  # Skip duplicates
         installed[norm] = {
             'name': name,
@@ -41,25 +68,34 @@ def build_graph():
             'requires': [],
             'required_by': [],
         }
+        dist_entries.append((norm, dist))
 
-    for dist in all_dists:
-        name = dist.metadata['Name']
-        norm = normalize(name)
-        if norm not in installed:
-            continue
-        raw_requires = dist.metadata.get_all('Requires-Dist') or []
+    for norm, dist in dist_entries:
+        try:
+            raw_requires = dist.metadata.get_all('Requires-Dist') or []
+        except Exception:
+            raw_requires = []
 
         grouped_requires = {}
         for req_str in raw_requires:
+            if not req_str:
+                continue
+            req_text = str(req_str).strip()
+            if not req_text:
+                continue
             # Skip extras-only dependencies
-            if re.search(r'extra\s*==', req_str):
+            if re.search(r'extra\s*==', req_text):
                 continue
 
-            dep_name = re.split(r'[\s;>=<!\[\(]', req_str.strip())[0]
+            dep_name = re.split(r'[\s;>=<!\[\(]', req_text)[0]
+            if not dep_name:
+                continue
             dep_norm = normalize(dep_name)
+            if not dep_norm:
+                continue
 
             # Extract version constraint
-            version_match = re.search(r'([\(]?[>=<!=~]+[\d\w.*,>=<!=~ ]+[\)]?)', req_str)
+            version_match = re.search(r'([\(]?[>=<!=~]+[\d\w.*,>=<!=~ ]+[\)]?)', req_text)
             constraint = version_match.group(1).strip() if version_match else ''
 
             if dep_norm not in grouped_requires:

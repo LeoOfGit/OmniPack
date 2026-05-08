@@ -1,25 +1,28 @@
 """
-NpmManager — NPM backend for OmniPack.
-Ported from npm_manager.pyw NpmExecutor + data models.
+NpmManager — NPM backend for OmniPack using Environment-Centric architecture.
 """
 from __future__ import annotations
 
 import json
 import os
-import platform
 import re
 import shutil
 import subprocess
-import threading
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Dict, Callable, Optional
+from typing import Optional
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import Signal
 
-if TYPE_CHECKING:
-    pass
-
-# ── Constants ────────────────────────────────────────────────────────────────
+from core.manager_base import PackageManager, Environment, Package
+from core.network_proxy import merge_env_for_command
+from core.npm_spec import has_explicit_tag
+from core.runtime_update import (
+    build_node_runtime_update_command,
+    check_runtime_patch_update,
+    parse_cycle,
+    parse_node_version,
+)
+from core.source_profiles import NPM_OFFICIAL_REGISTRY
+from managers.base_worker import BaseCmdWorker
 
 CHANNEL_PATTERNS = {
     "nightly": re.compile(r"[-.@]nightly|nightly[-.]?", re.IGNORECASE),
@@ -29,542 +32,766 @@ CHANNEL_PATTERNS = {
     "next":    re.compile(r"[-.@]next(?!\w)|next[-.]?",  re.IGNORECASE),
     "rc":      re.compile(r"[-.@]rc\d*|rc[-.]?",        re.IGNORECASE),
 }
+def resolve_npm_registry_url(config_mgr) -> Optional[str]:
+    settings = getattr(config_mgr.config, "npm_settings", {}) or {}
+    mode = str(settings.get("source_mode", "system")).strip().lower()
+    if mode == "official":
+        return NPM_OFFICIAL_REGISTRY
+    if mode == "custom":
+        url = str(settings.get("registry_url", "")).strip()
+        if url:
+            return url
+    return None
 
-ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
-SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+def detect_channel(version: str) -> str:
+    """Detect version channel from version string."""
+    if not version:
+        return "latest"
+    for channel, pattern in CHANNEL_PATTERNS.items():
+        if pattern.search(version):
+            return channel
+    return "latest"
 
-
-# ── Data Classes ─────────────────────────────────────────────────────────────
-
-@dataclass
-class NpmApp:
-    """Represents an npm global package (application)."""
-    name: str
-    version: str = ""
-    display_name: str = ""
-    description: str = ""
-    channel: str = "latest"
-    channels_available: List[str] = field(default_factory=lambda: ["latest"])
-    is_installed: bool = False
-    is_selected: bool = False
-    latest_version: str = ""
-    channel_versions: Dict[str, str] = field(default_factory=dict)
-
-
-# ── NpmExecutor ──────────────────────────────────────────────────────────────
-
-class NpmExecutor:
-    """NPM command executor with streaming output."""
-
-    NPM_COMMANDS = ["npm.cmd", "npm"]
-
+class NpmBaseHelper:
     @classmethod
     def find_npm(cls) -> Optional[str]:
-        """Find npm command path, prioritizing system installation."""
-        system_paths = [
-            os.path.expandvars(r"%ProgramFiles%\nodejs\npm.cmd"),
-            os.path.expandvars(r"%ProgramFiles(x86)%\nodejs\npm.cmd"),
-        ]
-        for path in system_paths:
-            if os.path.exists(path):
-                return path
-
-        for cmd in cls.NPM_COMMANDS:
+        cmd_names = ["npm.cmd", "npm"] if os.name == "nt" else ["npm"]
+        for cmd in cmd_names:
             npm_path = shutil.which(cmd)
             if npm_path:
                 return npm_path
 
-        common_paths = [
-            os.path.expandvars(r"%APPDATA%\npm\npm.cmd"),
-        ]
-        for path in common_paths:
-            if os.path.exists(path):
-                return path
-        return None
-
-    @classmethod
-    def find_corepack(cls) -> Optional[str]:
-        """Find corepack command path, prioritizing proximity to npm."""
-        npm_path = cls.find_npm()
-        if npm_path:
-            dirname = os.path.dirname(npm_path)
-            basename = os.path.basename(npm_path)
-            if "npm" in basename.lower():
-                cp_name = basename.lower().replace("npm", "corepack")
-                path = os.path.join(dirname, cp_name)
+        if os.name == "nt":
+            system_paths = [
+                os.path.expandvars(r"%ProgramFiles%\nodejs\npm.cmd"),
+                os.path.expandvars(r"%ProgramFiles(x86)%\nodejs\npm.cmd"),
+                os.path.expandvars(r"%APPDATA%\npm\npm.cmd"),
+            ]
+            for path in system_paths:
                 if os.path.exists(path):
                     return path
+        else:
+            system_paths = [
+                "/usr/local/bin/npm",
+                "/opt/homebrew/bin/npm",
+                "/usr/bin/npm"
+            ]
+            # Simple fallback expansions
+            home = os.path.expanduser("~")
+            nvm_path = os.path.join(home, ".nvm", "versions", "node")
+            if os.path.exists(nvm_path):
+                import glob
+                matches = glob.glob(os.path.join(nvm_path, "*", "bin", "npm"))
+                if matches:
+                    return matches[0]
 
-        for cmd in ["corepack.cmd", "corepack"]:
-            cp_path = shutil.which(cmd)
-            if cp_path:
-                return cp_path
+            for path in system_paths:
+                if os.path.exists(path):
+                    return path
+                    
         return None
 
     @classmethod
-    def run_command(
-        cls,
-        cmd: list[str],
-        log_callback: Optional[Callable[[str, str], None]] = None,
-    ) -> tuple[bool, str]:
-        """Run a command with streaming output."""
-        cmd_str = " ".join(cmd)
-        if log_callback:
-            log_callback(f"> {cmd_str}", "cmd")
+    def find_node(cls, npm_path: Optional[str] = None) -> Optional[str]:
+        cmd_names = ["node.exe", "node"] if os.name == "nt" else ["node"]
+        for cmd in cmd_names:
+            node_path = shutil.which(cmd)
+            if node_path:
+                return node_path
 
+        # Fallback: try sibling to npm
+        if npm_path:
+            npm_dir = os.path.dirname(npm_path)
+            candidate = os.path.join(npm_dir, "node.exe" if os.name == "nt" else "node")
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    @classmethod
+    def _probe_npm_output(cls, npm_path: str, args: list[str]) -> str:
+        """Run a lightweight npm probe command and return stdout text."""
         try:
-            process = subprocess.Popen(
+            cmd = [npm_path, *args]
+            res = subprocess.run(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=SUBPROCESS_FLAGS,
-                shell=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
-        except FileNotFoundError:
-            msg = f"Command not found: {cmd[0]}"
-            if log_callback:
-                log_callback(msg, "error")
-            return False, msg
-        except OSError as e:
-            msg = f"Failed to start process: {e}"
-            if log_callback:
-                log_callback(msg, "error")
-            return False, msg
-
-        output_lines: list[str] = []
-
-        def read_stream(stream, tag):
-            try:
-                for raw_line in stream:
-                    line = ANSI_ESCAPE.sub("", raw_line).rstrip()
-                    if line:
-                        output_lines.append(line)
-                        if log_callback:
-                            log_callback(line, tag)
-            except (ValueError, OSError):
-                pass
-
-        stdout_thread = threading.Thread(target=read_stream, args=(process.stdout, "stdout"), daemon=True)
-        stderr_thread = threading.Thread(target=read_stream, args=(process.stderr, "stderr"), daemon=True)
-        stdout_thread.start()
-        stderr_thread.start()
-
-        process.wait()
-        stdout_thread.join(timeout=5)
-        stderr_thread.join(timeout=5)
-
-        success = process.returncode == 0
-        full_output = "\n".join(output_lines)
-        return success, full_output
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+        except Exception:
+            pass
+        return ""
 
     @classmethod
-    def get_installed_packages(
-        cls, log_callback: Optional[Callable[[str, str], None]] = None,
-    ) -> tuple[dict[str, str], str]:
-        """Get installed npm global packages."""
+    def discover_user_node_modules(cls) -> list[str]:
+        """
+        Discover standalone user-level node_modules folders.
+        Excludes npm global root (already represented by the Global card).
+        """
+        discovered = []
+        seen = set()
+
+        def _add_if_exists(path: str):
+            if not path:
+                return
+            norm_path = os.path.normcase(os.path.normpath(path))
+            if norm_path in seen:
+                return
+            if os.path.isdir(path):
+                seen.add(norm_path)
+                discovered.append(os.path.normpath(path))
+
+        home = os.path.expanduser("~")
+        _add_if_exists(os.path.join(home, "node_modules"))
+
         npm_path = cls.find_npm()
-        if not npm_path:
-            msg = "npm command not found. Please ensure Node.js is installed."
-            if log_callback:
-                log_callback(msg, "error")
-            return {}, msg
+        if npm_path:
+            # Some tools install by prefixing into user-writable folders.
+            prefix_global = cls._probe_npm_output(npm_path, ["prefix", "-g"])
+            if prefix_global:
+                _add_if_exists(os.path.join(prefix_global, "node_modules"))
 
-        if log_callback:
-            log_callback("Scanning global npm packages...", "system")
+            global_root = cls._probe_npm_output(npm_path, ["root", "-g"])
+            if global_root:
+                global_root_key = os.path.normcase(os.path.normpath(global_root))
+                discovered = [p for p in discovered if os.path.normcase(os.path.normpath(p)) != global_root_key]
+                seen = {os.path.normcase(os.path.normpath(p)) for p in discovered}
 
-        # Get version first
-        success, version_out = cls.run_command([npm_path, "--version"], log_callback)
-        if not success:
-            return {}, f"npm not responding: {version_out}"
-        if log_callback:
-            log_callback(f"npm version: {version_out.strip()}", "system")
+        return discovered
 
-        # Get global list as JSON
-        success, output = cls.run_command(
-            [npm_path, "list", "-g", "--depth=0", "--json"], log_callback=log_callback
-        )
-        if not output:
-            return {}, "npm returned empty output."
+class NpmScanWorker(BaseCmdWorker):
+    env_scanned = Signal(Environment) 
 
+    def __init__(self, env: Environment, config_mgr):
+        super().__init__()
+        self.env = env
+        self.config_mgr = config_mgr
+        self.proxy_settings = getattr(config_mgr.config, "proxy_settings", {}) or {}
+    
+    def _scan_standalone_node_modules(self, node_modules_path: str) -> list:
+        """Scan a standalone node_modules directory directly."""
+        pkgs = []
         try:
-            data = json.loads(output)
-        except json.JSONDecodeError as e:
-            msg = f"JSON parse failed: {e}"
-            if log_callback:
-                log_callback(msg, "error")
-            return {}, msg
+            if not os.path.isdir(node_modules_path):
+                return pkgs
+            
+            # List top-level packages in node_modules
+            for entry in os.listdir(node_modules_path):
+                entry_path = os.path.join(node_modules_path, entry)
+                
+                # Skip nested node_modules and non-directories
+                if not os.path.isdir(entry_path) or entry == "node_modules":
+                    continue
+                
+                # Handle scoped packages (@scope/package)
+                if entry.startswith("@"):
+                    # This is a scope directory, scan its contents
+                    for scoped_pkg in os.listdir(entry_path):
+                        scoped_pkg_path = os.path.join(entry_path, scoped_pkg)
+                        if os.path.isdir(scoped_pkg_path):
+                            pkg_name = f"{entry}/{scoped_pkg}"
+                            pkg_json_path = os.path.join(scoped_pkg_path, "package.json")
+                            version = self._read_package_version(pkg_json_path)
+                            if version:
+                                meta = {
+                                    "channel": detect_channel(version),
+                                    "channels_available": ["latest"],
+                                    "display_name": pkg_name,
+                                    "description": ""
+                                }
+                                pkgs.append(Package(
+                                    name=pkg_name,
+                                    version=version,
+                                    description=meta["description"],
+                                    metadata=meta
+                                ))
+                else:
+                    # Regular package
+                    pkg_json_path = os.path.join(entry_path, "package.json")
+                    version = self._read_package_version(pkg_json_path)
+                    if version:
+                        meta = {
+                            "channel": detect_channel(version),
+                            "channels_available": ["latest"],
+                            "display_name": entry,
+                            "description": ""
+                        }
+                        pkgs.append(Package(
+                            name=entry,
+                            version=version,
+                            description=meta["description"],
+                            metadata=meta
+                        ))
+        except Exception as e:
+            self._log(f"Error scanning node_modules: {e}", "error")
+        
+        return pkgs
+    
+    def _read_package_version(self, package_json_path: str) -> str:
+        """Read version from package.json file."""
+        try:
+            if os.path.exists(package_json_path):
+                with open(package_json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get("version", "")
+        except Exception:
+            pass
+        return ""
+        
+    def run(self):
+        try:
+            self._log(f"Scanning {self.env.name}...", "system")
+            npm_path = NpmBaseHelper.find_npm()
+            if not npm_path:
+                self._log("Error: npm command not found. Please ensure Node.js is installed.", "error")
+                return
 
-        packages = {}
-        for name, info in data.get("dependencies", {}).items():
-            if isinstance(info, dict):
-                version = info.get("version", "")
-                if version:
-                    packages[name] = version
-            elif isinstance(info, str):
-                packages[name] = info
-
-        # Detect npm itself
-        if "npm" not in packages:
-            npm_ver = version_out.strip()
-            if npm_ver:
-                packages["npm"] = npm_ver
-                if log_callback:
-                    log_callback(f"Detected system npm: {npm_ver}", "success")
-
-        # Detect corepack
-        if "corepack" not in packages:
-            cp_path = cls.find_corepack()
-            if cp_path:
-                # Use log_callback=None to keep the probe silent in the UI if it fails
-                success_cp, cp_out = cls.run_command([cp_path, "--version"], log_callback=None)
-                if success_cp:
-                    ver = cp_out.strip()
-                    if re.match(r"^\d+\.\d+\.\d+", ver):
-                        packages["corepack"] = ver
-                        if log_callback:
-                            log_callback(f"Detected system corepack: {ver}", "success")
-
-        if log_callback:
-            log_callback(f"Found {len(packages)} global package(s)", "success")
-        return packages, ""
-
-    @staticmethod
-    def detect_channel(version: str) -> str:
-        """Detect version channel from version string."""
-        if not version:
-            return "latest"
-        for channel, pattern in CHANNEL_PATTERNS.items():
-            if pattern.search(version):
-                return channel
-        return "latest"
-
-    @classmethod
-    def install_package(cls, name: str, channel: str = "latest",
-                        log_callback=None) -> tuple[bool, str]:
-        npm_path = cls.find_npm()
-        if not npm_path:
-            return False, "npm not found"
-        pkg_spec = f"{name}@{channel}"
-        if log_callback:
-            log_callback(f"Installing {pkg_spec}...", "system")
-        cmd = [npm_path, "install", "-g", pkg_spec, "--loglevel=http"]
-        return cls.run_command(cmd, log_callback)
-
-    @classmethod
-    def uninstall_package(cls, name: str, log_callback=None) -> tuple[bool, str]:
-        npm_path = cls.find_npm()
-        if not npm_path:
-            return False, "npm not found"
-        if log_callback:
-            log_callback(f"Uninstalling {name}...", "system")
-        cmd = [npm_path, "uninstall", "-g", name]
-        return cls.run_command(cmd, log_callback)
-
-    @classmethod
-    def update_package(cls, name: str, channel: str = "latest",
-                       log_callback=None) -> tuple[bool, str]:
-        npm_path = cls.find_npm()
-        if not npm_path:
-            return False, "npm not found"
-        pkg_spec = f"{name}@{channel}"
-        if log_callback:
-            log_callback(f"Updating {pkg_spec}...", "system")
-        cmd = [npm_path, "install", "-g", pkg_spec, "--loglevel=http"]
-        return cls.run_command(cmd, log_callback)
-
-    @classmethod
-    def switch_channel(cls, name: str, new_channel: str,
-                       log_callback=None) -> tuple[bool, str]:
-        return cls.install_package(name, new_channel, log_callback)
-
-    @classmethod
-    def get_config(cls, key: str, log_callback=None) -> str:
-        npm_path = cls.find_npm()
-        if not npm_path:
-            return ""
-        success, out = cls.run_command([npm_path, "config", "get", key], log_callback)
-        return out.strip() if success else ""
-
-    @classmethod
-    def set_config(cls, key: str, value: str, log_callback=None) -> bool:
-        npm_path = cls.find_npm()
-        if not npm_path:
-            return False
-        success, _ = cls.run_command([npm_path, "config", "set", key, value], log_callback)
-        return success
-
-    @classmethod
-    def get_latest_versions(
-        cls, apps: list[NpmApp],
-        log_callback: Optional[Callable[[str, str], None]] = None
-    ) -> dict[str, dict[str, str]]:
-        """Get latest versions for all dist-tags of given packages."""
-        npm_path = cls.find_npm()
-        if not npm_path or not apps:
-            return {}
-
-        results: dict[str, dict[str, str]] = {}
-        for app in apps:
-            name = app.name
-            cmd = [npm_path, "view", name, "dist-tags", "--json"]
-            if log_callback:
-                log_callback(f"> {' '.join(cmd)}", "cmd")
-            try:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True, encoding="utf-8", errors="replace",
-                    creationflags=SUBPROCESS_FLAGS, shell=True,
+            node_path = NpmBaseHelper.find_node(npm_path=npm_path)
+            node_ver = ""
+            if node_path:
+                ver_cmd = [node_path, "--version"]
+                self._log(f"> {' '.join(ver_cmd)}", "cmd")
+                ver_res = subprocess.run(
+                    ver_cmd,
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=merge_env_for_command(ver_cmd, proxy_settings=self.proxy_settings),
                 )
-                stdout, stderr = process.communicate()
+                raw_node_ver = (ver_res.stdout or "").strip() or (ver_res.stderr or "").strip()
+                node_ver = parse_node_version(raw_node_ver)
+                if raw_node_ver:
+                    self._log(raw_node_ver, "stdout")
+            else:
+                self._log("Warning: Node executable not found in PATH.", "stderr")
 
-                if stderr and log_callback:
-                    for line in stderr.split("\n"):
-                        if line.strip() and "npm update" not in line:
-                            log_callback(line, "stderr")
+            cycle, latest_ver, runtime_has_update, runtime_err = check_runtime_patch_update(
+                "node",
+                node_ver,
+                proxy_settings=self.proxy_settings,
+            )
+            if runtime_has_update:
+                self._log(
+                    f"Node runtime update available: {node_ver} -> {latest_ver}",
+                    "system",
+                )
+            elif runtime_err and node_ver:
+                self._log(f"Node runtime update check skipped: {runtime_err}", "stderr")
 
-                if not stdout.strip():
-                    if log_callback:
-                        log_callback(f"No output for {name}", "system")
+            is_global = (self.env.type == "global" or self.env.path == "global")
+            
+            # Check if this is a standalone node_modules directory
+            is_standalone_node_modules = False
+            if not is_global:
+                env_path_name = os.path.basename(os.path.normpath(self.env.path))
+                is_standalone_node_modules = (
+                    env_path_name.lower() == "node_modules" and 
+                    not os.path.exists(os.path.join(self.env.path, "package.json"))
+                )
+            
+            pkgs = []
+            
+            # Handle standalone node_modules directory (e.g., C:\Users\Leo\node_modules\)
+            if is_standalone_node_modules:
+                self._log(f"Scanning standalone node_modules directory: {self.env.path}", "system")
+                pkgs = self._scan_standalone_node_modules(self.env.path)
+                self._log(f"✓ Found {len(pkgs)} package(s)", "success")
+            else:
+                # Standard npm project or global packages
+                cmd = [npm_path, "list", "--depth=0", "--json"]
+                cwd = None
+                
+                if is_global:
+                    cmd.insert(2, "-g")
+                else:
+                    cwd = self.env.path
+                    if not os.path.exists(os.path.join(cwd, "package.json")):
+                        self._log(f"Warning: No package.json found in {cwd}. Is this an NPM project directory?", "error")
+
+                self._log(f"> {' '.join(cmd)}", "cmd")
+                res = subprocess.run(
+                    cmd,
+                    cwd=cwd if not is_global else None,
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
+                )
+                
+                output = res.stdout.strip()
+                
+                # npm list might return 1 if there are missing peer dependencies, but stdout still has valid JSON
+                if output:
+                    try:
+                        data = json.loads(output)
+                        dependencies = data.get("dependencies", {})
+                        for name, info in dependencies.items():
+                            if isinstance(info, dict):
+                                version = info.get("version", "")
+                                if version:
+                                    meta = {}
+                                    meta["channel"] = detect_channel(version)
+                                    meta["channels_available"] = ["latest"]
+                                    meta["display_name"] = name
+                                    meta["description"] = ""
+                                    
+                                    # Restore saved display names / descriptions if any
+                                    if is_global and hasattr(self.config_mgr.config, "npm_apps"):
+                                        saved_app = self.config_mgr.config.npm_apps.get(name)
+                                        if saved_app:
+                                            meta["display_name"] = saved_app.get("display_name", name)
+                                            meta["description"] = saved_app.get("description", "")
+                                            meta["channel"] = saved_app.get("channel", meta["channel"])
+                                            meta["channels_available"] = saved_app.get("channels_available", ["latest"])
+
+                                    pkgs.append(Package(
+                                        name=name,
+                                        version=version,
+                                        description=meta["description"],
+                                        metadata=meta
+                                    ))
+                    except json.JSONDecodeError as e:
+                        self._log(f"JSON parse failed: {e}", "error")
+                else:
+                    if res.stderr.strip():
+                         self._log(res.stderr.strip(), "stderr")
+                         
+                self._log(f"✓ Found {len(pkgs)} package(s)", "success")
+                     
+            self.env.packages = pkgs
+            self.env.runtime_name = "Node.js"
+            self.env.runtime_version = node_ver or "?"
+            self.env.runtime_cycle = cycle or parse_cycle("node", node_ver)
+            self.env.runtime_latest_version = latest_ver
+            self.env.runtime_has_update = runtime_has_update
+            self.env.runtime_update_error = runtime_err
+            self.env.is_scanned = True
+            self._log(f"✓ Found {len(pkgs)} package(s)", "success")
+            
+        except Exception as e:
+            self._log(f"Scan Error for {self.env.path}: {e}", "error")
+            self.env.is_scanned = True 
+            
+        finally:
+            self.env_scanned.emit(self.env)
+            self._flush_logs()
+
+
+class NpmUpdateCheckWorker(BaseCmdWorker):
+    updates_checked = Signal(Environment)
+
+    def __init__(self, env: Environment, registry_url: Optional[str] = None, proxy_settings=None):
+        super().__init__()
+        self.env = env
+        self.registry_url = registry_url
+        self.proxy_settings = proxy_settings or {}
+        
+    def run(self):
+        try:
+            if not self.env.packages:
+                return
+            
+            npm_path = NpmBaseHelper.find_npm()
+            if not npm_path:
+                return
+                
+            self._log(f"Checking updates for {self.env.name} from npm registry...", "system")
+            is_global = (self.env.type == "global" or self.env.path == "global")
+            cwd = None if is_global else self.env.path
+
+            outdated_cmd = [npm_path, "outdated", "--json"]
+            if is_global:
+                outdated_cmd.insert(2, "-g")
+            if self.registry_url:
+                outdated_cmd.extend(["--registry", self.registry_url])
+            self._log(f"> {' '.join(outdated_cmd)}", "cmd")
+            outdated_res = subprocess.run(
+                outdated_cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                env=merge_env_for_command(outdated_cmd, proxy_settings=self.proxy_settings),
+            )
+
+            outdated_map = {}
+            if outdated_res.stdout.strip():
+                try:
+                    parsed = json.loads(outdated_res.stdout)
+                    if isinstance(parsed, dict):
+                        outdated_map = parsed
+                except json.JSONDecodeError:
+                    self._log("Warning: failed to parse npm outdated JSON output.", "stderr")
+            elif outdated_res.stderr.strip() and outdated_res.returncode not in (0, 1):
+                self._log(outdated_res.stderr.strip(), "stderr")
+
+            tags_check_list = []
+            for pkg in self.env.packages:
+                if pkg.metadata is None:
+                    pkg.metadata = {}
+
+                pkg.has_update = False
+                pkg.latest_version = ""
+
+                outdated_info = outdated_map.get(pkg.name)
+                latest_candidate = ""
+                if isinstance(outdated_info, dict):
+                    latest_candidate = str(outdated_info.get("latest") or outdated_info.get("wanted") or "").strip()
+                elif isinstance(outdated_info, str):
+                    latest_candidate = outdated_info.strip()
+
+                if latest_candidate:
+                    pkg.latest_version = latest_candidate
+                    pkg.has_update = (latest_candidate != pkg.version)
+
+                target_channel = pkg.metadata.get("channel", "latest")
+                if pkg.has_update or target_channel != "latest":
+                    tags_check_list.append(pkg)
+
+            # Only fetch dist-tags for packages where it matters (outdated or non-latest channel).
+            for pkg in tags_check_list:
+                cmd = [npm_path, "view", pkg.name, "dist-tags", "--json"]
+                if self.registry_url:
+                    cmd.extend(["--registry", self.registry_url])
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
+                )
+                if res.returncode != 0 or not res.stdout.strip():
+                    continue
+                try:
+                    data = json.loads(res.stdout)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict):
                     continue
 
-                data = json.loads(stdout)
-                if isinstance(data, dict):
-                    results[name] = data
-                    if log_callback:
-                        tags = list(data.keys())
-                        log_callback(f"✔ {name}: {len(tags)} tags found {tags}", "success")
+                pkg.metadata["channel_versions"] = data
+                discovered = list(data.keys())
+                others = [c for c in discovered if c != "latest"]
+                others.sort()
+                final_channels = (["latest"] if "latest" in discovered else []) + others
+                pkg.metadata["channels_available"] = final_channels
 
-            except json.JSONDecodeError as e:
-                if log_callback:
-                    log_callback(f"JSON error for {name}: {e}", "error")
-            except Exception as e:
-                if log_callback:
-                    log_callback(f"Error checking {name}: {e}", "error")
+                target_channel = pkg.metadata.get("channel", "latest")
+                registry_target = data.get(target_channel)
+                if registry_target:
+                    pkg.latest_version = registry_target
+                    pkg.has_update = (registry_target != pkg.version)
+                        
+            updates_found = sum(1 for pkg in self.env.packages if pkg.has_update)
+            if updates_found > 0:
+                self._log(f"Found {updates_found} update(s) available in {self.env.name}.", "success")
+            else:
+                self._log(f"All packages in {self.env.name} are up to date.", "success")
+                
+        except Exception as e:
+            self._log(f"Update Check Error: {e}", "error")
+        finally:
+            self.updates_checked.emit(self.env)
+            self._flush_logs()
 
-        return results
+
+class NpmActionWorker(BaseCmdWorker):
+    def __init__(self, env: Environment, action: str, pkg_name: str, channel: Optional[str] = None, registry_url: Optional[str] = None, proxy_settings=None):
+        super().__init__()
+        self.env = env
+        self.action = action
+        self.pkg_name = pkg_name
+        self.channel = channel
+        self.registry_url = registry_url
+        self.proxy_settings = proxy_settings or {}
+
+    def run(self):
+        try:
+            npm_path = NpmBaseHelper.find_npm()
+            if not npm_path:
+                self._log("npm not found", "error")
+                return
+
+            is_global = (self.env.type == "global" or self.env.path == "global")
+            cwd = None if is_global else self.env.path
+            
+            pkg_spec = self.pkg_name
+            if self.channel and self.action in ["install", "update"]:
+                if not has_explicit_tag(self.pkg_name):
+                    pkg_spec = f"{self.pkg_name}@{self.channel}"
+
+            if self.action == "uninstall":
+                action_word = "Uninstalling"
+                verb = "uninstall"
+            else:
+                action_word = "Installing" if self.action == "install" else "Updating"
+                verb = "install"
+
+            self._log(f"{action_word} {pkg_spec} in {self.env.name}...", "system")
+            
+            cmd = [npm_path, verb, pkg_spec, "--loglevel=http"]
+            if is_global:
+                cmd.insert(2, "-g")
+            if self.registry_url and verb == "install":
+                cmd.extend(["--registry", self.registry_url])
+
+            self._run_command(cmd, cwd=cwd)
+            
+            if self.success:
+                self._log(f"✓ {action_word} completed for {pkg_spec}", "success")
+            else:
+                self._log(f"✗ {action_word} failed for {pkg_spec}", "error")
+                
+        except Exception as e:
+            self._log(f"Error during {self.action}: {e}", "error")
+            self.success = False
+        finally:
+            self._flush_logs()
 
 
-# ── NpmManager (Qt-based orchestrator) ───────────────────────────────────────
+class NpmRuntimeUpdateWorker(BaseCmdWorker):
+    """Worker to update Node.js runtime itself (not npm packages)."""
 
-class NpmManager(QObject):
+    def __init__(self, env: Environment):
+        super().__init__()
+        self.env = env
+        self.result_message = ""
+
+    def run(self):
+        try:
+            current_ver = self.env.runtime_version
+            cycle = self.env.runtime_cycle or parse_cycle("node", current_ver)
+            latest = self.env.runtime_latest_version
+            self._log(
+                f"Updating Node.js runtime from {current_ver or 'unknown'}"
+                + (f" to {latest}" if latest else "")
+                + f" (triggered by {self.env.name})...",
+                "system",
+            )
+
+            cmd, reason = build_node_runtime_update_command(cycle)
+            if not cmd:
+                self.success = False
+                self.result_message = reason or "No runnable command for Node.js runtime update."
+                self._log(self.result_message, "error")
+                return
+
+            self._run_command(cmd)
+            if self.success:
+                self.result_message = "Node.js runtime update command completed."
+                self._log(f"✓ {self.result_message}", "success")
+            else:
+                self.result_message = "Node.js runtime update command failed."
+                self._log(f"✗ {self.result_message}", "error")
+        except Exception as exc:
+            self.success = False
+            self.result_message = f"Node.js runtime update error: {exc}"
+            self._log(self.result_message, "error")
+        finally:
+            self._flush_logs()
+
+
+class NpmManager(PackageManager):
     """
-    Manages npm global packages. Wraps NpmExecutor with Qt signals.
+    Manages NPM global and project environments.
     """
     log_msg = Signal(str, str)          # text, tag
-    scan_done = Signal(dict, str)       # packages, error
-    updates_checked = Signal(dict, list)      # all_tags, checked_app_names
-    action_done = Signal(str, str, bool)  # name, action, success
+    log_batch = Signal(list)
+    update_done = Signal(str, str, bool) # env_path, pkg_name, success
+    remove_done = Signal(str, str, bool) # env_path, pkg_name, success
+    install_done = Signal(str, str, bool) # env_path, pkg_names, success
+    updates_checked = Signal(Environment)
+    runtime_update_done = Signal(str, bool, str) # env_path, success, message
 
     def __init__(self, config_mgr):
         super().__init__()
         self.config_mgr = config_mgr
-        self.installed_packages: dict[str, str] = {}
-        self._is_busy = False
-        self._task_queue: list[tuple[str, str]] = []
+        self._active_workers = []
+        self._load_envs()
 
-        # Build NpmApp objects from config
-        self.apps: Dict[str, NpmApp] = {}
-        self._load_apps()
+    @staticmethod
+    def _auto_env_identity_for_node_modules(path: str) -> tuple[str, str, list[str]]:
+        """Build type/name/tags for auto-discovered standalone node_modules."""
+        norm_path = os.path.normpath(path)
+        norm_key = os.path.normcase(norm_path)
+        home_modules = os.path.normcase(os.path.normpath(os.path.join(os.path.expanduser("~"), "node_modules")))
+        appdata_modules = os.path.normcase(
+            os.path.normpath(os.path.join(os.path.expandvars(r"%APPDATA%"), "npm", "node_modules"))
+        ) if os.name == "nt" else ""
 
-    def _load_apps(self):
-        """Load NpmApp objects from config dict."""
-        self.apps.clear()
-        for name, app_data in self.config_mgr.config.npm_apps.items():
-            self.apps[name] = NpmApp(
-                name=name,
-                display_name=app_data.get("display_name", name),
-                description=app_data.get("description", ""),
-                channel=app_data.get("channel", "latest"),
-                channels_available=app_data.get("channels_available", ["latest"]),
+        tags = ["auto", "standalone-node_modules"]
+        if norm_key == home_modules:
+            return "user_home_modules", "User Home node_modules", tags + ["location:home"]
+        if appdata_modules and norm_key == appdata_modules:
+            return "user_roaming_modules", "Roaming npm node_modules", tags + ["location:appdata"]
+
+        parent_dir = os.path.dirname(norm_path)
+        return "standalone_modules", f"node_modules @ {parent_dir}", tags + ["location:custom"]
+
+    def _ensure_auto_npm_envs(self) -> bool:
+        """Auto-register standalone user-level node_modules folders."""
+        env_cfg = getattr(self.config_mgr.config, "npm_environments", None)
+        if not isinstance(env_cfg, list):
+            return False
+
+        existing_keys = {
+            os.path.normcase(os.path.normpath(str(e.get("path", ""))))
+            for e in env_cfg
+            if isinstance(e, dict)
+        }
+        changed = False
+
+        for modules_path in NpmBaseHelper.discover_user_node_modules():
+            key = os.path.normcase(os.path.normpath(modules_path))
+            if key in existing_keys:
+                continue
+
+            env_type, env_name, tags = self._auto_env_identity_for_node_modules(modules_path)
+            self.config_mgr.add_npm_env(
+                path=modules_path,
+                name=env_name,
+                env_type=env_type,
+                tags=tags,
+                save=False,
             )
+            existing_keys.add(key)
+            changed = True
 
-    def _log(self, msg: str, tag: str = "system"):
-        self.log_msg.emit(msg, tag)
+        return changed
 
-    # ── Scan ──
+    def _load_envs(self):
+        old_envs = {os.path.normcase(os.path.normpath(e.path)): e for e in self.environments}
+        self.environments.clear()
+        
+        # 1. auto-setup Global Environment ONCE on first run
+        if not getattr(self.config_mgr.config, "npm_scanned_once", False):
+            import shutil
+            tags = []
+            if shutil.which("npm") or shutil.which("npm.cmd"):
+                tags.append("path")
+            self.config_mgr.add_npm_env(path="global", name="Global Packages", env_type="global", tags=tags, save=False)
+            self.config_mgr.config.npm_scanned_once = True
+            self.config_mgr.save_config()
 
-    def start_scan(self):
-        if self._is_busy:
-            return
-        self._is_busy = True
-
-        def do_scan():
-            pkgs, error = NpmExecutor.get_installed_packages(self._log)
-            self.scan_done.emit(pkgs, error)
-
-        threading.Thread(target=do_scan, daemon=True).start()
-
-    def on_scan_done(self, packages: dict[str, str], error: str):
-        """Call from UI thread after scan_done signal."""
-        self._is_busy = False
-        if error:
-            return
-
-        self.installed_packages = packages
-
-        # Discover new packages
-        for pkg, ver in packages.items():
-            if pkg not in self.apps:
-                detected = NpmExecutor.detect_channel(ver)
-                avail = ["latest"]
-                if detected != "latest":
-                    avail.append(detected)
-                self.apps[pkg] = NpmApp(
-                    name=pkg, version=ver, display_name=pkg,
-                    channel=detected, channels_available=avail,
-                    is_installed=True,
-                )
-
-        # Sync installed status
-        for name, app in self.apps.items():
-            if name in packages:
-                app.version = packages[name]
-                app.is_installed = True
-            else:
-                app.version = ""
-                app.is_installed = False
-
-        self._save_apps()
-
-    # ── Update Check ──
-
-    def check_updates(self, app_names: list[str] = None):
-        if app_names:
-            apps_to_check = [self.apps[name] for name in app_names if name in self.apps]
-        else:
-            apps_to_check = list(self.apps.values())
-            
-        if not apps_to_check:
-            return
-
-        def do_check():
-            if app_names:
-                self._log(f"Checking latest channel versions for {', '.join(app_names)}...", "system")
-            else:
-                self._log("Checking latest channel versions from npm registry...", "system")
+        auto_added = self._ensure_auto_npm_envs()
+        if auto_added:
+            self.config_mgr.save_config()
+        
+        # 2. loads from config
+        if hasattr(self.config_mgr.config, "npm_environments"):
+            for env_dict in self.config_mgr.config.npm_environments:
+                path = os.path.normpath(env_dict.get("path"))
+                name = env_dict.get("name", os.path.basename(path))
                 
-            all_tags = NpmExecutor.get_latest_versions(apps_to_check, log_callback=self._log)
-            self.updates_checked.emit(all_tags, app_names or [])
+                key = os.path.normcase(path)
+                
+                env_type = env_dict.get("type", "project")
+                tags = env_dict.get("tags", [])
+                
+                if key in old_envs:
+                    env = old_envs[key]
+                    env.path = path
+                    env.name = name
+                    env.type = env_type
+                    env.tags = tags
+                    self.environments.append(env)
+                else:
+                    self.environments.append(Environment(path=path, name=name, type=env_type, tags=tags))
 
-        threading.Thread(target=do_check, daemon=True).start()
+    def reload_envs(self):
+        self._load_envs()
 
-    def on_updates_checked(self, all_tags: dict[str, dict[str, str]]):
-        """Call from UI thread after updates_checked signal."""
-        update_found_count = 0
-        for name, app in self.apps.items():
-            if name in all_tags:
-                tags = all_tags[name]
-                target_tag = app.channel
-                registry_latest = tags.get(target_tag)
+    def _on_env_scanned(self, env: Environment):
+        for i, e in enumerate(self.environments):
+            if e.path == env.path:
+                self.environments[i] = env
+                break
+        self.env_scanned.emit(env)
 
-                if registry_latest:
-                    app.latest_version = registry_latest
-                    if registry_latest != app.version:
-                        update_found_count += 1
+    def scan_environment(self, env: Environment):
+        worker = NpmScanWorker(env, self.config_mgr)
+        worker.env_scanned.connect(self._on_env_scanned)
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        
+    def check_updates(self, env: Environment):
+        worker = NpmUpdateCheckWorker(
+            env,
+            registry_url=resolve_npm_registry_url(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.updates_checked.connect(self._on_updates_checked)
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
 
-                # Dynamic channel discovery
-                discovered = list(tags.keys())
-                channel_vers = dict(tags)
-                app.channel_versions = channel_vers
+    def _on_updates_checked(self, env: Environment):
+        for i, e in enumerate(self.environments):
+            if e.path == env.path:
+                self.environments[i] = env
+                break
+        self.updates_checked.emit(env)
 
-                others = [c for c in discovered if c != "latest"]
-                others.sort()
-                final_channels = (["latest"] if "latest" in discovered else []) + others
+    def update_package(self, pkg: Package, env: Environment, channel: str = "latest"):
+        worker = NpmActionWorker(
+            env,
+            "update",
+            pkg.name,
+            channel,
+            registry_url=resolve_npm_registry_url(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg.name, worker.success)])
 
-                if final_channels != app.channels_available:
-                    app.channels_available = final_channels
-                    if app.channel not in app.channels_available:
-                        app.channel = "latest" if "latest" in app.channels_available else (app.channels_available[0] if app.channels_available else "latest")
+    def remove_package(self, env: Environment, pkg_name: str):
+        worker = NpmActionWorker(
+            env,
+            "uninstall",
+            pkg_name,
+            None,
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.remove_done.emit(env.path, pkg_name, worker.success)])
 
-        self._save_apps()
-        if update_found_count > 0:
-            self._log(f"Found {update_found_count} update(s) available.", "success")
-        else:
-            self._log("All packages are up to date.", "success")
+    def install_package(self, env: Environment, pkg_names: str, channel: str = "latest"):
+        worker = NpmActionWorker(
+            env,
+            "install",
+            pkg_names,
+            channel,
+            registry_url=resolve_npm_registry_url(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.install_done.emit(env.path, pkg_names, worker.success)])
 
-    # ── Actions ──
-
-    def run_action(self, name: str, action: str, channel_override: str = None):
-        if self._is_busy:
-            self._task_queue.append((name, action))
-            self._log(f"Queued: {action} {name}", "system")
-            return
-
-        app = self.apps.get(name)
-        if not app:
-            return
-
-        channel = channel_override or app.channel
-        self._is_busy = True
-
-        def worker():
-            success = False
-            if action == "install":
-                success, _ = NpmExecutor.install_package(name, channel, self._log)
-            elif action == "update":
-                success, _ = NpmExecutor.update_package(name, channel, self._log)
-            elif action == "uninstall":
-                success, _ = NpmExecutor.uninstall_package(name, self._log)
-            elif action == "switch":
-                success, _ = NpmExecutor.switch_channel(name, channel, self._log)
-                if success:
-                    app.channel = channel
-            self.action_done.emit(name, action, success)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def on_action_done(self, name: str, action: str, success: bool):
-        self._is_busy = False
-        display = self.apps[name].display_name if name in self.apps else name
-        if success:
-            self._log(f"✓ {action.title()} {display} completed", "success")
-        else:
-            self._log(f"✗ {action.title()} {display} failed", "error")
-
-        if self._task_queue:
-            next_name, next_action = self._task_queue.pop(0)
-            self.run_action(next_name, next_action)
-
-    # ── Config Persistence ──
-
-    def _save_apps(self):
-        npm_apps = {}
-        for name, app in self.apps.items():
-            npm_apps[name] = {
-                "display_name": app.display_name,
-                "description": app.description,
-                "channel": app.channel,
-                "channels_available": app.channels_available,
-            }
-        self.config_mgr.config.npm_apps = npm_apps
-        self.config_mgr.save_config()
-
-    def add_app(self, app: NpmApp):
-        if app.name in self.apps:
-            existing = self.apps[app.name]
-            existing.display_name = app.display_name
-            existing.description = app.description
-            existing.channel = app.channel
-            for ch in app.channels_available:
-                if ch not in existing.channels_available:
-                    existing.channels_available.append(ch)
-        else:
-            self.apps[app.name] = app
-        self._save_apps()
-
-    def update_app(self, name: str, **kwargs):
-        if name in self.apps:
-            for key, value in kwargs.items():
-                if hasattr(self.apps[name], key):
-                    setattr(self.apps[name], key, value)
-            self._save_apps()
-
-    def remove_app(self, name: str):
-        if name in self.apps:
-            del self.apps[name]
-            self._save_apps()
+    def update_runtime(self, env: Environment):
+        worker = NpmRuntimeUpdateWorker(env)
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(
+            lambda: [
+                self._active_workers.remove(worker) if worker in self._active_workers else None,
+                self.runtime_update_done.emit(env.path, worker.success, worker.result_message),
+            ]
+        )
