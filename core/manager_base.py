@@ -29,6 +29,8 @@ class Package:
     is_missing: bool = False            # Ghost dep: required but not installed
     version_constraint: str = ""        # Constraint imposed by the parent (display only)
     norm_name: str = ""                 # Normalized name for matching
+    breaks_constraint: bool = False     # Latest version violates a version constraint from dependents
+    build_variant_mismatch: bool = False  # Installed version has local suffix (+cu132) that differs from latest
 
     @property
     def is_outdated(self) -> bool:

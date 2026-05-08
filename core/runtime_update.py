@@ -75,6 +75,105 @@ def is_newer_version(candidate: str, current: str) -> bool:
     return compare_versions(candidate, current) > 0
 
 
+def extract_local_version(version: str) -> str:
+    """Extract the local version suffix (+xxx) from a PEP 440 version string.
+
+    Returns the suffix including '+' (e.g. '+cu132', '+cpu'), or empty string if none.
+    """
+    m = re.search(r'(\+[^\s]+)', str(version or ""))
+    return m.group(1) if m else ""
+
+
+def has_build_variant_mismatch(installed_version: str, latest_version: str) -> bool:
+    """Check if updating would change the build variant (e.g. CUDA -> CPU).
+
+    True when the installed version has a local suffix (+cu132) but the latest
+    version has a different suffix or none at all — meaning they are different
+    build variants of the same package.
+    """
+    inst_local = extract_local_version(installed_version)
+    latest_local = extract_local_version(latest_version)
+    if not inst_local:
+        return False  # No local version tag on installed, so no mismatch concern
+    return inst_local != latest_local
+
+
+def _widen_version_for_tilde(version: str) -> str:
+    """~=1.4.0 → >=1.4.0, <1.5.0; ~=1.4 → >=1.4, <2.0"""
+    parts = [int(x) for x in re.findall(r"\d+", str(version or ""))]
+    if not parts:
+        return ""
+    # Drop last segment, increment the new last
+    if len(parts) >= 2:
+        parts[-2] += 1
+        parts[-1] = 0
+        upper = ".".join(str(x) for x in parts)
+        return upper
+    else:
+        # ~=1 → <2
+        parts[0] += 1
+        return str(parts[0])
+
+
+def check_version_satisfies_constraint(version: str, constraint: str) -> bool:
+    """Parse PEP 440-style constraint string and check if version satisfies it.
+
+    Handles >=, <=, >, <, ==, !=, ~= with comma-separated AND logic.
+    Returns True if ALL specifiers are satisfied (or constraint is empty).
+    """
+    if not constraint or not version:
+        return True
+
+    raw = str(constraint).strip()
+    # Strip outer parentheses
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1].strip()
+
+    # Split by comma for AND logic
+    specifiers = [s.strip() for s in raw.split(",") if s.strip()]
+    if not specifiers:
+        return True
+
+    for spec in specifiers:
+        # Match operator and version
+        m = re.match(r'(~=|>=|<=|!=|==|>|<)\s*([\d\w.]+)', spec)
+        if not m:
+            continue
+
+        op = m.group(1)
+        ver = m.group(2)
+
+        if op == "~=":
+            upper = _widen_version_for_tilde(ver)
+            if not upper:
+                continue
+            # >= ver AND < upper
+            if compare_versions(version, ver) < 0:
+                return False
+            if compare_versions(version, upper) >= 0:
+                return False
+        elif op == ">=":
+            if compare_versions(version, ver) < 0:
+                return False
+        elif op == "<=":
+            if compare_versions(version, ver) > 0:
+                return False
+        elif op == ">":
+            if compare_versions(version, ver) <= 0:
+                return False
+        elif op == "<":
+            if compare_versions(version, ver) >= 0:
+                return False
+        elif op == "==":
+            if compare_versions(version, ver) != 0:
+                return False
+        elif op == "!=":
+            if compare_versions(version, ver) == 0:
+                return False
+
+    return True
+
+
 def _runtime_api_url(runtime_kind: str) -> Optional[str]:
     if runtime_kind == "python":
         return PYTHON_EOL_API

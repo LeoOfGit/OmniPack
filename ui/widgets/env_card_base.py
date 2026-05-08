@@ -234,7 +234,8 @@ class BaseEnvCard(QFrame):
         if selection_mode == "select_all":
             for pkg in self.env.packages:
                 if pkg.has_update and not getattr(pkg, "is_missing", False):
-                    pkg.is_selected = True
+                    if not getattr(pkg, "breaks_constraint", False) and not getattr(pkg, "build_variant_mismatch", False):
+                        pkg.is_selected = True
         elif selection_mode == "clear_all":
             for pkg in self.env.packages:
                 if pkg.has_update and not getattr(pkg, "is_missing", False):

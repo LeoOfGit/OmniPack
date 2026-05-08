@@ -8,7 +8,7 @@ from core.utils import get_persistent_root
 
 @dataclass
 class AppConfig:
-    version: str = "4"
+    version: str = "5"
 
     # Pip
     pip_environments: List[dict] = field(default_factory=list)  # [{path, name, type}]

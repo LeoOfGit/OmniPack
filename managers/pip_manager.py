@@ -9,7 +9,9 @@ from core.network_proxy import merge_env_for_command
 from core.runtime_update import (
     build_python_runtime_update_command,
     check_runtime_patch_update,
+    check_version_satisfies_constraint,
     compare_versions,
+    has_build_variant_mismatch,
     parse_cycle,
     parse_python_version,
 )
@@ -222,6 +224,24 @@ class PipManager(PackageManager):
 
 
 
+def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
+    for pkg in pkgs:
+        if not pkg.has_update or not pkg.latest_version or pkg.is_missing:
+            continue
+        for parent_norm in pkg.required_by:
+            parent = dep_graph.get(parent_norm)
+            if not parent:
+                continue
+            for dep_req in parent.requires:
+                if dep_req.norm_name != pkg.norm_name or not dep_req.constraint:
+                    continue
+                if not check_version_satisfies_constraint(pkg.latest_version, dep_req.constraint):
+                    pkg.breaks_constraint = True
+                    break
+            if pkg.breaks_constraint:
+                break
+
+
 class ScanWorker(BaseCmdWorker):
     """Worker thread to run 'uv pip list' and 'outdated'"""
     
@@ -369,6 +389,8 @@ class ScanWorker(BaseCmdWorker):
                     pkg.latest_version = outdated_map[pkg.name]
                     pkg.has_update = True
                     count_updates += 1
+                    if has_build_variant_mismatch(pkg.version, pkg.latest_version):
+                        pkg.build_variant_mismatch = True
 
             # 4. Resolve dependency tree
             self._log(f"Resolving dependency tree for {self.env.name}...", "system")
@@ -376,6 +398,10 @@ class ScanWorker(BaseCmdWorker):
             if dep_data:
                 pkgs, dep_graph = merge_dependency_info(pkgs, dep_data)
                 self.env.dep_graph = dep_graph
+
+                # Compute breaks_constraint for packages with updates
+                _compute_breaks_constraint(pkgs, dep_graph)
+
                 top_level_count = sum(1 for p in pkgs if p.is_top_level and not p.is_missing)
                 missing_count = sum(1 for p in pkgs if p.is_missing)
                 self._log(f"Dependency tree: {top_level_count} top-level, {len(pkgs) - top_level_count} transitive"

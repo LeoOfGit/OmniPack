@@ -1,9 +1,27 @@
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QCheckBox, QPushButton, QFrame, QSizePolicy
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QCheckBox, QPushButton, QFrame, QSizePolicy, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from core.manager_base import Package
 from core.trace_logger import trace_event, is_trace_enabled
+
+
+def _build_constraint_warning(pkg: Package) -> str:
+    if not pkg.latest_version:
+        return ""
+    constraint_parts = sorted(set(getattr(pkg, "required_by", []) or []))
+    if constraint_parts:
+        return f"Latest version {pkg.latest_version} may break version constraints from:\n  " + "\n  ".join(constraint_parts)
+    return f"Latest version {pkg.latest_version} may break version constraints."
+
+
+def _build_variant_tooltip(pkg: Package) -> str:
+    from core.runtime_update import extract_local_version
+    inst_local = extract_local_version(pkg.version)
+    latest_local = extract_local_version(pkg.latest_version)
+    inst_display = inst_local if inst_local else "(none)"
+    latest_display = latest_local if latest_local else "(none)"
+    return f"Build variant may change: {inst_display} → {latest_display}\nUpgrading may switch to a different build type."
 
 
 class PackageCard(QFrame):
@@ -84,9 +102,24 @@ class PackageCard(QFrame):
             status_lbl.setObjectName("PkgMissingLabel")
             row_layout.addWidget(status_lbl)
         elif pkg.latest_version and pkg.has_update:
-            ver_text = f"{pkg.version} ➜ {pkg.latest_version}"
-            ver_lbl = QLabel(ver_text)
-            ver_lbl.setObjectName("PkgVersionUpdate")
+            if getattr(pkg, "breaks_constraint", False):
+                ver_text = f"{pkg.version} ➜ {pkg.latest_version} ⚠"
+                ver_lbl = QLabel(ver_text)
+                ver_lbl.setObjectName("PkgVersionUpdateWarning")
+                constraint_info = _build_constraint_warning(pkg)
+                if constraint_info:
+                    ver_lbl.setToolTip(constraint_info)
+            elif getattr(pkg, "build_variant_mismatch", False):
+                ver_text = f"{pkg.version} ➜ {pkg.latest_version} 🔀"
+                ver_lbl = QLabel(ver_text)
+                ver_lbl.setObjectName("PkgVersionUpdateVariant")
+                variant_info = _build_variant_tooltip(pkg)
+                if variant_info:
+                    ver_lbl.setToolTip(variant_info)
+            else:
+                ver_text = f"{pkg.version} ➜ {pkg.latest_version}"
+                ver_lbl = QLabel(ver_text)
+                ver_lbl.setObjectName("PkgVersionUpdate")
             row_layout.addWidget(ver_lbl)
         else:
             ver_lbl = QLabel(pkg.version)
@@ -124,13 +157,32 @@ class PackageCard(QFrame):
                 row_layout.addWidget(conf_btn)
             # Update Button (Only if update available)
             if pkg.has_update:
-                up_btn = QPushButton("⇧")
-                up_btn.setObjectName("PkgUpdateBtn")
-                up_btn.setCursor(Qt.PointingHandCursor)
-                up_btn.setToolTip(f"Update {pkg.name}")
-                target_channel = channel or "latest"
-                up_btn.clicked.connect(lambda: self.update_requested.emit(pkg.name, target_channel))
-                row_layout.addWidget(up_btn)
+                if getattr(pkg, "breaks_constraint", False):
+                    up_btn = QPushButton("⇧")
+                    up_btn.setObjectName("PkgUpdateBtnWarning")
+                    constraint_info = _build_constraint_warning(pkg)
+                    up_btn.setToolTip(f"Update {pkg.name} (⚠ may break version constraints)")
+                    up_btn.setCursor(Qt.PointingHandCursor)
+                    target_channel = channel or "latest"
+                    up_btn.clicked.connect(lambda: self._confirm_constraint_update(pkg, target_channel))
+                    row_layout.addWidget(up_btn)
+                elif getattr(pkg, "build_variant_mismatch", False):
+                    up_btn = QPushButton("⇧")
+                    up_btn.setObjectName("PkgUpdateBtnVariant")
+                    variant_info = _build_variant_tooltip(pkg)
+                    up_btn.setToolTip(f"Update {pkg.name} (🔀 build variant may change)")
+                    up_btn.setCursor(Qt.PointingHandCursor)
+                    target_channel = channel or "latest"
+                    up_btn.clicked.connect(lambda: self._confirm_variant_update(pkg, target_channel))
+                    row_layout.addWidget(up_btn)
+                else:
+                    up_btn = QPushButton("⇧")
+                    up_btn.setObjectName("PkgUpdateBtn")
+                    up_btn.setCursor(Qt.PointingHandCursor)
+                    up_btn.setToolTip(f"Update {pkg.name}")
+                    target_channel = channel or "latest"
+                    up_btn.clicked.connect(lambda: self.update_requested.emit(pkg.name, target_channel))
+                    row_layout.addWidget(up_btn)
             else:
                 spacer = QWidget()
                 spacer.setObjectName("ActionBtnSpacer")
@@ -185,6 +237,34 @@ class PackageCard(QFrame):
 
         checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
         self.set_checked(state == checked_val)
+
+    def _confirm_constraint_update(self, pkg, target_channel):
+        warning_text = _build_constraint_warning(pkg)
+        reply = QMessageBox.warning(
+            self,
+            "Constraint Warning",
+            f"Update {pkg.name} from {pkg.version} to {pkg.latest_version}?\n\n"
+            f"{warning_text}\n\n"
+            f"This may break packages that depend on {pkg.name}.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.update_requested.emit(pkg.name, target_channel)
+
+    def _confirm_variant_update(self, pkg, target_channel):
+        variant_info = _build_variant_tooltip(pkg)
+        reply = QMessageBox.warning(
+            self,
+            "Build Variant Change",
+            f"Update {pkg.name} from {pkg.version} to {pkg.latest_version}?\n\n"
+            f"{variant_info}\n\n"
+            f"This may switch to a different build type (e.g. CUDA → CPU).",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.update_requested.emit(pkg.name, target_channel)
 
     def _toggle_children(self):
         """Toggle expand/collapse of child dependencies."""
@@ -254,7 +334,9 @@ class PackageCard(QFrame):
                     is_missing=child_pkg.is_missing,
                     version_constraint=dep_req.constraint,
                     norm_name=child_pkg.norm_name,
-                    metadata=child_pkg.metadata
+                    metadata=child_pkg.metadata,
+                    breaks_constraint=getattr(child_pkg, "breaks_constraint", False),
+                    build_variant_mismatch=getattr(child_pkg, "build_variant_mismatch", False),
                 )
 
             card = PackageCard(child_pkg, depth=self.depth + 1, env=self.env)

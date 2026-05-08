@@ -153,6 +153,24 @@ QPushButton#PkgUpdateBtn:hover {
     background-color: #388060;
 }
 
+QPushButton#PkgUpdateBtnWarning {
+    background-color: #8a6d20;
+    color: #ffffff;
+}
+
+QPushButton#PkgUpdateBtnWarning:hover {
+    background-color: #a6842a;
+}
+
+QPushButton#PkgUpdateBtnVariant {
+    background-color: #1a5a7a;
+    color: #ffffff;
+}
+
+QPushButton#PkgUpdateBtnVariant:hover {
+    background-color: #2a7a9a;
+}
+
 /* 2. Theme: Danger / Remove (Red) */
 QPushButton#ActionBtnBatchRemove,
 QPushButton#DialogActionBtnRemove,
@@ -220,6 +238,8 @@ QPushButton#ActionBtnUpdate,
 QPushButton#ActionBtnRemove,
 QPushButton#ActionBtnInstall,
 QPushButton#PkgUpdateBtn,
+QPushButton#PkgUpdateBtnWarning,
+QPushButton#PkgUpdateBtnVariant,
 QPushButton#EnvRefreshBtn,
 QPushButton#EnvUpdateAllBtn,
 QPushButton#EnvRuntimeUpdateBtn,
@@ -234,6 +254,8 @@ QWidget#ActionBtnSpacer {
 /* Special font sizes for Icon Buttons (symbols) */
 QPushButton#ActionBtnUpdate,
 QPushButton#PkgUpdateBtn,
+QPushButton#PkgUpdateBtnWarning,
+QPushButton#PkgUpdateBtnVariant,
 QPushButton#ActionBtnInstall {
     font-size: 20px;
     font-weight: bold;
@@ -495,7 +517,17 @@ QLabel#PkgName {
 }
 
 QLabel#PkgVersionUpdate {
+    color: #4dd4ac;
+}
+
+QLabel#PkgVersionUpdateWarning {
+    color: #f0a040;
+    font-weight: bold;
+}
+
+QLabel#PkgVersionUpdateVariant {
     color: #4cc9f0;
+    font-weight: bold;
 }
 
 QLabel#PkgVersionBase {

@@ -187,7 +187,7 @@
 
     <!-- START OF CHINESE CONTENT -->
 <section class="lang-zh">
-<h1 id="omnipack-v4-用户指南-user-guide">OmniPack V4 用户指南 (User Guide)</h1>
+<h1 id="omnipack-V5-用户指南-user-guide">OmniPack V5 用户指南 (User Guide)</h1>
 <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
 <p>欢迎使用 <b>OmniPack</b>！愿本程序成为您管理 Python 虚拟环境与 Node.js 项目依赖的得力工具。</p>
 <hr>
@@ -218,11 +218,11 @@
 </li>
 <li><b>搜索框 (Search)</b>：实时过滤各个环境卡片中显示的包名，支持模糊匹配。
 </li>
-<li><b>待更新过滤 (Only Show Outdated)</b>：一键隐藏所有已是最新版本的包，让您可以集中处理需要升级的项目。
+<li><b>待更新过滤 (Only Show Outdated)</b>：一键隐藏所有已是最新版本的包，让您可以集中处理需要升级的项目。系统会智能评估每个更新的安全性：约束冲突（橙色 <code>⚠</code>）和构建变体切换（蓝色 <code>🔀</code>）的包不会被自动选中，需您手工确认。
 </li>
 <li><b>全局刷新 (Refresh All)</b>：重新扫描所有配置环境的本地包列表，并查询云端最新版本。
 </li>
-<li><b>批量更新 (Batch Update)</b>：对当前所有【已勾选】且【云端有新版本】的包发起并行升级指令。
+<li><b>批量更新 (Batch Update)</b>：对当前所有【已勾选】且【云端有新版本】的包发起并行升级指令（仅作用于包，不更新解释器/Node 运行时）。
 </li>
 <li><b>批量卸载 (Batch Remove)</b>：对所有当前勾选的包发起卸载指令（会有二次确认弹窗）。
 </li>
@@ -232,9 +232,19 @@
 <h3 id="12-环境主体卡片-env-canvas">1.2 环境主体卡片 (Env Canvas)</h3>
 <p>左侧区域，以卡片形式展示每一个 Python 虚拟环境或 Node.js 项目。</p>
 <ul>
-<li><b>环境信息</b>：每张卡片顶部显示环境的别名、物理路径和 Python/Node 版本。
+<li><b>环境信息</b>：每张卡片顶部显示环境别名、路径、运行时版本；当检测到同周期补丁更新时，会显示 <code>当前 -&gt; 最新</code>。
 </li>
-<li><b>操作按钮</b>：卡片内部集成“添加包”、“局部刷新”和“局部更新全部”等快捷入口。
+<li><b>操作按钮</b>：
+<ul>
+<li><code>↻</code>：刷新当前环境
+</li>
+<li><code>⇧</code>：仅更新当前环境内所有可更新的包
+</li>
+<li><code>Py</code> / <code>Nd</code>：更新环境运行时本体（Python/Node）
+</li>
+<li><code>+</code>：添加包
+</li>
+</ul>
 </li>
 <li><b>包列表</b>：列出当前环境下安装的所有包及其版本。
 </li>
@@ -305,7 +315,7 @@
 <li><b>引擎更新</b>：在  <code>Settings</code> -&gt; <code>Backend</code> 设置中，可以一键触发 <code>Check for Update</code> 异步检查并在线更新 <code>uv</code> 引擎，无需重装程序。
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="823"></div>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="720"></div>
 <h3 id="32-依赖查询与依赖树">3.2 依赖查询与依赖树</h3>
 <ul>
 <li><b>层级展开</b>：点击包名前的箭头，可无限向下展示该包引入的子依赖（Dependency Tree）。
@@ -313,7 +323,7 @@
 <li><b>顶层视图</b>：默认仅显示您主动安装的包，隐藏由于级联关系引入的被动安装包，极大减少视觉噪音。
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="455"></div>
 <h3 id="33-本地缓存驱动的包搜索">3.3 本地缓存驱动的包搜索</h3>
 <ul>
 <li><b>秒开响应</b>：OmniPack 内置了超过 50 万笔热门 PyPI 包的数据缓存。在主界面或“添加包”对话框搜索时，其响应速度堪比本地文件搜索。
@@ -322,6 +332,45 @@
 </li>
 </ul>
 <div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python 运行时补丁更新（解释器本体）</h3>
+<ul>
+<li><b>显示逻辑</b>：Python 虚拟环境卡片优先读取 <code>pyvenv.cfg</code> 的版本元数据，避免系统 Python 小版本升级后导致显示偏差。
+</li>
+<li><b>更新检测</b>：按同一 <code>major.minor</code> 周期检测最新补丁（例如 <code>3.14.3 -&gt; 3.14.4</code>）。
+</li>
+<li><b>更新入口</b>：当检测到可更新时，卡片显示 <code>Py</code> 按钮。点击后执行的是解释器/venv 升级流程，而非 <code>pip</code> 包升级。
+</li>
+<li><b>语义隔离</b>：<code>Py</code> 与 <code>⇧</code> 独立，前者更新运行时，后者更新包。
+</li>
+</ul>
+<h3 id="35-风险感知更新-risk-aware-updates">3.5 风险感知更新 (Risk-Aware Updates)</h3>
+<p>当您开启工具栏的 <b>&quot;Outdated&quot;</b> 过滤时，并非所有可更新的包都会被自动选中。系统会对以下两类高风险更新进行<b>智能拦截</b>：</p>
+<h4 id="约束冲突-橙色-标识">约束冲突（橙色 ⚠ 标识）</h4>
+<p>如果一个包的依赖者对其设定了版本上限（如 <code>sympy</code> 依赖 <code>mpmath&lt;1.4</code>），而最新版超过了该上限，那么该包：</p>
+<ul>
+<li>不会被 <code>Outdated</code> 自动勾选
+</li>
+<li>版本文本显示为橙黄色：<code>1.3.0 ➜ 1.4.1 ⚠</code>
+</li>
+<li>鼠标悬停时提示：&quot;Latest version may break version constraints from: sympy&quot;
+</li>
+<li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知具体的约束来源
+</li>
+</ul>
+<h4 id="构建变体切换-蓝色-标识">构建变体切换（蓝色 🔀 标识）</h4>
+<p>对于带有本地版本标识的包（如 <code>torchaudio 2.11.0.dev20260506+cu132</code>），当最新版不带该标识或标识不同时：</p>
+<ul>
+<li>不会被 <code>Outdated</code> 自动勾选
+</li>
+<li>版本文本显示为亮蓝色：<code>2.11.0.dev+cu132 ➜ 2.11.0 🔀</code>
+</li>
+<li>鼠标悬停时提示：&quot;Build variant may change: +cu132 → (none)&quot;
+</li>
+<li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知构建类型可能改变
+</li>
+</ul>
+<blockquote><b>手动操作不受限</b>：以上拦截仅针对 <code>Outdated</code> 过滤的自动选中行为。您仍可手动勾选这些包，或直接点击其 <code>⇧</code> 按钮并确认风险后进行更新。</blockquote>
+<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="400"></div>
 <hr>
 <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) 项目管理</h2>
 <h3 id="41-项目深度溯源">4.1 项目深度溯源</h3>
@@ -331,7 +380,7 @@
 <li><b>在线搜索</b>：从npm源搜索包，支持模糊匹配。
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="300"></div>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="250"></div>
 <h3 id="43-dist-tags-精准分发">4.3 Dist-Tags 精准分发</h3>
 <p>OmniPack 将 NPM 的 <code>Dist-Tags</code> 机制进行了 GUI 封装。</p>
 <ul>
@@ -341,6 +390,15 @@
 </li>
 </ul>
 <div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<h3 id="44-nodejs-运行时补丁更新">4.4 Node.js 运行时补丁更新</h3>
+<ul>
+<li><b>版本展示</b>：Node 环境卡片会显示当前 Node 版本；若检测到同周期补丁更新，会展示 <code>当前 -&gt; 最新</code>。
+</li>
+<li><b>更新入口</b>：当可更新时显示 <code>Nd</code> 按钮，执行 Node 运行时升级。
+</li>
+<li><b>注意区分</b>：<code>Nd</code> 更新 Node 运行时，<code>⇧</code> 更新 npm 包，二者互不替代。
+</li>
+</ul>
 <hr>
 <h2 id="5-设置中心-settings-center">5. 设置中心 (Settings Center)</h2>
 <p>设置对话框是 OmniPack 的后台核心，按功能划分为五个清晰的选项卡：</p>
@@ -432,7 +490,9 @@
 <p><b>Q: 为什么“状态栏”中的统计数量和卡片中看到的不一致？</b><br>A: 状态栏统计的是背景线程中所有已识别环境的总和，而卡片中显示的可能是经过“搜索框”过滤后的结果。</p>
 <p><b>Q: 如何让我的 Python 环境显示在 Settings 列表最前面？</b><br>A: 在 Settings 对话框中，点击环境项左侧的拖拽手柄，将其移动到第一行并保存即可。</p>
 <p><b>Q: “控制台”显示更新失败，但包版本却变了？</b><br>A: 这可能是由于底层工具（如 npm）在某些网络环境下报告了非零返回码。您可以点击对应卡片的“刷新”按钮查看环境的真实最新状态。</p>
-<p><b>Q: (Admin) 状态是什么触发的？</b><br>A: 当 OmniPack 检测到您正在安装包的环境位于系统保护目录（如 <code>C:\Program Files</code>）时，它会自动请求管理员提权。此时标题栏和状态栏均会显示 <code>(Admin)</code> 标记。</p>
+<p><b>Q: 为什么我看不到 <code>Py</code> / <code>Nd</code> 运行时更新按钮？</b><br>A: 仅当检测到“同周期补丁可更新”时才显示该按钮。若当前已是最新补丁，或网络/源不可用导致暂时无法确认最新版本，按钮会隐藏。</p>
+<p><b>Q: <code>⇧</code> 和 <code>Py</code> / <code>Nd</code> 有什么区别？</b><br>A: <code>⇧</code> 只更新环境内的包（pip/npm dependencies）；<code>Py</code> / <code>Nd</code> 更新的是解释器或 Node 运行时本体。</p>
+<p><b>Q: (Admin) 状态是什么触发的？</b><br>A: 在 Windows 上以源码运行时，OmniPack 默认会自动请求管理员提权（可通过 <code>OMNIPACK_REQUIRE_ADMIN=0</code> 环境变量关闭）。提权成功后标题栏会显示 <code>(Admin)</code> 标记。打包发布版本则根据实际运行环境自动判断。</p>
 <hr>
 <p><i>OmniPack - 您手边最专业的全平台包管理专家。</i></p>
 </section>
@@ -440,7 +500,7 @@
 
     <!-- START OF ENGLISH CONTENT -->
 <section class="lang-en">
-<h1 id="omnipack-v4-用户指南-user-guide">OmniPack V4 User Guide</h1>
+<h1 id="omnipack-V5-用户指南-user-guide">OmniPack V5 User Guide</h1>
 <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
 <p>Welcome to <b>OmniPack</b>! We hope this application becomes your go-to tool for managing Python virtual environments and Node.js project dependencies.</p>
 <hr>
@@ -471,11 +531,11 @@
 </li>
 <li><b>Search Box</b>: Real-time filtering of package names displayed in each environment card, supporting fuzzy matching.
 </li>
-<li><b>Filter Outdated</b>: Hide all up-to-date packages with one click, allowing you to focus on projects that need upgrading.
+<li><b>Only Show Outdated</b>: Easily hide all packages that are already at the latest version, allowing you to focus on projects that need updates. The system intelligently evaluates the security of each update: packages with dependency conflicts (orange ⚠) and build variant changes (blue 🌀) will not be automatically selected and will require your manual confirmation.
 </li>
 <li><b>Refresh All</b>: Rescan local package lists for all configured environments and query the latest versions online.
 </li>
-<li><b>Batch Update</b>: Initiate parallel upgrade commands for all currently [checked] packages that have newer versions available online.
+<li><b>Batch Update</b>: Initiate parallel upgrade commands for all currently [checked] packages that have [new versions available in the cloud] (applies only to packages, does not update the interpreter/Node runtime).
 </li>
 <li><b>Batch Remove</b>: Initiate uninstallation commands for all currently checked packages (a confirmation dialog will appear).
 </li>
@@ -485,9 +545,19 @@
 <h3 id="12-环境主体卡片-env-canvas">1.2 Environment Canvas (Env Canvas)</h3>
 <p>The left area displays each Python virtual environment or Node.js project as a card.</p>
 <ul>
-<li><b>Environment Info</b>: The top of each card shows the environment alias, physical path, and Python/Node version.
+<li><b>Environment Information</b>: Each card displays the environment alias, path, and runtime version at the top; when a patch update is detected, it will show <code>Current -&gt; Latest</code>.
 </li>
-<li><b>Action Buttons</b>: Cards integrate shortcuts such as &quot;Add Package,&quot; &quot;Local Refresh,&quot; and &quot;Local Update All.&quot;
+<li><b>Action Buttons</b>:
+<ul>
+<li><code>raquo</code>: Refresh the current environment
+</li>
+<li><code>⇧</code>: Only update all updateable packages within the current environment
+</li>
+<li><code>Py</code> / <code>Nd</code>: Update the environment runtime itself (Python/Node)
+</li>
+<li><code>+</code>: Add package
+</li>
+</ul>
 </li>
 <li><b>Package List</b>: Lists all packages installed in the current environment along with their versions.
 </li>
@@ -558,7 +628,7 @@
 <li><b>Engine Updates</b>: In <code>Settings</code> -&gt; <code>Backend</code>, you can trigger a <code>Check for Update</code> with one click to asynchronously check and update the <code>uv</code> engine online without reinstalling the application.
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="876"></div>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="720"></div>
 <h3 id="32-依赖查询与依赖树">3.2 Dependency Query and Tree</h3>
 <ul>
 <li><b>Hierarchical Expansion</b>: Click the arrow before a package name to infinitely expand and display the sub-dependencies introduced by that package (Dependency Tree).
@@ -566,7 +636,7 @@
 <li><b>Top-level View</b>: By default, only packages you explicitly installed are shown, while passively installed packages from cascading dependencies are hidden, significantly reducing visual noise.
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="455"></div>
 <h3 id="33-本地缓存驱动的包搜索">3.3 Local Cache-Driven Package Search</h3>
 <ul>
 <li><b>Instant Response</b>: OmniPack features built-in data caching for over 500,000 popular PyPI packages. When searching on the main interface or in the &quot;Add Package&quot; dialog, response speeds are comparable to local file searches.
@@ -575,6 +645,45 @@
 </li>
 </ul>
 <div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python Runtime Patch Updates (Interpreter)</h3>
+<ul>
+<li><b>Display Logic</b>: Python virtual environment cards prioritize reading version metadata from <code>pyvenv.cfg</code> to avoid discrepancies caused by system Python minor version upgrades.
+</li>
+<li><b>Update Detection</b>: Detects the latest patches per <code>major.minor</code> cycle (e.g., <code>3.14.3 -&gt; 3.14.4</code>).
+</li>
+<li><b>Update Entry</b>: When an update is detected, the <code>Py</code> button appears on the card. Clicking it executes the interpreter/venv upgrade process, not the <code>pip</code> package upgrade.
+</li>
+<li><b>Semantic Isolation</b>: <code>Py</code> and <code>⇧</code> are independent; the former updates the runtime, and the latter updates the packages.
+</li>
+</ul>
+<h3 id="35-风险感知更新-risk-aware-updates">3.5 Risk-Aware Updates</h3>
+<p>When you enable the <b>&quot;Outdated&quot;</b> filter in the toolbar, not all updateable packages will be automatically selected. The system performs <b>intelligent interception</b> for the following two types of high-risk updates:</p>
+<h4 id="约束冲突-橙色-标识">Constraint Conflicts (marked with orange ⚠)</h4>
+<p>If a dependent of a package has set a version limit (e.g., <code>sympy</code> depends on <code>mpmath&lt;1.4</code>), and the latest version exceeds that limit, then that package:</p>
+<ul>
+<li>Will not be automatically checked by <code>Outdated</code>
+</li>
+<li>Version text displayed in orange-yellow: <code>1.3.0 -&gt; 1.4.1 ⚠</code>
+</li>
+<li>Mouse hover tip: &quot;Latest version may break version constraints from: sympy&quot;
+</li>
+<li>Clicking the <code>⇧</code> button triggers a confirmation dialog informing you of the specific constraint source
+</li>
+</ul>
+<h4 id="构建变体切换-蓝色-标识">Build Variant Changes (marked with blue 🌀)</h4>
+<p>For packages with local version identifiers (e.g., <code>torchaudio 2.11.0.dev20260506+cu132</code>), when the latest version lacks this identifier or the identifier differs:</p>
+<ul>
+<li>Will not be automatically checked by <code>Outdated</code>
+</li>
+<li>Version text displayed in bright blue: <code>2.11.0.dev+cu132 -&gt; 2.11.0 🌀</code>
+</li>
+<li>Mouse hover tip: &quot;Build variant may change: +cu132 -&gt; (none)&quot;
+</li>
+<li>Clicking the <code>⇧</code> button triggers a confirmation dialog informing you that the build type might change
+</li>
+</ul>
+<blockquote><b>Manual Operation Limits</b>: The above interception only applies to the automatic selection behavior of the <code>Outdated</code> filter. You can still manually select these packages, or directly click their <code>⇧</code> button and confirm the risk to proceed with the update.</blockquote>
+<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="400"></div>
 <hr>
 <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) Project Management</h2>
 <h3 id="41-项目深度溯源">4.1 Deep Project Tracing</h3>
@@ -584,7 +693,7 @@
 <li><b>Online Search</b>: Search for packages from the NPM registry with support for fuzzy matching.
 </li>
 </ul>
-<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="300"></div>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="250"></div>
 <h3 id="43-dist-tags-精准分发">4.3 Precise Distribution via Dist-Tags</h3>
 <p>OmniPack provides a GUI wrapper for NPM&#x27;s <code>Dist-Tags</code> mechanism.</p>
 <ul>
@@ -594,6 +703,15 @@
 </li>
 </ul>
 <div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<h3 id="44-nodejs-运行时补丁更新">4.4 Node.js Runtime Patch Updates</h3>
+<ul>
+<li><b>Version Display</b>: The Node environment card will display the current Node version; if a patch update is detected, it will show <code>Current -&gt; Latest</code>.
+</li>
+<li><b>Update Entry</b>: When an update is available, the <code>Nd</code> button appears, executing a Node runtime upgrade.
+</li>
+<li><b>Note the Distinction</b>: <code>Nd</code> updates the Node runtime, while <code>⇧</code> updates npm packages; the two are mutually exclusive.
+</li>
+</ul>
 <hr>
 <h2 id="5-设置中心-settings-center">5. Settings Center</h2>
 <p>The Settings dialog is the backend core of OmniPack, divided into five clear tabs by function:</p>
@@ -685,7 +803,9 @@
 <p><b>Q: Why is the count in the &quot;Status Bar&quot; different from what I see in the cards?</b><br>A: The status bar counts the total of all identified environments in the background thread, whereas the cards might show results filtered by the &quot;Search Box.&quot;</p>
 <p><b>Q: How can I make my Python environment appear at the top of the Settings list?</b><br>A: In the Settings dialog, click and hold the drag handle on the left side of the environment item, move it to the first row, and save.</p>
 <p><b>Q: The &quot;Console&quot; shows an update failure, but the package version has changed?</b><br>A: This might happen if the underlying tool (like NPM) reports a non-zero exit code in certain network environments. You can click the &quot;Refresh&quot; button on the corresponding card to see the actual updated status of the environment.</p>
-<p><b>Q: What triggers the (Admin) status?</b><br>A: When OmniPack detects that the environment where you are installing packages is located in a system-protected directory (e.g., <code>C:\Program Files</code>), it automatically requests administrator elevation. At this point, both the title bar and status bar will display the <code>(Admin)</code> marker.</p>
+<p><b>Q: Why can&#x27;t I see the <code>Py</code> / <code>Nd</code> runtime update button?</b><br>A: This button only appears when a &quot;patch update is available.&quot; If the current version is already the latest patch, or if the network/source is unavailable, temporarily preventing verification of the latest version, the button will be hidden.</p>
+<p><b>Q: What is the difference between <code>⇧</code> and <code>Py</code> / <code>Nd</code>?</b><br>A: <code>⇧</code> only updates packages within the environment (pip/npm dependencies); <code>Py</code> / <code>Nd</code> updates the interpreter or Node runtime itself.</p>
+<p><b>Q: What triggers the (Admin) status?</b><br>A: When running from source on Windows, OmniPack automatically requests administrator privileges by default (this can be disabled via the <code>OMNIPACK_REQUIRE_ADMIN=0</code> environment variable). Once permissions are granted, the <code>(Admin)</code> label will appear in the title bar. For packaged releases, it is determined automatically based on the actual runtime environment.</p>
 <hr>
 <p><i>OmniPack - Your most professional cross-platform package management expert at your fingertips.</i></p>
 </section>

@@ -51,10 +51,18 @@ More than just `npm install`. OmniPack dynamically pulls **Dist-Tags** from the 
 ![OmniPack Dependency Tree](./resources/SelectTag.png)
 
 ### 🧭 Runtime Patch Awareness & Update
-OmniPack now distinguishes **package updates** from **runtime updates**:
+OmniPack distinguishes **package updates** from **runtime updates**:
 - **Accurate runtime version display**: cards display Python/Node runtime version per environment, and Python venv cards prioritize `pyvenv.cfg` metadata to avoid being confused by a newly patched system interpreter.
 - **Patch update detection**: for Python (`3.14.x`) and Node (`25.x`), OmniPack checks the latest patch in the same cycle and shows `current -> latest` directly on cards.
 - **Dedicated runtime update action**: runtime update uses a separate card action (`Py` / `Nd`), while `⇧` remains **package update only**.
+
+### ⛑️ Safe Update Intelligence: Constraint-Aware & Variant-Aware
+OmniPack knows which updates are **safe** and which need a **second look**.
+- **Constraint-Aware Auto-Selection**: When "Outdated" is checked, packages whose latest version violates dependent version constraints (e.g., mpmath `1.4.1` breaks sympy's `<1.4` rule) are **not auto-selected**. A visual `⚠` indicator explains why.
+- **Build Variant Detection**: Automatically recognizes PEP 440 local version suffixes (`+cu132`, `+cpu`, `+rocm5.6`). If updating would switch your package between different hardware builds (CUDA → CPU), a `🔀` indicator warns you.
+- **Confirmation dialogs**: Clicking update on a flagged package triggers a detailed risk dialog. You can still proceed — but only after being fully informed.
+
+![OmniPack Version Limits](./resources/VersionLimits.png)
 
 ### ⚡ Compiler-Grade Performance: Smooth Native Experience
 Built with PySide6 and support for [Nuitka](https://nuitka.net/) compilation into a C++ level native single executable (`.exe` / ELF binary). It doesn't just respond instantly; it also supports one-click mirror source switching.
