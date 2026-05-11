@@ -8,6 +8,7 @@ from typing import Optional
 
 from core.network_proxy import urlopen, merge_env_for_command
 from core.utils import find_system_pythons, get_python_version
+from version import __version__
 
 
 PYTHON_EOL_API = "https://endoflife.date/api/python.json"
@@ -199,7 +200,7 @@ def _fetch_runtime_index(runtime_kind: str, proxy_settings=None, timeout: int = 
         with urlopen(
             url,
             timeout=timeout,
-            headers={"User-Agent": "OmniPack/1.0"},
+            headers={"User-Agent": f"OmniPack/{__version__}"},
             proxy_settings=proxy_settings or {},
             force_proxy=True,
         ) as response:
@@ -398,6 +399,49 @@ def check_runtime_patch_update(runtime_kind: str, current_version: str, proxy_se
     return cycle, latest, is_newer_version(latest, current), ""
 
 
+def check_runtime_major_update(runtime_kind: str, current_version: str, proxy_settings=None) -> tuple[str, bool, str]:
+    """Check if a newer major version cycle is available.
+
+    Only meaningful for Node.js (Python major upgrades require venv rebuilds).
+    Returns (latest_major_version, has_update, error).
+    """
+    if runtime_kind != "node":
+        return "", False, ""
+
+    current = _parse_numeric_version(current_version)
+    if not current:
+        return "", False, "Current version unavailable."
+
+    current_cycle = parse_cycle(runtime_kind, current)
+    if not current_cycle or not current_cycle.isdigit():
+        return "", False, "Unable to infer version cycle."
+
+    rows, err = _fetch_runtime_index(runtime_kind, proxy_settings=proxy_settings)
+    if err:
+        return "", False, err
+
+    current_major = int(current_cycle)
+    best_version = ""
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_cycle = str(row.get("cycle", "")).strip()
+        if not row_cycle.isdigit():
+            continue
+        if int(row_cycle) <= current_major:
+            continue
+        row_latest = _parse_numeric_version(str(row.get("latest", "")).strip())
+        if not row_latest:
+            continue
+        if compare_versions(row_latest, best_version) > 0:
+            best_version = row_latest
+
+    if best_version and is_newer_version(best_version, current):
+        return best_version, True, ""
+
+    return "", False, ""
+
+
 def resolve_venv_root(env_path: str) -> str:
     norm = os.path.normpath(str(env_path or ""))
     if not norm:
@@ -410,7 +454,17 @@ def resolve_venv_root(env_path: str) -> str:
     return parent
 
 
-def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str) -> tuple[Optional[list[str]], str]:
+def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str) -> tuple[Optional[list[list[str]]], str]:
+    """Build command(s) to update the Python runtime.
+
+    Returns a tuple of (commands, error_reason).
+    Each command in the list is run sequentially.
+
+    System Python:   single winget command
+    Venv (Windows):  two commands — winget update system Python first,
+                     then py -X.Y -m venv --upgrade
+    Venv (other):    single pythonX.Y -m venv --upgrade command
+    """
     cycle = str(cycle or "").strip()
     if not cycle:
         return None, "Cannot update Python: missing major.minor cycle."
@@ -421,7 +475,7 @@ def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str
         if not shutil.which("winget"):
             return None, "winget is required to update system Python."
         package_id = f"Python.Python.{cycle}"
-        return [
+        return [[
             "winget",
             "upgrade",
             "--id",
@@ -430,7 +484,7 @@ def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str
             "--silent",
             "--accept-package-agreements",
             "--accept-source-agreements",
-        ], ""
+        ]], ""
 
     venv_root = resolve_venv_root(env_path)
     if not venv_root:
@@ -440,15 +494,39 @@ def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str
         py_launcher = shutil.which("py")
         if not py_launcher:
             return None, "Python launcher 'py' is required to upgrade venv interpreter."
-        return [py_launcher, f"-{cycle}", "-m", "venv", "--upgrade", venv_root], ""
+
+        commands: list[list[str]] = []
+
+        # Step 1: Update the system Python for this cycle via winget.
+        # This ensures py -X.Y has the latest patch to upgrade the venv against.
+        if shutil.which("winget"):
+            package_id = f"Python.Python.{cycle}"
+            commands.append([
+                "winget",
+                "upgrade",
+                "--id",
+                package_id,
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ])
+        else:
+            # winget not available — log a warning but still try venv upgrade.
+            # The venv will relink against whatever py -X.Y currently resolves to.
+            pass
+
+        # Step 2: Upgrade the venv to relink against the (now current) system Python.
+        commands.append([py_launcher, f"-{cycle}", "-m", "venv", "--upgrade", venv_root])
+        return commands, ""
 
     py_cmd = shutil.which(f"python{cycle}")
     if not py_cmd:
         return None, f"python{cycle} is required to upgrade this virtual environment."
-    return [py_cmd, "-m", "venv", "--upgrade", venv_root], ""
+    return [[py_cmd, "-m", "venv", "--upgrade", venv_root]], ""
 
 
-def build_node_runtime_update_command(cycle: str) -> tuple[Optional[list[str]], str]:
+def build_node_runtime_update_command(cycle: str, is_major_upgrade: bool = False) -> tuple[Optional[list[list[str]]], str]:
     if os.name != "nt":
         return None, "Node runtime auto-update is currently supported on Windows only."
     if not shutil.which("winget"):
@@ -459,14 +537,54 @@ def build_node_runtime_update_command(cycle: str) -> tuple[Optional[list[str]], 
         return None, "Cannot update Node.js: missing major version."
 
     major = int(major_text)
-    package_id = "OpenJS.NodeJS.LTS" if major % 2 == 0 else "OpenJS.NodeJS"
-    return [
+    if is_major_upgrade:
+        # Always use Current channel for major upgrades — new majors appear
+        # in Current first and may not be promoted to LTS yet (e.g. v26).
+        package_id = "OpenJS.NodeJS"
+    else:
+        package_id = "OpenJS.NodeJS.LTS" if major % 2 == 0 else "OpenJS.NodeJS"
+    action = "install" if is_major_upgrade else "upgrade"
+    return [[
         "winget",
-        "upgrade",
+        action,
         "--id",
         package_id,
         "--exact",
         "--silent",
         "--accept-package-agreements",
         "--accept-source-agreements",
-    ], ""
+    ]], ""
+
+
+def detect_nvm() -> tuple[bool, str]:
+    """Check if nvm-windows is available.
+
+    Returns (is_available, nvm_path).
+    """
+    nvm = shutil.which("nvm")
+    if nvm:
+        return True, nvm
+    # nvm-windows default install path
+    default_path = r"C:\Program Files\nvm\nvm.exe"
+    if os.path.isfile(default_path):
+        return True, default_path
+    return False, ""
+
+
+def build_node_runtime_update_command_nvm(
+    cycle: str, target_version: str = ""
+) -> tuple[Optional[list[list[str]]], str]:
+    """Build an nvm-based Node.js update command.
+
+    Uses nvm-windows to install the target version. If target_version is empty,
+    installs the latest release in the given major cycle.
+    """
+    ok, nvm_path = detect_nvm()
+    if not ok:
+        return None, "nvm-windows not found."
+
+    version_arg = str(target_version or "").strip() or str(cycle).strip()
+    if not version_arg:
+        return None, "Cannot update Node.js: missing target version."
+
+    return [[nvm_path, "install", version_arg]], ""

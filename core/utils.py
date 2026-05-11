@@ -4,12 +4,60 @@ import platform
 import subprocess
 import sys
 import re
+import tempfile
 from pathlib import Path
+
+
+def _get_real_exe_path():
+    """Return the real path of the running executable.
+
+    For Nuitka onefile builds, sys.executable points to the temp extraction
+    directory, NOT the original .exe on disk.  The Nuitka-recommended way to
+    find the original executable is sys.argv[0].
+
+    We also try GetModuleFileNameW as a secondary check on Windows, but note
+    that in Nuitka onefile mode it may also return a temp path, so we prefer
+    sys.argv[0] when it resolves to an existing file.
+    """
+    # 1. Nuitka onefile: sys.argv[0] reliably points to the original .exe
+    if sys.argv and sys.argv[0]:
+        candidate = os.path.abspath(sys.argv[0])
+        if os.path.isfile(candidate):
+            return candidate
+
+    # 2. Windows: GetModuleFileNameW (with a properly-sized buffer)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(32768)
+            n = ctypes.windll.kernel32.GetModuleFileNameW(None, buf, 32768)
+            if n > 0:
+                return os.path.abspath(buf.value)
+        except Exception:
+            pass
+
+    return os.path.abspath(sys.executable)
+
+
+def _is_frozen():
+    """Returns True when running as a compiled executable (PyInstaller or Nuitka)."""
+    if getattr(sys, "frozen", False):  # PyInstaller
+        return True
+    # Nuitka: the __compiled__ variable is injected into every compiled module.
+    if "__compiled__" in globals():
+        return True
+    # Nuitka onefile fallback: __file__ is extracted to a temp directory
+    file_dir = os.path.abspath(os.path.dirname(__file__))
+    temp_dir = os.path.abspath(tempfile.gettempdir())
+    return file_dir.lower().startswith(temp_dir.lower())
+
 
 def get_app_root():
     """
     Returns the root directory of the application source/resources.
-    In a frozen environment, this points to the bundle directory.
+    In both development and frozen (Nuitka/PyInstaller) environments, 
+    this reliably points to the directory containing 'resources', 'ui', etc.
+    by calculating it relative to this source file.
     """
     return Path(__file__).parent.parent.absolute()
 
@@ -37,23 +85,24 @@ def get_persistent_root():
     """
     app_name = "OmniPack"
     if sys.platform == "win32":
-        if not getattr(sys, "frozen", False):
+        if not _is_frozen():
             # Development mode: always use the root project folder directly.
             return get_app_root()
 
+        exe_dir = os.path.dirname(_get_real_exe_path())
+
         override = os.environ.get("OMNIPACK_PORTABLE_CONFIG", "").strip().lower()
         if override in {"1", "true", "yes", "on"}:
-            return Path(sys.executable).parent.absolute()
+            return Path(exe_dir)
         if override in {"0", "false", "no", "off"}:
             root = os.environ.get("APPDATA", os.path.expanduser("~\\AppData\\Roaming"))
             return Path(root) / app_name
 
-        exe_dir = str(Path(sys.executable).parent.absolute())
+        exe_key = os.path.normcase(os.path.normpath(exe_dir))
         program_roots = [
             os.environ.get("ProgramFiles", "C:\\Program Files"),
             os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"),
         ]
-        exe_key = os.path.normcase(os.path.normpath(exe_dir))
         under_program_files = False
         for root in program_roots:
             if not root:

@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from core.manager_base import Environment, Package
 from core.network_proxy import merge_env_for_command
 from core.npm_spec import split_npm_spec
+from core.runtime_update import detect_nvm
 from managers.npm_manager import NpmManager, NpmBaseHelper, resolve_npm_registry_url
 from ui.panels.base_panel import BasePanel
 from core.trace_logger import trace_event, is_trace_enabled, get_trace_path
@@ -61,7 +62,7 @@ class NpmPanel(BasePanel):
         self.npm_mgr = NpmManager(config_mgr)
         self._env_cards = {}
         self._update_queue = []
-        self._update_running = False
+        self._active_update_envs = set()
         self._outdated_filter_enabled = False
         self._dist_tags_workers = []
 
@@ -84,6 +85,7 @@ class NpmPanel(BasePanel):
         self.npm_mgr.env_scanned.connect(self._on_env_scanned)
         self.npm_mgr.updates_checked.connect(self._on_updates_checked)
         self.npm_mgr.update_done.connect(self._on_update_done)
+        self.npm_mgr.batch_update_done.connect(self._on_batch_update_done)
         self.npm_mgr.remove_done.connect(self._on_remove_done)
         self.npm_mgr.install_done.connect(self._on_install_done)
         self.npm_mgr.runtime_update_done.connect(self._on_runtime_update_done)
@@ -187,22 +189,68 @@ class NpmPanel(BasePanel):
             return
 
         current_ver = getattr(env, "runtime_version", "") or "Unknown"
-        latest_ver = getattr(env, "runtime_latest_version", "") or "latest patch"
-        if not getattr(env, "runtime_has_update", False):
+        is_major = bool(getattr(env, "runtime_has_major_update", False))
+        is_patch = bool(getattr(env, "runtime_has_update", False))
+        latest_ver = (
+            getattr(env, "runtime_major_latest_version", "")
+            or getattr(env, "runtime_latest_version", "")
+            or "latest"
+        )
+
+        if not is_major and not is_patch:
             self._log(f"No Node.js runtime update available (triggered by {env.name}).", "system")
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Runtime Update",
-            f"Update Node.js runtime?\n\n{current_ver} -> {latest_ver}\n\nTriggered by environment: {env.name}\nThis does not update npm packages.",
-            QMessageBox.Yes | QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
+        nvm_ok, _ = detect_nvm()
 
-        self.console.log_divider(f"RUNTIME UPDATE (Node.js) via {env.name}")
-        self.npm_mgr.update_runtime(env)
+        if is_major:
+            title = "Confirm Major Version Upgrade"
+            base_msg = (
+                f"Upgrade Node.js major version?\n\n"
+                f"{current_ver} → {latest_ver}\n\n"
+                f"⚠ This is a major version upgrade. While Node.js generally maintains\n"
+                f"backward compatibility, some packages may be affected.\n\n"
+                f"Triggered by environment: {env.name}"
+            )
+        else:
+            title = "Confirm Runtime Update"
+            base_msg = (
+                f"Update Node.js runtime?\n\n"
+                f"{current_ver} -> {latest_ver}\n\n"
+                f"Triggered by environment: {env.name}\n"
+                f"This does not update npm packages."
+            )
+
+        use_nvm = False
+        if nvm_ok:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(title)
+            msg_box.setText(
+                base_msg + "\n\nnvm-windows is detected. How would you like to update?\n\n"
+                "• nvm — use nvm to install the new version (keeps nvm management)\n"
+                "• winget — use winget to install directly (may bypass nvm)"
+            )
+            nvm_btn = msg_box.addButton("nvm", QMessageBox.AcceptRole)
+            winget_btn = msg_box.addButton("winget", QMessageBox.ActionRole)
+            cancel_btn = msg_box.addButton("Cancel", QMessageBox.RejectRole)
+            msg_box.exec()
+            clicked = msg_box.clickedButton()
+            if clicked == cancel_btn:
+                return
+            use_nvm = (clicked == nvm_btn)
+        else:
+            reply = QMessageBox.question(
+                self,
+                title,
+                base_msg,
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        method = "nvm" if use_nvm else "winget"
+        self.console.log_divider(f"RUNTIME UPDATE (Node.js) via {env.name} [{method}]")
+        self.npm_mgr.update_runtime(env, use_nvm=use_nvm)
 
     def _on_runtime_update_done(self, env_path: str, success: bool, message: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
@@ -227,49 +275,56 @@ class NpmPanel(BasePanel):
             self.console.log_divider(f"UPDATE ALL in {env.name}")
             names = [p.name for p in outdated]
             self._log(f"Updating: {', '.join(names)}", "system")
-            # For NPM, channel is determined by metadata or defaults to "latest"
             for pkg in outdated:
                 channel = pkg.metadata.get("channel", "latest") if getattr(pkg, "metadata", None) else "latest"
                 self._update_queue.append((pkg.name, channel, env))
-            
-            if not self._update_running:
-                self._process_update_queue()
+            self._drain_update_queue()
 
     def _start_pkg_update(self, pkg_name: str, channel: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
         if env:
             self.console.log_divider(f"UPDATE {pkg_name}@{channel}")
             self._update_queue.append((pkg_name, channel, env))
-            if not self._update_running:
-                self._process_update_queue()
+            self._drain_update_queue()
 
-    def _process_update_queue(self):
+    def _drain_update_queue(self):
+        """Group pending updates by environment and launch parallel batch workers."""
         if not self._update_queue:
-            self._update_running = False
             return
-        self._update_running = True
-        pkg_name, channel, env = self._update_queue.pop(0)
-        
-        # Package to pass to NpmManager (it needs Package object)
-        pkg = next((p for p in env.packages if p.name == pkg_name), None)
-        if not pkg:
-             # create a dummy
-             pkg = Package(name=pkg_name, version="")
 
-        self.npm_mgr.update_package(pkg, env, channel=channel)
-
-    def _on_update_done(self, env_path: str, pkg_name: str, success: bool):
         if not hasattr(self, '_affected_envs_update'):
             self._affected_envs_update = set()
-        self._affected_envs_update.add(env_path)
 
-        if self._update_queue:
-            self._process_update_queue()
-        else:
-            self._update_running = False
+        # Group by environment path: key -> list of (name, channel)
+        env_specs = {}
+        env_objects = {}
+        for pkg_name, channel, env in self._update_queue:
+            key = self._path_key(env.path)
+            env_specs.setdefault(key, []).append((pkg_name, channel))
+            env_objects[key] = env
+        self._update_queue.clear()
+
+        for key, pkg_specs in env_specs.items():
+            env = env_objects[key]
+            if env.path in self._active_update_envs:
+                self._update_queue.extend((n, c, env) for n, c in pkg_specs)
+                continue
+            self._active_update_envs.add(env.path)
+            self._affected_envs_update.add(env.path)
+            self.npm_mgr.batch_update_packages(env, pkg_specs)
+
+    def _on_batch_update_done(self, env_path: str, pkg_specs: list, success: bool):
+        self._active_update_envs.discard(env_path)
+        if not self._update_queue and not self._active_update_envs:
             for p in self._affected_envs_update:
                 self._refresh_single_env(p)
             self._affected_envs_update.clear()
+        elif self._update_queue:
+            self._drain_update_queue()
+
+    def _on_update_done(self, env_path: str, pkg_name: str, success: bool):
+        """Legacy single-package update handler — delegates to batch path."""
+        self._on_batch_update_done(env_path, [(pkg_name, "latest")], success)
 
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
@@ -406,25 +461,27 @@ class NpmPanel(BasePanel):
     # ── Batch Update ─────────────────────────────────────────────────────
 
     def _batch_update(self):
-        update_list = []
-        for env_path, card in self._env_cards.items():
+        env_packages = {}
+        for _env_path, card in self._env_cards.items():
             env = card.env
             if getattr(env, "is_scanned", False):
+                specs = []
                 for pkg in env.packages:
                     if getattr(pkg, "is_selected", False) and getattr(pkg, "has_update", False):
                         channel = pkg.metadata.get("channel", "latest") if getattr(pkg, "metadata", None) else "latest"
-                        update_list.append((pkg.name, channel, env))
+                        specs.append((pkg.name, channel))
+                if specs:
+                    env_packages[env] = specs
 
-        if not update_list:
+        if not env_packages:
             self._log("No updatable packages selected.", "system")
             return
 
-        self.console.log_divider(f"BATCH UPDATE ({len(update_list)} packages)")
-        self._log(f"Batch updating: {', '.join(n for n, _, _ in update_list)}", "system")
-
-        self._update_queue.extend(update_list)
-        if not self._update_running:
-            self._process_update_queue()
+        total = sum(len(v) for v in env_packages.values())
+        self.console.log_divider(f"BATCH UPDATE ({total} packages across {len(env_packages)} environments)")
+        for env, specs in env_packages.items():
+            self._update_queue.extend([(name, ch, env) for name, ch in specs])
+        self._drain_update_queue()
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 

@@ -17,6 +17,8 @@ from core.network_proxy import merge_env_for_command
 from core.npm_spec import has_explicit_tag
 from core.runtime_update import (
     build_node_runtime_update_command,
+    build_node_runtime_update_command_nvm,
+    check_runtime_major_update,
     check_runtime_patch_update,
     parse_cycle,
     parse_node_version,
@@ -252,14 +254,7 @@ class NpmScanWorker(BaseCmdWorker):
             node_ver = ""
             if node_path:
                 ver_cmd = [node_path, "--version"]
-                self._log(f"> {' '.join(ver_cmd)}", "cmd")
-                ver_res = subprocess.run(
-                    ver_cmd,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                    env=merge_env_for_command(ver_cmd, proxy_settings=self.proxy_settings),
-                )
+                ver_res = self._run_command(ver_cmd, capture_output=True)
                 raw_node_ver = (ver_res.stdout or "").strip() or (ver_res.stderr or "").strip()
                 node_ver = parse_node_version(raw_node_ver)
                 if raw_node_ver:
@@ -279,6 +274,17 @@ class NpmScanWorker(BaseCmdWorker):
                 )
             elif runtime_err and node_ver:
                 self._log(f"Node runtime update check skipped: {runtime_err}", "stderr")
+
+            major_latest_ver, runtime_has_major_update, major_err = check_runtime_major_update(
+                "node",
+                node_ver,
+                proxy_settings=self.proxy_settings,
+            )
+            if runtime_has_major_update:
+                self._log(
+                    f"Node major version upgrade available: {node_ver} -> {major_latest_ver}",
+                    "system",
+                )
 
             is_global = (self.env.type == "global" or self.env.path == "global")
             
@@ -310,18 +316,10 @@ class NpmScanWorker(BaseCmdWorker):
                     if not os.path.exists(os.path.join(cwd, "package.json")):
                         self._log(f"Warning: No package.json found in {cwd}. Is this an NPM project directory?", "error")
 
-                self._log(f"> {' '.join(cmd)}", "cmd")
-                res = subprocess.run(
-                    cmd,
-                    cwd=cwd if not is_global else None,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                    env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
-                )
-                
-                output = res.stdout.strip()
-                
+                res = self._run_command(cmd, cwd=cwd if not is_global else None, capture_output=True)
+
+                output = (res.stdout or "").strip()
+
                 # npm list might return 1 if there are missing peer dependencies, but stdout still has valid JSON
                 if output:
                     try:
@@ -336,7 +334,7 @@ class NpmScanWorker(BaseCmdWorker):
                                     meta["channels_available"] = ["latest"]
                                     meta["display_name"] = name
                                     meta["description"] = ""
-                                    
+
                                     # Restore saved display names / descriptions if any
                                     if is_global and hasattr(self.config_mgr.config, "npm_apps"):
                                         saved_app = self.config_mgr.config.npm_apps.get(name)
@@ -354,10 +352,7 @@ class NpmScanWorker(BaseCmdWorker):
                                     ))
                     except json.JSONDecodeError as e:
                         self._log(f"JSON parse failed: {e}", "error")
-                else:
-                    if res.stderr.strip():
-                         self._log(res.stderr.strip(), "stderr")
-                         
+
                 self._log(f"✓ Found {len(pkgs)} package(s)", "success")
                      
             self.env.packages = pkgs
@@ -366,6 +361,8 @@ class NpmScanWorker(BaseCmdWorker):
             self.env.runtime_cycle = cycle or parse_cycle("node", node_ver)
             self.env.runtime_latest_version = latest_ver
             self.env.runtime_has_update = runtime_has_update
+            self.env.runtime_has_major_update = runtime_has_major_update
+            self.env.runtime_major_latest_version = major_latest_ver
             self.env.runtime_update_error = runtime_err
             self.env.is_scanned = True
             self._log(f"✓ Found {len(pkgs)} package(s)", "success")
@@ -406,26 +403,16 @@ class NpmUpdateCheckWorker(BaseCmdWorker):
                 outdated_cmd.insert(2, "-g")
             if self.registry_url:
                 outdated_cmd.extend(["--registry", self.registry_url])
-            self._log(f"> {' '.join(outdated_cmd)}", "cmd")
-            outdated_res = subprocess.run(
-                outdated_cmd,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                env=merge_env_for_command(outdated_cmd, proxy_settings=self.proxy_settings),
-            )
+            outdated_res = self._run_command(outdated_cmd, cwd=cwd, capture_output=True)
 
             outdated_map = {}
-            if outdated_res.stdout.strip():
+            if outdated_res.stdout and outdated_res.stdout.strip():
                 try:
                     parsed = json.loads(outdated_res.stdout)
                     if isinstance(parsed, dict):
                         outdated_map = parsed
                 except json.JSONDecodeError:
                     self._log("Warning: failed to parse npm outdated JSON output.", "stderr")
-            elif outdated_res.stderr.strip() and outdated_res.returncode not in (0, 1):
-                self._log(outdated_res.stderr.strip(), "stderr")
 
             tags_check_list = []
             for pkg in self.env.packages:
@@ -455,13 +442,7 @@ class NpmUpdateCheckWorker(BaseCmdWorker):
                 cmd = [npm_path, "view", pkg.name, "dist-tags", "--json"]
                 if self.registry_url:
                     cmd.extend(["--registry", self.registry_url])
-                res = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                    env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
-                )
+                res = self._run_command(cmd, capture_output=True)
                 if res.returncode != 0 or not res.stdout.strip():
                     continue
                 try:
@@ -551,40 +532,110 @@ class NpmActionWorker(BaseCmdWorker):
             self._flush_logs()
 
 
+class NpmBatchUpdateWorker(BaseCmdWorker):
+    """Worker to run `npm install pkg1@ch1 pkg2@ch2 ...` for multiple packages at once."""
+
+    def __init__(self, env: Environment, pkg_specs: list, registry_url=None, proxy_settings=None):
+        super().__init__()
+        self.env = env
+        self.pkg_specs = pkg_specs  # list of (name, channel)
+        self.registry_url = registry_url
+        self.proxy_settings = proxy_settings or {}
+
+    def run(self):
+        try:
+            npm_path = NpmBaseHelper.find_npm()
+            if not npm_path:
+                self._log("npm not found", "error")
+                self.success = False
+                return
+
+            is_global = (self.env.type == "global" or self.env.path == "global")
+            cwd = None if is_global else self.env.path
+
+            install_specs = []
+            names = []
+            for name, channel in self.pkg_specs:
+                names.append(name)
+                if channel and channel != "latest" and not has_explicit_tag(name):
+                    install_specs.append(f"{name}@{channel}")
+                else:
+                    install_specs.append(name)
+
+            self._log(f"Batch updating {', '.join(names)} in {self.env.name}...", "system")
+
+            cmd = [npm_path, "install"] + install_specs + ["--loglevel=http"]
+            if is_global:
+                cmd.insert(2, "-g")
+            if self.registry_url:
+                cmd.extend(["--registry", self.registry_url])
+
+            self._run_command(cmd, cwd=cwd)
+
+            if self.success:
+                self._log(f"✓ Batch updated {len(self.pkg_specs)} packages in {self.env.name}", "success")
+            else:
+                self._log(f"✗ Batch update failed in {self.env.name}", "error")
+        except Exception as e:
+            self._log(f"Error during batch update: {e}", "error")
+            self.success = False
+        finally:
+            self._flush_logs()
+
+
 class NpmRuntimeUpdateWorker(BaseCmdWorker):
     """Worker to update Node.js runtime itself (not npm packages)."""
 
-    def __init__(self, env: Environment):
+    def __init__(self, env: Environment, use_nvm: bool = False):
         super().__init__()
         self.env = env
+        self.use_nvm = use_nvm
         self.result_message = ""
 
     def run(self):
         try:
             current_ver = self.env.runtime_version
-            cycle = self.env.runtime_cycle or parse_cycle("node", current_ver)
-            latest = self.env.runtime_latest_version
+            is_major = bool(getattr(self.env, "runtime_has_major_update", False))
+            if is_major:
+                cycle = parse_cycle("node", self.env.runtime_major_latest_version)
+                target_ver = self.env.runtime_major_latest_version
+            else:
+                cycle = self.env.runtime_cycle or parse_cycle("node", current_ver)
+                target_ver = self.env.runtime_latest_version
+            method = "nvm" if self.use_nvm else "winget"
             self._log(
                 f"Updating Node.js runtime from {current_ver or 'unknown'}"
-                + (f" to {latest}" if latest else "")
+                + (f" to {target_ver}" if target_ver else "")
+                + (f" (major upgrade)" if is_major else "")
+                + f" via {method}"
                 + f" (triggered by {self.env.name})...",
                 "system",
             )
 
-            cmd, reason = build_node_runtime_update_command(cycle)
-            if not cmd:
+            if self.use_nvm:
+                commands, reason = build_node_runtime_update_command_nvm(
+                    cycle, target_version=target_ver
+                )
+            else:
+                commands, reason = build_node_runtime_update_command(
+                    cycle, is_major_upgrade=is_major
+                )
+            if not commands:
                 self.success = False
                 self.result_message = reason or "No runnable command for Node.js runtime update."
                 self._log(self.result_message, "error")
                 return
 
-            self._run_command(cmd)
-            if self.success:
-                self.result_message = "Node.js runtime update command completed."
-                self._log(f"✓ {self.result_message}", "success")
-            else:
-                self.result_message = "Node.js runtime update command failed."
-                self._log(f"✗ {self.result_message}", "error")
+            for cmd in commands:
+                self._run_command(cmd)
+                if not self.success:
+                    self.result_message = "Node.js runtime update command failed."
+                    self._log(f"✗ {self.result_message}", "error")
+                    return
+
+            self.success = True
+            self.result_message = "Node.js runtime update command completed."
+            self._log(f"✓ {self.result_message}", "success")
         except Exception as exc:
             self.success = False
             self.result_message = f"Node.js runtime update error: {exc}"
@@ -600,6 +651,7 @@ class NpmManager(PackageManager):
     log_msg = Signal(str, str)          # text, tag
     log_batch = Signal(list)
     update_done = Signal(str, str, bool) # env_path, pkg_name, success
+    batch_update_done = Signal(str, list, bool) # env_path, pkg_specs, success
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
     updates_checked = Signal(Environment)
@@ -754,6 +806,23 @@ class NpmManager(PackageManager):
         self._active_workers.append(worker)
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg.name, worker.success)])
 
+    def batch_update_packages(self, env: Environment, pkg_specs: list):
+        """pkg_specs: list of (pkg_name, channel) tuples"""
+        worker = NpmBatchUpdateWorker(
+            env,
+            pkg_specs,
+            registry_url=resolve_npm_registry_url(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda specs=pkg_specs: [
+            self._active_workers.remove(worker) if worker in self._active_workers else None,
+            self.batch_update_done.emit(env.path, specs, worker.success),
+        ])
+
     def remove_package(self, env: Environment, pkg_name: str):
         worker = NpmActionWorker(
             env,
@@ -783,8 +852,8 @@ class NpmManager(PackageManager):
         self._active_workers.append(worker)
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.install_done.emit(env.path, pkg_names, worker.success)])
 
-    def update_runtime(self, env: Environment):
-        worker = NpmRuntimeUpdateWorker(env)
+    def update_runtime(self, env: Environment, use_nvm: bool = False):
+        worker = NpmRuntimeUpdateWorker(env, use_nvm=use_nvm)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
         worker.start()

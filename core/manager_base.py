@@ -58,6 +58,8 @@ class Environment:
     runtime_cycle: str = ""
     runtime_latest_version: str = ""
     runtime_has_update: bool = False
+    runtime_has_major_update: bool = False
+    runtime_major_latest_version: str = ""
     runtime_update_error: str = ""
     tags: List[str] = field(default_factory=list)
     packages: List[Package] = None  # Will be initialized in __post_init__ or similar

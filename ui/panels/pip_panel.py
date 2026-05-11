@@ -19,7 +19,7 @@ class PipPanel(BasePanel):
         self.pip_mgr = PipManager(config_mgr)
         self._env_cards = {}
         self._update_queue = []
-        self._update_running = False
+        self._active_update_envs = set()
         self._outdated_filter_enabled = False
 
         self._build_pip_ui()
@@ -40,6 +40,7 @@ class PipPanel(BasePanel):
         self.pip_mgr.log_batch.connect(self._log_batch)
         self.pip_mgr.env_scanned.connect(self._on_env_scanned)
         self.pip_mgr.update_done.connect(self._on_update_done)
+        self.pip_mgr.batch_update_done.connect(self._on_batch_update_done)
         self.pip_mgr.remove_done.connect(self._on_remove_done)
         self.pip_mgr.install_done.connect(self._on_install_done)
         self.pip_mgr.runtime_update_done.connect(self._on_runtime_update_done)
@@ -99,6 +100,7 @@ class PipPanel(BasePanel):
         norm_key = self._path_key(env.path)
         if norm_key in self._env_cards:
             card = self._env_cards[norm_key]
+            card.env = env
             card.update_ui()
             self._apply_outdated_state_to_card(card)
         QTimer.singleShot(200, self._check_all_tasks_done)
@@ -135,10 +137,29 @@ class PipPanel(BasePanel):
             self._log(f"No Python runtime update available in {env.name}.", "system")
             return
 
+        env_type = str(getattr(env, "type", "") or "").lower()
+        cycle = getattr(env, "runtime_cycle", "") or ""
+        cycle_display = f"Python {cycle}" if cycle else "Python"
+
+        if env_type == "venv" and os.name == "nt":
+            msg = (
+                f"Update {cycle_display} runtime in {env.name}?\n\n"
+                f"{current_ver} -> {latest_ver}\n\n"
+                f"This will first update the system {cycle_display} installation\n"
+                f"via winget, then upgrade this virtual environment.\n\n"
+                f"This does not update packages."
+            )
+        else:
+            msg = (
+                f"Update {cycle_display} runtime in {env.name}?\n\n"
+                f"{current_ver} -> {latest_ver}\n\n"
+                f"This does not update packages."
+            )
+
         reply = QMessageBox.question(
             self,
             "Confirm Runtime Update",
-            f"Update Python runtime in {env.name}?\n\n{current_ver} -> {latest_ver}\n\nThis does not update packages.",
+            msg,
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -167,37 +188,53 @@ class PipPanel(BasePanel):
             self.console.log_divider(f"UPDATE ALL in {env.name}")
             self._log(f"Updating: {', '.join(outdated)}", "system")
             self._update_queue.extend([(pkg_name, env) for pkg_name in outdated])
-            if not self._update_running:
-                self._process_update_queue()
+            self._drain_update_queue()
 
     def _start_pkg_update(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
         if env:
             self.console.log_divider(f"UPDATE {pkg_name}")
             self._update_queue.append((pkg_name, env))
-            if not self._update_running:
-                self._process_update_queue()
+            self._drain_update_queue()
 
-    def _process_update_queue(self):
+    def _drain_update_queue(self):
+        """Group pending updates by environment and launch parallel batch workers."""
         if not self._update_queue:
-            self._update_running = False
             return
-        self._update_running = True
-        pkg_name, env = self._update_queue.pop(0)
-        self.pip_mgr.update_package(env, pkg_name)
 
-    def _on_update_done(self, env_path: str, pkg_name: str, success: bool):
         if not hasattr(self, '_affected_envs_update'):
             self._affected_envs_update = set()
-        self._affected_envs_update.add(env_path)
 
-        if self._update_queue:
-            self._process_update_queue()
-        else:
-            self._update_running = False
+        # Group by environment path
+        env_packages = {}
+        env_objects = {}
+        for pkg_name, env in self._update_queue:
+            key = self._path_key(env.path)
+            env_packages.setdefault(key, []).append(pkg_name)
+            env_objects[key] = env
+        self._update_queue.clear()
+
+        for key, pkg_names in env_packages.items():
+            env = env_objects[key]
+            if env.path in self._active_update_envs:
+                self._update_queue.extend((n, env) for n in pkg_names)
+                continue
+            self._active_update_envs.add(env.path)
+            self._affected_envs_update.add(env.path)
+            self.pip_mgr.batch_update_packages(env, pkg_names)
+
+    def _on_batch_update_done(self, env_path: str, pkg_names: list, success: bool):
+        self._active_update_envs.discard(env_path)
+        if not self._update_queue and not self._active_update_envs:
             for p in self._affected_envs_update:
                 self._refresh_single_env(p)
             self._affected_envs_update.clear()
+        elif self._update_queue:
+            self._drain_update_queue()
+
+    def _on_update_done(self, env_path: str, pkg_name: str, success: bool):
+        """Legacy single-package update handler — delegates to batch path."""
+        self._on_batch_update_done(env_path, [pkg_name], success)
 
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -329,24 +366,23 @@ class PipPanel(BasePanel):
     # ── Batch Update ─────────────────────────────────────────────────────
 
     def _batch_update(self):
-        update_list = []
-        for env_path, card in self._env_cards.items():
+        env_packages = {}
+        for _env_path, card in self._env_cards.items():
             env = card.env
             if env.is_scanned:
-                for pkg in env.packages:
-                    if pkg.is_selected and pkg.has_update:
-                        update_list.append((pkg.name, env))
+                pkgs = [pkg.name for pkg in env.packages if pkg.is_selected and pkg.has_update]
+                if pkgs:
+                    env_packages[env] = pkgs
 
-        if not update_list:
+        if not env_packages:
             self._log("No updatable packages selected.", "system")
             return
 
-        self.console.log_divider(f"BATCH UPDATE ({len(update_list)} packages)")
-        self._log(f"Batch updating: {', '.join(n for n, _ in update_list)}", "system")
-
-        self._update_queue.extend(update_list)
-        if not self._update_running:
-            self._process_update_queue()
+        total = sum(len(v) for v in env_packages.values())
+        self.console.log_divider(f"BATCH UPDATE ({total} packages across {len(env_packages)} environments)")
+        for env, pkg_names in env_packages.items():
+            self._update_queue.extend([(pkg_name, env) for pkg_name in pkg_names])
+        self._drain_update_queue()
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 

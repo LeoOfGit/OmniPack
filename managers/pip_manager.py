@@ -1,11 +1,9 @@
 import os
-import subprocess
 import json
 from PySide6.QtCore import Signal
 
 from core.manager_base import PackageManager, Environment, Package
 from core.dep_resolver import resolve_dependencies_subprocess, merge_dependency_info
-from core.network_proxy import merge_env_for_command
 from core.runtime_update import (
     build_python_runtime_update_command,
     check_runtime_patch_update,
@@ -71,14 +69,18 @@ def read_venv_cfg_version(py_exe: str) -> str:
                 if "=" not in line:
                     continue
                 key, value = line.split("=", 1)
-                if key.strip().lower() not in {"version", "version_info"}:
+                key_norm = key.strip().lower()
+                if key_norm not in {"version", "version_info"}:
                     continue
                 parsed = parse_python_version(value.strip())
                 if parsed:
                     return parsed
-    except Exception:
-        pass
-    return ""
+        # pyvenv.cfg exists but has no version/version_info key
+        return ""
+    except Exception as exc:
+        import sys
+        print(f"[OmniPack] read_venv_cfg_version error for {py_exe}: {exc}", file=sys.stderr)
+        return ""
 
 class PipManager(PackageManager):
     """
@@ -176,6 +178,23 @@ class PipManager(PackageManager):
         # Notify UI when update is done so it can refresh the list
         worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg_name, worker.success)])
 
+    def batch_update_packages(self, env: Environment, pkg_names: list):
+        worker = BatchUpdateWorker(
+            env,
+            pkg_names,
+            source_args=build_pip_source_args(self.config_mgr),
+            uv_path=get_uv_path(self.config_mgr),
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        worker.log_msg.connect(self.log_msg)
+        worker.log_batch.connect(self.log_batch)
+        worker.start()
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda pkg_list=pkg_names: [
+            self._active_workers.remove(worker) if worker in self._active_workers else None,
+            self.batch_update_done.emit(env.path, pkg_list, worker.success),
+        ])
+
     def remove_package(self, env: Environment, pkg_name: str):
         worker = RemoveWorker(
             env,
@@ -218,6 +237,7 @@ class PipManager(PackageManager):
         )
 
     update_done = Signal(str, str, bool) # env_path, pkg_name, success
+    batch_update_done = Signal(str, list, bool) # env_path, pkg_names, success
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
     runtime_update_done = Signal(str, bool, str) # env_path, success, message
@@ -267,25 +287,22 @@ class ScanWorker(BaseCmdWorker):
 
             # 1. Version Check
             ver_cmd = [py_exe, "--version"]
-            self._log(f"> {' '.join(ver_cmd)}", "cmd")
-            res = subprocess.run(
-                ver_cmd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                env=merge_env_for_command(ver_cmd, proxy_settings=self.proxy_settings),
-            )
+            res = self._run_command(ver_cmd, capture_output=True)
             raw_ver = (res.stdout or "").strip() or (res.stderr or "").strip()
             py_ver = parse_python_version(raw_ver) if res.returncode == 0 and raw_ver else ""
-            if str(self.env.type or "").lower() != "system":
-                cfg_ver = read_venv_cfg_version(py_exe)
-                if cfg_ver:
-                    if py_ver and compare_versions(cfg_ver, py_ver) != 0:
-                        self._log(
-                            f"Detected venv metadata version {cfg_ver} (runtime reports {py_ver}); using metadata version for display.",
-                            "stderr",
-                        )
-                    py_ver = cfg_ver
+
+            # Always prefer pyvenv.cfg version when present.
+            # On Windows the venv's python.exe is a redirector that loads the system
+            # python DLL — so python --version reports the SYSTEM version after a
+            # winget upgrade, not the venv's actual configured version.
+            cfg_ver = read_venv_cfg_version(py_exe)
+            if cfg_ver:
+                if py_ver and compare_versions(cfg_ver, py_ver) != 0:
+                    self._log(
+                        f"Detected venv metadata version {cfg_ver} (runtime reports {py_ver}); using metadata version for display.",
+                        "stderr",
+                    )
+                py_ver = cfg_ver
             if not py_ver:
                 py_ver = "?"
             if raw_ver:
@@ -309,14 +326,7 @@ class ScanWorker(BaseCmdWorker):
             # Verify uv
             try:
                 uv_cmd = [uv_path, "--version"]
-                self._log(f"> {' '.join(uv_cmd)}", "cmd")
-                uv_res = subprocess.run(
-                    uv_cmd,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                    env=merge_env_for_command(uv_cmd, proxy_settings=self.proxy_settings),
-                )
+                uv_res = self._run_command(uv_cmd, capture_output=True)
                 if uv_res.stdout.strip():
                     self._log(uv_res.stdout.strip(), "stdout")
             except FileNotFoundError:
@@ -326,17 +336,10 @@ class ScanWorker(BaseCmdWorker):
             args = ["--system", "--python", self.env.path] if self.env.type == "system" else ["--python", py_exe]
             
             cmd = [uv_path, "pip", "list", "--format", "json"] + args
-            self._log(f"> {' '.join(cmd)}", "cmd")
-            res = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
-            )
-            
+            res = self._run_command(cmd, capture_output=True)
+
             pkgs = []
-            if res.returncode == 0:
+            if res.returncode == 0 and res.stdout:
                 # Find JSON start
                 json_stdout = res.stdout[res.stdout.find('['):] if '[' in res.stdout else res.stdout
                 if json_stdout.strip():
@@ -350,23 +353,14 @@ class ScanWorker(BaseCmdWorker):
                             ))
                     except Exception as je:
                         self._log(f"JSON Parse Error: {je}", "error")
-            else:
-                 if res.stderr.strip():
-                     self._log(res.stderr.strip(), "stderr")
             
             # 3. Check Updates
+            self._log("Checking for package updates...", "system")
             cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
-            self._log(f"> {' '.join(cmd_outdated)}", "cmd")
-            res_outdated = subprocess.run(
-                cmd_outdated,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                env=merge_env_for_command(cmd_outdated, proxy_settings=self.proxy_settings),
-            )
-            
+            res_outdated = self._run_command(cmd_outdated, capture_output=True)
+
             outdated_map = {}
-            if res_outdated.returncode == 0:
+            if res_outdated.returncode == 0 and res_outdated.stdout:
                 json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
                 if json_stdout.strip():
                     try:
@@ -378,9 +372,6 @@ class ScanWorker(BaseCmdWorker):
                             if name and latest:
                                 outdated_map[name] = latest
                     except: pass
-            else:
-                 if res_outdated.stderr.strip():
-                     self._log(res_outdated.stderr.strip(), "stderr")
             
             # Update objects
             count_updates = 0
@@ -452,20 +443,41 @@ class RuntimeUpdateWorker(BaseCmdWorker):
                 "system",
             )
 
-            cmd, reason = build_python_runtime_update_command(self.env.type, self.env.path, cycle)
-            if not cmd:
+            commands, reason = build_python_runtime_update_command(self.env.type, self.env.path, cycle)
+            if not commands:
                 self.success = False
                 self.result_message = reason or "No runnable command for Python runtime update."
                 self._log(self.result_message, "error")
                 return
 
-            self._run_command(cmd)
-            if self.success:
-                self.result_message = "Python runtime update command completed."
-                self._log(f"✓ {self.result_message}", "success")
-            else:
-                self.result_message = "Python runtime update command failed."
-                self._log(f"✗ {self.result_message}", "error")
+            multi_step = len(commands) > 1
+            for i, cmd in enumerate(commands):
+                if multi_step:
+                    if i == 0:
+                        self._log("Step 1/2: Updating system Python via winget...", "system")
+                    else:
+                        self._log("Step 2/2: Upgrading virtual environment...", "system")
+
+                self._run_command(cmd)
+
+                if not self.success:
+                    if i == 0 and multi_step:
+                        # winget failure: system Python may already be up to date;
+                        # log a warning and try the venv upgrade anyway.
+                        self._log(
+                            "System Python winget update returned non-zero "
+                            "(may already be current). Proceeding with venv upgrade...",
+                            "stderr",
+                        )
+                        self.success = True  # reset for next step
+                        continue
+                    self.result_message = f"Python runtime update command failed."
+                    self._log(f"✗ {self.result_message}", "error")
+                    return
+
+            self.success = True
+            self.result_message = "Python runtime update completed."
+            self._log(f"✓ {self.result_message}", "success")
         except Exception as exc:
             self.success = False
             self.result_message = f"Python runtime update error: {exc}"
@@ -506,6 +518,40 @@ class UpdateWorker(BaseCmdWorker):
                 
         except Exception as e:
             self._log(f"Error during update: {e}", "error")
+            self.success = False
+        finally:
+            self._flush_logs()
+
+
+class BatchUpdateWorker(BaseCmdWorker):
+    """Worker to run `uv pip install -U pkg1 pkg2 ...` for multiple packages at once."""
+
+    def __init__(self, env: Environment, pkg_names: list, source_args=None, uv_path="uv", proxy_settings=None):
+        super().__init__()
+        self.env = env
+        self.pkg_names = pkg_names
+        self.source_args = list(source_args or [])
+        self.uv_path = uv_path
+        self.proxy_settings = proxy_settings or {}
+
+    def run(self):
+        try:
+            names = ", ".join(self.pkg_names)
+            self._log(f"Batch updating {names} in {self.env.name}...", "system")
+            uv_path = self.uv_path
+            env_path = os.path.normpath(self.env.path)
+            py_exe = resolve_python_executable(self.env)
+
+            args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            cmd = [uv_path, "pip", "install", "-U"] + self.source_args + self.pkg_names + args
+            self._run_command(cmd)
+
+            if self.success:
+                self._log(f"✓ Batch updated {len(self.pkg_names)} packages in {self.env.name}", "success")
+            else:
+                self._log(f"✗ Batch update failed in {self.env.name}", "error")
+        except Exception as e:
+            self._log(f"Error during batch update: {e}", "error")
             self.success = False
         finally:
             self._flush_logs()

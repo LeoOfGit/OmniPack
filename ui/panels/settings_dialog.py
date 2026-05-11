@@ -18,6 +18,7 @@ from core.pypi_cache import (
     get_refresh_state,
     resolve_refresh_source,
 )
+from version import __version__
 from core.env_detector import resolve_python_env, generate_smart_env_name, resolve_npm_env, describe_npm_env
 from core.source_profiles import (
     PYPI_OFFICIAL_INDEX,
@@ -1014,7 +1015,7 @@ class SettingsDialog(QDialog):
                 if not self.proxies:
                     proxy_note = "Proxy not configured (HTTP/HTTPS empty)."
                 for target_key, name, url in self.specs:
-                    headers = {"User-Agent": "OmniPack/1.0"}
+                    headers = {"User-Agent": f"OmniPack/{__version__}"}
                     if "github.com" in url:
                         headers["Accept"] = "application/vnd.github+json"
                     policy = "ON" if self.settings.get("enabled") and self.settings.get("targets", {}).get(target_key, False) else "OFF"
@@ -1255,7 +1256,7 @@ class SettingsDialog(QDialog):
                         with proxy_urlopen(
                             "https://api.github.com/repos/astral-sh/uv/releases/latest",
                             timeout=3,
-                            headers={'User-Agent': 'OmniPack'},
+                            headers={'User-Agent': f'OmniPack/{__version__}'},
                             proxy_settings=self.proxy_settings,
                         ) as response:
                             data = json.loads(response.read().decode())

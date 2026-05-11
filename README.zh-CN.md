@@ -94,6 +94,7 @@ OmniPack 能智能评估每个更新的安全性。
 
 - 使用中的疑问？快捷键？高级特性？ 👉 [**《OmniPack 用户指南 (UserGuide)》**](./docs/UserGuide.zh-CN.md)
 - 关于底层 `QThread` 同步逻辑与配置落盘细节？ 👉 [**《OmniPack 架构说明 (Architecture)》**](./docs/Architecture.zh-CN.md)
+- 如何从源码编译为单文件可执行程序？ 👉 [**《OmniPack 编译指南 (Compile)》**](./docs/Compile.zh-CN.md)
 
 ---
 

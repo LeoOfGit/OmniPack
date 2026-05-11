@@ -3,18 +3,21 @@ import subprocess
 import sys
 import shutil
 import platform
+import fnmatch
 from pathlib import Path
+
+from version import __version__
 
 # --- 配置信息 ---
 APP_NAME = "OmniPack"
-VERSION = "4"
+VERSION = __version__
 COMPANY = "LeoOfGit"
 COPYRIGHT = f"Copyright (c) 2026 {COMPANY}"
 DESCRIPTION = "Developer Packages Manager for Python & Node.js"
+IGNORE_FILE = "packaging_ignore.txt"
 
 def run_command(cmd):
     print(f"\n[EXEC] {' '.join(cmd)}")
-    # Nuitka 输出较多，直接显示在控制台
     result = subprocess.run(cmd)
     return result.returncode == 0
 
@@ -28,6 +31,51 @@ def ensure_dependencies():
     except ImportError:
         print("Installing build dependencies...")
         subprocess.run([sys.executable, "-m", "pip", "install", *required])
+
+def load_ignore_patterns():
+    """加载忽略规则"""
+    if not os.path.exists(IGNORE_FILE):
+        return []
+    with open(IGNORE_FILE, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+
+def should_ignore(path, patterns):
+    """检查路径是否应该被忽略"""
+    path_str = str(path).replace(os.sep, "/")
+    for pattern in patterns:
+        if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(path_str + "/", pattern):
+            return True
+        if pattern.endswith("/") and path_str.startswith(pattern[:-1]):
+            return True
+    return False
+
+def get_data_files():
+    """自动扫描并收集文件，跳过忽略列表"""
+    patterns = load_ignore_patterns()
+    data_files = []
+    
+    # 基础要包含的目录
+    base_dirs = ["resources", "docs", "ui"]
+    
+    for base in base_dirs:
+        if not os.path.exists(base): continue
+        
+        for root, dirs, files in os.walk(base):
+            # 过滤目录
+            dirs[:] = [d for d in dirs if not should_ignore(Path(root) / d, patterns)]
+            
+            for file in files:
+                file_path = Path(root) / file
+                if not should_ignore(file_path, patterns):
+                    data_files.append(f"--include-data-file={file_path}={file_path}")
+    
+    # 手动添加根目录重要文件
+    root_files = ["LICENSE", "README.md"]
+    for f in root_files:
+        if os.path.exists(f) and not should_ignore(f, patterns):
+            data_files.append(f"--include-data-file={f}={f}")
+            
+    return data_files
 
 def handle_icons():
     """智能图标处理逻辑"""
@@ -58,7 +106,6 @@ def handle_icons():
             print(f"Using existing macOS icon: {icns_file}")
             target_icon = icns_file
         elif png_source.exists():
-            # Nuitka 在 macOS 上通常能处理 PNG 到 ICNS 的转换
             print(f"Using PNG for macOS icon: {png_source}")
             target_icon = png_source
 
@@ -84,32 +131,20 @@ def pack():
 
     system = platform.system()
 
-    # 基础 Nuitka 编译命令 (使用 .pyw 避免 Windows 控制台)
     main_script = "OmniPack.pyw"
     if not os.path.exists(main_script):
         print(f"Error: Main script {main_script} not found!")
         return
 
     # 收集需内嵌的数据文件
-    data_files = [
-        "--include-data-dir=resources=resources",
-        "--include-data-dir=ui/styles=ui/styles",
-    ]
+    data_files = get_data_files()
+    
     # 捆绑 uv 引擎
     uv_path = shutil.which("uv")
     if uv_path:
         data_files.append(f"--include-data-file={uv_path}=bin/uv.exe")
         print(f"Bundling uv: {uv_path}")
-    else:
-        print("Warning: 'uv' not found in system PATH. It won't be bundled.")
-    # 捆绑文档与许可证
-    for doc in ["docs/UserGuide.html", "docs/UserGuide.zh-CN.md",
-                "docs/Changelog.zh-CN.md", "docs/Architecture.zh-CN.md",
-                "LICENSE", "README.md"]:
-        if os.path.exists(doc):
-            data_files.append(f"--include-data-file={doc}={doc}")
-            print(f"Bundling doc: {doc}")
-
+    
     cmd = [
         sys.executable, "-m", "nuitka",
         "--onefile",
@@ -122,7 +157,6 @@ def pack():
         main_script
     ]
 
-    # 不同平台的特定参数
     icon_path = handle_icons()
 
     if system == "Windows":
@@ -148,9 +182,6 @@ def pack():
         ])
         if icon_path:
             cmd.append(f"--macos-app-icon={os.path.abspath(icon_path)}")
-
-    elif system == "Linux":
-        pass
 
     print(f"\n{'='*60}")
     print(f"Building {APP_NAME} v{VERSION} on {system} (onefile)")

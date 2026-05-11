@@ -4,11 +4,12 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict
 from core.utils import get_persistent_root
+from version import __version__
 
 
 @dataclass
 class AppConfig:
-    version: str = "5"
+    version: str = __version__
 
     # Pip
     pip_environments: List[dict] = field(default_factory=list)  # [{path, name, type}]

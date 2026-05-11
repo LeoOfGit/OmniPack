@@ -12,6 +12,7 @@ from core.network_proxy import normalize_proxy_settings
 from core.network_proxy import urlopen as proxy_urlopen
 from core.source_profiles import PYPI_OFFICIAL_INDEX, detect_system_pip_index_url
 from core.utils import get_app_root, get_persistent_root
+from version import __version__
 
 
 CACHE_FILENAME = "pypi_search_cache.json"
@@ -551,7 +552,7 @@ def refresh_cache_from_pypi(
         resume_from = 0
 
     headers = {
-        "User-Agent": "OmniPack/1.0",
+        "User-Agent": f"OmniPack/{__version__}",
         "Accept": "application/vnd.pypi.simple.v1+json, text/html;q=0.9, */*;q=0.8",
     }
     if resume_from > 0:

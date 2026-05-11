@@ -1,5 +1,44 @@
 # Changelog - OmniPack
 
+## [v6] - 性能、可靠性与可见性 (Performance, Reliability & Visibility)
+
+v6 围绕四个主题系统性地提升日常使用体验：批量更新从串行变为并行（**更快**）、Windows venv 版本检测与升级链路彻底修复（**更准**）、控制台从"沉默黑盒"变为实时终端（**更透明**）。
+
+### 🚀 批量更新性能跃升 (Batch Update Performance)
+
+核心思路是**合并 + 并行**：同一环境的包合并为一条命令，不同环境之间并行执行。
+
+- **同环境命令合并**：同一环境中选中的多个包不再逐个执行 `uv pip install -U <pkg>` / `npm install <pkg>`，而是合并为一条 `uv pip install -U pkg1 pkg2 ...` 或 `npm install pkg1@ch1 pkg2@ch2 ...`。`uv` 和 `npm` 内置异步 I/O 并行下载与解析，单命令多包即可获得数倍加速。npm 批量更新时保留各包的 dist-tag 通道信息，不丢失更新目标。
+- **跨环境并行执行**：当批量更新涉及多个不同虚拟环境或项目目录时，系统同时启动多个 `BatchUpdateWorker` 并行执行——不同环境目录之间完全独立，无文件锁冲突。按环境路径分组调度，同一环境的所有包合并为一个 worker，不同环境的 worker 并行启动。`_active_update_envs` 集合替代了原有的单一 `_update_running` 布尔标志，支持同时追踪多个正在更新的环境，某环境忙时新请求自动回流队列等待。
+- **架构支撑**：新增 `BatchUpdateWorker` (pip) 与 `NpmBatchUpdateWorker` (npm)，配套 `batch_update_done` 信号携带包名列表。单包 `update_package` 与 `update_done` 信号保留，`_on_update_done` 委托至 `_on_batch_update_done`，向下兼容。
+
+| 场景 | v5 (串行) | v6 (并行批量) |
+|------|-----------|--------------|
+| 1 个环境选 5 个包 | 5 次 `uv pip install` | 1 次 `uv pip install pkg1 ... pkg5`，uv 内部并行 |
+| 3 个环境各选 3 个包 | 9 次串行命令 | 3 条命令同时执行 |
+
+### 🖥️ 控制台实时可见性 (Real-time Console Visibility)
+
+此前控制台有两个层面的缓冲导致"假卡死"：输出信号从未实时发射；扫描 Worker 使用阻塞式 `subprocess.run()`。两者叠加，用户在长时间操作中完全看不到进展。
+
+- **`log_msg` 信号激活**：`BaseCmdWorker._log()` 在追加内存 buffer 的同时立即发出 `log_msg` 信号——该信号虽早已声明并完整连接至 UI（Worker → Manager → Panel → ConsolePanel），但此前从未被 `emit`，所有输出仅在 `run()` 结束时通过 `_flush_logs()` 批量投递。修复后安装、卸载、更新等操作的输出逐行实时抵达控制台。
+- **扫描 Worker 流式化**：`_run_command()` 新增 `capture_output` 参数——reader 线程在逐行流式输出的同时收集完整 stdout/stderr，以 `CompletedProcess` 返回供调用方解析 JSON，兼顾实时显示与结果捕获。`ScanWorker` (pip)、`NpmScanWorker` (npm)、`NpmUpdateCheckWorker` (npm) 中全部 `subprocess.run()` 替换为 `self._run_command(capture_output=True)`。最慢的 `uv pip list --outdated`（5-30 秒逐包查询 PyPI）执行前新增 "Checking for package updates..." 状态提示。
+- **UI 即时刷新**：`ConsolePanel.log()` 在每条日志插入后调用 `QApplication.processEvents()`，强制 Qt 在子进程运行期间立即重绘控件。reader 线程中的 `Signal.emit()` 由 PySide6 自动排队投递至主线程事件循环，线程安全无需额外加锁。
+
+### 🔧 Windows 虚拟环境：版本检测与运行时升级修复 (Venv Version Detection & Runtime Upgrade)
+
+三个改动共同解决同一个问题链：Windows 上 venv 的版本显示、检测和升级曾经全线存在失真与空操作。
+
+- **pyvenv.cfg 无条件优先**：移除了 `type != "system"` 的类型前提——现在**所有**环境扫描时均读取 `pyvenv.cfg`（若存在）的 `version` / `version_info` 字段。此前若 venv 被误标为 system 类型，会跳过 pyvenv.cfg 回退逻辑，直接使用 `python --version` 结果——而 Windows 上 venv 的 python.exe 是加载系统 Python DLL 的 redirector，在系统 Python 通过 winget 升级后即返回系统版本，导致所有 venv 卡片版本集体虚高。另：`read_venv_cfg_version()` 不再静默吞掉异常，`_on_env_scanned` 回调新增 `card.env = env` 显式赋值消除竞态。
+- **虚拟环境两步式运行时升级**：点击 venv 卡片的 `Py` 按钮后，系统会**先**通过 winget 升级对应 major.minor 周期的系统 Python（如 `Python.Python.3.14`），**再**执行 `py -X.Y -m venv --upgrade <venv_root>` 升级虚拟环境本体。此前仅执行后一步，若系统 Python 尚未更新则 venv upgrade 实质为空操作。winget 步骤容错（非零退出码记录警告但继续），确认对话框差异化提示完整操作步骤。
+- **构建命令返回类型统一**：`build_python_runtime_update_command`、`build_node_runtime_update_command`、`build_node_runtime_update_command_nvm` 返回类型从 `list[str]` 统一为 `tuple[Optional[list[list[str]]], str]`，支持多步命令序列。`RuntimeUpdateWorker` 与 `NpmRuntimeUpdateWorker` 同步适配——这正是两步式升级（winget 探测 → venv upgrade）的底层支撑。
+
+### 🔧 版本号统一 (Single Version Source)
+
+- 新增项目根目录 `version.py`（`__version__ = "6"`），消除此前 `build_app.py`、`config.py`、多处 User-Agent 字符串中各自硬编码版本号的问题。窗口标题栏现显示版本号（`OmniPack v6 - Developer Package Manager`），所有对外 HTTP 请求的 User-Agent 头统一为 `OmniPack/<version>`。
+
+---
+
 ## [v5] - 约束感知更新与构建变体识别 (Constraint & Variant Awareness)
 
 本次更新聚焦于提高包更新场景的安全性——系统智能判断哪些更新是安全的、哪些存在潜在风险，避免用户在不自知的情况下破坏环境。

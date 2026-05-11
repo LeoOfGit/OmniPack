@@ -76,13 +76,21 @@ class NpmEnvCard(BaseEnvCard):
         runtime_ver = getattr(self.env, "runtime_version", "")
         runtime_latest = getattr(self.env, "runtime_latest_version", "")
         runtime_has_update = bool(getattr(self.env, "runtime_has_update", False))
+        runtime_has_major = bool(getattr(self.env, "runtime_has_major_update", False))
+        runtime_major_latest = getattr(self.env, "runtime_major_latest_version", "")
         if runtime_ver:
-            if runtime_has_update and runtime_latest:
+            if runtime_has_major and runtime_major_latest:
+                self.ver_lbl.setText(f"(Node {runtime_ver} → {runtime_major_latest} ⚠)")
+                self.ver_lbl.setStyleSheet("color: #FFB74D;")
+            elif runtime_has_update and runtime_latest:
                 self.ver_lbl.setText(f"(Node {runtime_ver} -> {runtime_latest})")
+                self.ver_lbl.setStyleSheet("")
             else:
                 self.ver_lbl.setText(f"(Node {runtime_ver})")
+                self.ver_lbl.setStyleSheet("")
         else:
             self.ver_lbl.setText("(Node ?)")
+            self.ver_lbl.setStyleSheet("")
 
         env_type = str(getattr(self.env, "type", "") or "").lower()
         if env_type == "global":
@@ -116,11 +124,23 @@ class NpmEnvCard(BaseEnvCard):
             self.badge_lbl.setVisible(False)
             self.up_all_btn.setVisible(False)
 
-        if runtime_has_update:
+        if runtime_has_major:
             self.runtime_up_btn.setVisible(True)
+            self.runtime_up_btn.setToolTip(
+                f"Upgrade Node.js major version: {runtime_ver} → {runtime_major_latest}\n"
+                "Major version upgrades may introduce breaking changes."
+            )
+            self.runtime_up_btn.setStyleSheet(
+                "QPushButton { color: #FFB74D; border: 1px solid #FFB74D; }"
+                "QPushButton:hover { background: rgba(255, 183, 77, 0.15); }"
+            )
+        elif runtime_has_update:
+            self.runtime_up_btn.setVisible(True)
+            self.runtime_up_btn.setStyleSheet("")
             self.runtime_up_btn.setToolTip(f"Update Node.js runtime: {runtime_ver} -> {runtime_latest}")
         else:
             self.runtime_up_btn.setVisible(False)
+            self.runtime_up_btn.setStyleSheet("")
             self.runtime_up_btn.setToolTip("Node.js runtime is up to date")
 
         if self.is_expanded and getattr(self.env, "is_scanned", False):

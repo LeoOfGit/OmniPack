@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QApplication
 from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat, QFont
 from PySide6.QtCore import Qt, QEvent, Property
 
@@ -104,7 +104,10 @@ class ConsolePanel(QFrame):
         cursor.insertText(message + "\n", fmt)
         self.text_edit.setTextCursor(cursor)
         self.text_edit.ensureCursorVisible()
-        
+        # Force Qt to repaint immediately so real-time output is visible
+        # during long-running subprocesses (winget downloads, pip install, etc.)
+        QApplication.processEvents()
+
         # Trim if too long
         doc = self.text_edit.document()
         if doc.blockCount() > 2000:

@@ -21,7 +21,8 @@ class OmniPackWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         admin_suffix = " (Admin)" if is_admin() else ""
-        self.setWindowTitle(f"OmniPack - Developer Package Manager{admin_suffix}")
+        from version import __version__
+        self.setWindowTitle(f"OmniPack v{__version__} - Developer Package Manager{admin_suffix}")
         self.resize(1100, 700)
 
         # Config

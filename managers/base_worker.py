@@ -23,6 +23,9 @@ class BaseCmdWorker(QThread):
 
     def _log(self, msg: str, tag: str):
         self._log_buffer.append((msg, tag))
+        # Emit each line in real-time so the console renders progressively
+        # during long-running commands (pip install, npm install, etc.)
+        self.log_msg.emit(msg, tag)
 
     def _flush_logs(self):
         """Must be called in `finally` block of `run()` to emit batched logs."""
@@ -30,13 +33,15 @@ class BaseCmdWorker(QThread):
             self.log_batch.emit(self._log_buffer)
             self._log_buffer.clear()
 
-    def _run_command(self, cmd: list[str], cwd: str = None) -> subprocess.CompletedProcess:
+    def _run_command(self, cmd: list[str], cwd: str = None, capture_output: bool = False) -> subprocess.CompletedProcess:
         """
         Runs a command, streaming stdout/stderr line-by-line via self._log().
-        Returns a CompletedProcess-like object or raises exception on failure.
+
+        When capture_output=True, the collected stdout/stderr text is included
+        in the returned CompletedProcess so callers can parse JSON output.
         """
         self._log(f"> {' '.join(cmd)}", "cmd")
-        
+
         proxy_settings = getattr(self, "proxy_settings", None)
         if proxy_settings is None:
             try:
@@ -59,22 +64,35 @@ class BaseCmdWorker(QThread):
 
         ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
 
-        def read_stream(stream, tag):
+        captured_stdout = []
+        captured_stderr = []
+
+        def read_stream(stream, tag, capture_list=None):
             try:
                 for raw_line in stream:
                     line = ANSI_ESCAPE.sub("", raw_line).rstrip()
                     if line:
                         self._log(line, tag)
+                        if capture_list is not None:
+                            capture_list.append(line)
             except Exception:
                 pass
 
-        stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout"), daemon=True)
-        stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr"), daemon=True)
+        cap_out = captured_stdout if capture_output else None
+        cap_err = captured_stderr if capture_output else None
+        stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout", cap_out), daemon=True)
+        stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr", cap_err), daemon=True)
         stdout_t.start()
         stderr_t.start()
         process.wait()
         stdout_t.join(timeout=5)
         stderr_t.join(timeout=5)
-        
+
         self.success = (process.returncode == 0)
+        if capture_output:
+            return subprocess.CompletedProcess(
+                process.args, process.returncode,
+                stdout="\n".join(captured_stdout),
+                stderr="\n".join(captured_stderr),
+            )
         return subprocess.CompletedProcess(process.args, process.returncode)
