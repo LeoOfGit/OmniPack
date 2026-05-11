@@ -267,11 +267,17 @@ def ensure_cache_exists() -> dict:
         _set_in_memory(payload)
         return payload
 
-    seed_payload = _read_payload(seed_file_path())
-    if seed_payload is None:
-        seed_payload = _default_payload("built-in-seed")
+    # 检查打包进 exe 的完整缓存（800K+ 包），优先于种子文件
+    bundled_cache = get_app_root() / CACHE_FILENAME
+    seed_payload = _read_payload(bundled_cache)
+    if seed_payload is not None:
+        seed_payload["source"] = "bundled-cache"
     else:
-        seed_payload["source"] = "bundled-seed"
+        seed_payload = _read_payload(seed_file_path())
+        if seed_payload is None:
+            seed_payload = _default_payload("built-in-seed")
+        else:
+            seed_payload["source"] = "bundled-seed"
 
     _write_payload(path, seed_payload)
     _set_in_memory(seed_payload)

@@ -42,35 +42,44 @@ def load_ignore_patterns():
 def should_ignore(path, patterns):
     """检查路径是否应该被忽略"""
     path_str = str(path).replace(os.sep, "/")
+    name = os.path.basename(path_str)
     for pattern in patterns:
         if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(path_str + "/", pattern):
+            return True
+        if fnmatch.fnmatch(name, pattern):
             return True
         if pattern.endswith("/") and path_str.startswith(pattern[:-1]):
             return True
     return False
 
 def get_data_files():
-    """自动扫描并收集文件，跳过忽略列表"""
+    """自动扫描并收集文件，跳过忽略列表，排除 Nuitka 已编译的 Python 源码"""
     patterns = load_ignore_patterns()
     data_files = []
-    
+
     # 基础要包含的目录
     base_dirs = ["resources", "docs", "ui"]
-    
+
+    # Nuitka 已将 .py 编译为机器码，作为数据文件再打包一份只会泄露源码
+    _SKIP_SUFFIXES = {".py", ".pyc", ".pyo"}
+
     for base in base_dirs:
         if not os.path.exists(base): continue
-        
+
         for root, dirs, files in os.walk(base):
             # 过滤目录
             dirs[:] = [d for d in dirs if not should_ignore(Path(root) / d, patterns)]
-            
+
             for file in files:
                 file_path = Path(root) / file
-                if not should_ignore(file_path, patterns):
-                    data_files.append(f"--include-data-file={file_path}={file_path}")
+                if should_ignore(file_path, patterns):
+                    continue
+                if file_path.suffix in _SKIP_SUFFIXES:
+                    continue
+                data_files.append(f"--include-data-file={file_path}={file_path}")
     
     # 手动添加根目录重要文件
-    root_files = ["LICENSE", "README.md"]
+    root_files = ["LICENSE", "README.md", "pypi_search_cache.json"]
     for f in root_files:
         if os.path.exists(f) and not should_ignore(f, patterns):
             data_files.append(f"--include-data-file={f}={f}")

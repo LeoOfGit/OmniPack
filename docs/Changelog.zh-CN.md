@@ -1,5 +1,28 @@
 # Changelog - OmniPack
 
+## [v7] - 打包加固与离线缓存 (Packaging Hardening & Offline Cache)
+
+v7 聚焦于打包产物的安全性与开箱体验：修复配置文件持久化失败导致数据丢失的问题；堵住源码泄露与黑名单穿透漏洞；预装 80 万 PyPI 包索引让首次启动即用。
+
+### 🔒 配置文件持久化修复 (Persistent Config)
+
+Nuitka onefile 模式下配置文件 (`omnipack_config.json`, `pypi_search_cache.json`) 此前被写入系统临时目录（`%TEMP%\.onefile_XXXXX\`），重启后丢失。根因是 Nuitka 不设 `sys.frozen`（PyInstaller 专属标志），导致应用误判为开发模式，通过 `__file__` 解析路径进而指向临时解压目录。
+
+- **Nuitka 检测重构**：新增 `_is_frozen()` 双路径检测——PyInstaller 的 `sys.frozen` + Nuitka 的 temp 目录特征（`__file__` 位于 `%TEMP%` 下即为 onefile 解压运行）。
+- **真实路径解析**：新增 `_get_real_exe_path()`，通过 Windows API `GetModuleFileNameW(NULL)` 向内核查询进程真实 exe 路径，彻底绕过 Nuitka/PyInstaller 对 `sys.executable` 和 `sys.argv[0]` 的路径改写。`get_persistent_root()` 与 `get_app_root()` 中所有 `sys.executable` 引用统一替换为此 API。
+- **便携与安装模式不变**：便携模式（exe 不在 Program Files 下）仍将配置保存在 exe 同级目录；安装模式（Program Files 下）仍使用 `%APPDATA%\OmniPack`。
+
+### 🛡️ 打包安全加固 (Package Security)
+
+- **源码泄露堵漏**：`get_data_files()` 新增后缀过滤，跳过 `.py`、`.pyc`、`.pyo` 文件。Nuitka 已将所有 import 的 `.py` 编译为机器码，再通过 `--include-data-file` 附加一份原始源码纯属泄露风险且徒增体积。打包后 `ui/` 目录仅保留 `ui/styles/dark.qss`（Qt 样式表，运行时从文件路径加载），不含任何 Python 源码。
+- **黑名单跨目录匹配修复**：`should_ignore()` 新增 basename 匹配——模式 `Architecture.zh-CN.md` 现在能正确命中 `docs/Architecture.zh-CN.md`。此前仅对完整路径做 `fnmatch`，无路径前缀的文件名模式无法匹配子目录下的同名文件。
+
+### 📦 预装完整 PyPI 缓存 (Bundled PyPI Cache)
+
+- **`pypi_search_cache.json` 打包**：构建时将此文件打入 exe 数据区（804,825 包索引）。`ensure_cache_exists()` 查找优先级调整为：持久化缓存 → 打包完整缓存 → 种子文件 → 硬编码 20 包默认。首次启动时自动将打包缓存复制到持久化目录，用户无需等待首次在线刷新即可搜索全部包名。
+
+---
+
 ## [v6] - 性能、可靠性与可见性 (Performance, Reliability & Visibility)
 
 v6 围绕四个主题系统性地提升日常使用体验：批量更新从串行变为并行（**更快**）、Windows venv 版本检测与升级链路彻底修复（**更准**）、控制台从"沉默黑盒"变为实时终端（**更透明**）。
