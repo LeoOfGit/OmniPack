@@ -1,4 +1,7 @@
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QApplication
+from datetime import datetime
+from time import perf_counter
+
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QApplication, QCheckBox
 from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat, QFont
 from PySide6.QtCore import Qt, QEvent, Property
 
@@ -23,11 +26,24 @@ class LogTextEdit(QTextEdit):
 class ConsolePanel(QFrame):
     """Terminal-style console panel with colored output logging."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, config_mgr=None):
         super().__init__(parent)
         self.setObjectName("ConsolePanel")
+        self.config_mgr = config_mgr
         self._colors = {}
+        
+        # Load initial state from config
+        self._timestamp_enabled = False
+        if self.config_mgr:
+            self._timestamp_enabled = getattr(self.config_mgr.config, "console_timestamp_enabled", False)
+            
+        self._timing_origin = perf_counter()
         self._create_ui()
+        
+        # Sync checkbox state
+        if hasattr(self, "timestamp_checkbox"):
+            self.timestamp_checkbox.setChecked(self._timestamp_enabled)
+            
         self._refresh_colors()
 
     def _create_ui(self):
@@ -51,6 +67,12 @@ class ConsolePanel(QFrame):
         clear_btn.setObjectName("ConsoleClearBtn")
         clear_btn.clicked.connect(self.clear)
         h_layout.addWidget(clear_btn)
+
+        self.timestamp_checkbox = QCheckBox("timestamp")
+        self.timestamp_checkbox.setObjectName("ConsoleTimestampCheckbox")
+        self.timestamp_checkbox.setToolTip("Prefix console lines with wall-clock time and elapsed time since enable/clear")
+        self.timestamp_checkbox.toggled.connect(self._on_timestamp_toggled)
+        h_layout.addWidget(self.timestamp_checkbox)
 
         layout.addWidget(header)
 
@@ -101,7 +123,7 @@ class ConsolePanel(QFrame):
             fmt.setFontWeight(QFont.Normal)
             fmt.setFontPointSize(10)
 
-        cursor.insertText(message + "\n", fmt)
+        cursor.insertText(self._format_message(message) + "\n", fmt)
         self.text_edit.setTextCursor(cursor)
         self.text_edit.ensureCursorVisible()
         # Force Qt to repaint immediately so real-time output is visible
@@ -136,7 +158,7 @@ class ConsolePanel(QFrame):
                 fmt.setFontWeight(QFont.Normal)
                 fmt.setFontPointSize(10)
 
-            cursor.insertText(message + "\n", fmt)
+            cursor.insertText(self._format_message(message) + "\n", fmt)
             
         self.text_edit.setTextCursor(cursor)
         self.text_edit.ensureCursorVisible()
@@ -156,3 +178,22 @@ class ConsolePanel(QFrame):
 
     def clear(self):
         self.text_edit.clear()
+        self._reset_timing_origin()
+
+    def _on_timestamp_toggled(self, enabled: bool):
+        self._timestamp_enabled = enabled
+        if self.config_mgr:
+            self.config_mgr.config.console_timestamp_enabled = enabled
+            self.config_mgr.save_config()
+        self._reset_timing_origin()
+
+    def _reset_timing_origin(self):
+        self._timing_origin = perf_counter()
+
+    def _format_message(self, message: str) -> str:
+        if not self._timestamp_enabled:
+            return message
+
+        wall_clock = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        elapsed = perf_counter() - self._timing_origin
+        return f"[{wall_clock} | +{elapsed:0.3f}s] {message}"

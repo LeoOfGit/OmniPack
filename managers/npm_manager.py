@@ -257,8 +257,6 @@ class NpmScanWorker(BaseCmdWorker):
                 ver_res = self._run_command(ver_cmd, capture_output=True)
                 raw_node_ver = (ver_res.stdout or "").strip() or (ver_res.stderr or "").strip()
                 node_ver = parse_node_version(raw_node_ver)
-                if raw_node_ver:
-                    self._log(raw_node_ver, "stdout")
             else:
                 self._log("Warning: Node executable not found in PATH.", "stderr")
 
@@ -316,7 +314,7 @@ class NpmScanWorker(BaseCmdWorker):
                     if not os.path.exists(os.path.join(cwd, "package.json")):
                         self._log(f"Warning: No package.json found in {cwd}. Is this an NPM project directory?", "error")
 
-                res = self._run_command(cmd, cwd=cwd if not is_global else None, capture_output=True)
+                res = self._run_command(cmd, cwd=cwd if not is_global else None, capture_output=True, stream_stdout=False)
 
                 output = (res.stdout or "").strip()
 
@@ -403,7 +401,7 @@ class NpmUpdateCheckWorker(BaseCmdWorker):
                 outdated_cmd.insert(2, "-g")
             if self.registry_url:
                 outdated_cmd.extend(["--registry", self.registry_url])
-            outdated_res = self._run_command(outdated_cmd, cwd=cwd, capture_output=True)
+            outdated_res = self._run_command(outdated_cmd, cwd=cwd, capture_output=True, stream_stdout=False)
 
             outdated_map = {}
             if outdated_res.stdout and outdated_res.stdout.strip():
@@ -442,7 +440,7 @@ class NpmUpdateCheckWorker(BaseCmdWorker):
                 cmd = [npm_path, "view", pkg.name, "dist-tags", "--json"]
                 if self.registry_url:
                     cmd.extend(["--registry", self.registry_url])
-                res = self._run_command(cmd, capture_output=True)
+                res = self._run_command(cmd, capture_output=True, stream_stdout=False)
                 if res.returncode != 0 or not res.stdout.strip():
                     continue
                 try:

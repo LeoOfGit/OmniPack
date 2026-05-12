@@ -148,13 +148,14 @@ class PipManager(PackageManager):
                 break
         self.env_scanned.emit(env)
 
-    def scan_environment(self, env: Environment):
+    def scan_environment(self, env: Environment, scan_mode: str = "full"):
         """Async scan trigger"""
         worker = ScanWorker(
             env,
             source_args=build_pip_source_args(self.config_mgr),
             uv_path=get_uv_path(self.config_mgr),
             proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+            scan_mode=scan_mode,
         )
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
@@ -262,20 +263,67 @@ def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
                 break
 
 
+def _restore_package_state(pkgs: list, previous_pkgs: list, include_tree: bool = False):
+    previous_map = {
+        getattr(pkg, "norm_name", ""): pkg
+        for pkg in (previous_pkgs or [])
+        if getattr(pkg, "norm_name", "")
+    }
+    if not previous_map:
+        return
+
+    for pkg in pkgs:
+        previous = previous_map.get(getattr(pkg, "norm_name", ""))
+        if not previous:
+            continue
+
+        pkg.is_selected = getattr(previous, "is_selected", False)
+        pkg.metadata = dict(getattr(previous, "metadata", {}) or {})
+
+        if getattr(previous, "version", "") == getattr(pkg, "version", ""):
+            pkg.latest_version = getattr(previous, "latest_version", "")
+            pkg.has_update = getattr(previous, "has_update", False)
+            pkg.breaks_constraint = getattr(previous, "breaks_constraint", False)
+            pkg.build_variant_mismatch = getattr(previous, "build_variant_mismatch", False)
+
+        if include_tree:
+            pkg.requires = list(getattr(previous, "requires", []) or [])
+            pkg.required_by = list(getattr(previous, "required_by", []) or [])
+            pkg.is_top_level = getattr(previous, "is_top_level", True)
+
+
+def _uv_output_reports_package_changes(output: str) -> bool:
+    if not output:
+        return False
+
+    markers = (
+        "Prepared ",
+        "Installed ",
+        "Uninstalled ",
+        "\n + ",
+        "\n - ",
+    )
+    return any(marker in output for marker in markers)
+
+
 class ScanWorker(BaseCmdWorker):
     """Worker thread to run 'uv pip list' and 'outdated'"""
     
     env_scanned = Signal(Environment) 
 
-    def __init__(self, env: Environment, source_args=None, uv_path="uv", proxy_settings=None):
+    def __init__(self, env: Environment, source_args=None, uv_path="uv", proxy_settings=None, scan_mode: str = "full"):
         super().__init__()
         self.env = env
         self.source_args = list(source_args or [])
         self.uv_path = uv_path
         self.proxy_settings = proxy_settings or {}
+        self.scan_mode = scan_mode if scan_mode in {"full", "fast"} else "full"
     
     def run(self):
         try:
+            previous_pkgs = list(getattr(self.env, "packages", []) or [])
+            fast_mode = self.scan_mode == "fast"
+
             # Determine python executable for this env
             env_path = os.path.normpath(self.env.path)
             py_exe = resolve_python_executable(self.env)
@@ -305,8 +353,6 @@ class ScanWorker(BaseCmdWorker):
                 py_ver = cfg_ver
             if not py_ver:
                 py_ver = "?"
-            if raw_ver:
-                self._log(raw_ver, "stdout")
 
             cycle, latest_ver, runtime_has_update, runtime_err = check_runtime_patch_update(
                 "python",
@@ -327,8 +373,6 @@ class ScanWorker(BaseCmdWorker):
             try:
                 uv_cmd = [uv_path, "--version"]
                 uv_res = self._run_command(uv_cmd, capture_output=True)
-                if uv_res.stdout.strip():
-                    self._log(uv_res.stdout.strip(), "stdout")
             except FileNotFoundError:
                 self._log("Error: 'uv' command not found. Please install uv (https://gh.io/uv).", "error")
                 return
@@ -336,7 +380,7 @@ class ScanWorker(BaseCmdWorker):
             args = ["--system", "--python", self.env.path] if self.env.type == "system" else ["--python", py_exe]
             
             cmd = [uv_path, "pip", "list", "--format", "json"] + args
-            res = self._run_command(cmd, capture_output=True)
+            res = self._run_command(cmd, capture_output=True, stream_stdout=False)
 
             pkgs = []
             if res.returncode == 0 and res.stdout:
@@ -353,54 +397,64 @@ class ScanWorker(BaseCmdWorker):
                             ))
                     except Exception as je:
                         self._log(f"JSON Parse Error: {je}", "error")
-            
-            # 3. Check Updates
-            self._log("Checking for package updates...", "system")
-            cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
-            res_outdated = self._run_command(cmd_outdated, capture_output=True)
 
             outdated_map = {}
-            if res_outdated.returncode == 0 and res_outdated.stdout:
-                json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
-                if json_stdout.strip():
-                    try:
-                        data = json.loads(json_stdout)
-                        self._log(f"Loaded JSON for {len(data)} outdated packages.", "stdout")
-                        for item in data:
-                            name = item.get("name", "")
-                            latest = item.get("latest_version", "")
-                            if name and latest:
-                                outdated_map[name] = latest
-                    except: pass
-            
-            # Update objects
             count_updates = 0
-            for pkg in pkgs:
-                if pkg.name in outdated_map:
-                    pkg.latest_version = outdated_map[pkg.name]
-                    pkg.has_update = True
-                    count_updates += 1
-                    if has_build_variant_mismatch(pkg.version, pkg.latest_version):
-                        pkg.build_variant_mismatch = True
 
-            # 4. Resolve dependency tree
-            self._log(f"Resolving dependency tree for {self.env.name}...", "system")
-            dep_data = resolve_dependencies_subprocess(py_exe)
-            if dep_data:
-                pkgs, dep_graph = merge_dependency_info(pkgs, dep_data)
-                self.env.dep_graph = dep_graph
-
-                # Compute breaks_constraint for packages with updates
-                _compute_breaks_constraint(pkgs, dep_graph)
-
-                top_level_count = sum(1 for p in pkgs if p.is_top_level and not p.is_missing)
-                missing_count = sum(1 for p in pkgs if p.is_missing)
-                self._log(f"Dependency tree: {top_level_count} top-level, {len(pkgs) - top_level_count} transitive"
-                          + (f", {missing_count} missing" if missing_count else ""), "stdout")
-            else:
-                self._log(f"Warning: Could not resolve dependency tree for {self.env.name}", "stderr")
-                # Fallback: treat all as top-level
+            if fast_mode:
+                self._log(f"Fast refresh for {self.env.name}: skipping update check and dependency tree rebuild.", "system")
+                _restore_package_state(pkgs, previous_pkgs, include_tree=True)
                 self.env.dep_graph = {pkg.norm_name: pkg for pkg in pkgs}
+                count_updates = sum(1 for pkg in pkgs if getattr(pkg, "has_update", False))
+            else:
+                # 3. Check Updates
+                self._log("Checking for package updates...", "system")
+                cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
+                res_outdated = self._run_command(cmd_outdated, capture_output=True, stream_stdout=False)
+
+                if res_outdated.returncode == 0 and res_outdated.stdout:
+                    json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
+                    if json_stdout.strip():
+                        try:
+                            data = json.loads(json_stdout)
+                            self._log(f"Loaded JSON for {len(data)} outdated packages.", "stdout")
+                            for item in data:
+                                name = item.get("name", "")
+                                latest = item.get("latest_version", "")
+                                if name and latest:
+                                    outdated_map[name] = latest
+                        except Exception:
+                            pass
+
+                # Update objects
+                for pkg in pkgs:
+                    if pkg.name in outdated_map:
+                        pkg.latest_version = outdated_map[pkg.name]
+                        pkg.has_update = True
+                        count_updates += 1
+                        if has_build_variant_mismatch(pkg.version, pkg.latest_version):
+                            pkg.build_variant_mismatch = True
+
+                # 4. Resolve dependency tree
+                self._log(f"Resolving dependency tree for {self.env.name}...", "system")
+                dep_data = resolve_dependencies_subprocess(py_exe)
+                if dep_data:
+                    pkgs, dep_graph = merge_dependency_info(pkgs, dep_data)
+                    self.env.dep_graph = dep_graph
+
+                    # Compute breaks_constraint for packages with updates
+                    _compute_breaks_constraint(pkgs, dep_graph)
+                    _restore_package_state(pkgs, previous_pkgs, include_tree=False)
+
+                    top_level_count = sum(1 for p in pkgs if p.is_top_level and not p.is_missing)
+                    missing_count = sum(1 for p in pkgs if p.is_missing)
+                    self._log(f"Dependency tree: {top_level_count} top-level, {len(pkgs) - top_level_count} transitive"
+                              + (f", {missing_count} missing" if missing_count else ""), "stdout")
+                else:
+                    self._log(f"Warning: Could not resolve dependency tree for {self.env.name}", "stderr")
+                    _restore_package_state(pkgs, previous_pkgs, include_tree=True)
+                    # Fallback: treat all as top-level
+                    self.env.dep_graph = {pkg.norm_name: pkg for pkg in pkgs}
 
             self.env.python_version = py_ver
             self.env.runtime_name = "Python"
@@ -411,13 +465,15 @@ class ScanWorker(BaseCmdWorker):
             self.env.runtime_update_error = runtime_err
             self.env.packages = pkgs
             self.env.is_scanned = True
-            
+            self.env._last_scan_mode = self.scan_mode
+             
             self._log(f"✓ Found {len(pkgs)} packages, {count_updates} updates in {self.env.name}", "success")
-            
+             
         except Exception as e:
             self._log(f"Scan Error for {self.env.path}: {e}", "error")
             self.env.is_scanned = True 
-            
+            self.env._last_scan_mode = self.scan_mode
+             
         finally:
             self.env_scanned.emit(self.env)
             self._flush_logs()
@@ -509,10 +565,17 @@ class UpdateWorker(BaseCmdWorker):
             
             cmd = [uv_path, "pip", "install", "-U"] + self.source_args + [self.pkg_name] + args
             
-            self._run_command(cmd)
-            
+            res = self._run_command(cmd, capture_output=True)
+            combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
+             
             if self.success:
-                self._log(f"✓ Updated {self.pkg_name} in {self.env.name}", "success")
+                if _uv_output_reports_package_changes(combined_output):
+                    self._log(f"✓ Updated {self.pkg_name} in {self.env.name}", "success")
+                else:
+                    self._log(
+                        f"✓ No package file changes were reported for {self.pkg_name} in {self.env.name}; it may already have been updated by a previous run.",
+                        "success",
+                    )
             else:
                 self._log(f"✗ Failed to update {self.pkg_name}", "error")
                 
@@ -544,10 +607,17 @@ class BatchUpdateWorker(BaseCmdWorker):
 
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             cmd = [uv_path, "pip", "install", "-U"] + self.source_args + self.pkg_names + args
-            self._run_command(cmd)
+            res = self._run_command(cmd, capture_output=True)
+            combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
 
             if self.success:
-                self._log(f"✓ Batch updated {len(self.pkg_names)} packages in {self.env.name}", "success")
+                if _uv_output_reports_package_changes(combined_output):
+                    self._log(f"✓ Batch updated {len(self.pkg_names)} packages in {self.env.name}", "success")
+                else:
+                    self._log(
+                        f"✓ No package file changes were reported in {self.env.name}; selected packages may already have been updated by a previous run.",
+                        "success",
+                    )
             else:
                 self._log(f"✗ Batch update failed in {self.env.name}", "error")
         except Exception as e:

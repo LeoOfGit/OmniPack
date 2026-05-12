@@ -62,7 +62,7 @@ class BasePanel(QWidget):
 
         # ── Right: Console ──
         from ui.widgets.console_panel import ConsolePanel
-        self.console = ConsolePanel(self.splitter)
+        self.console = ConsolePanel(self.splitter, self.config_mgr)
         self.console.setMinimumWidth(self.CONSOLE_MIN_WIDTH)
         self.splitter.addWidget(self.console)
 

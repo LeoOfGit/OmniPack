@@ -21,6 +21,8 @@ class PipPanel(BasePanel):
         self._update_queue = []
         self._active_update_envs = set()
         self._outdated_filter_enabled = False
+        self._deferred_full_refresh_envs = set()
+        self._scheduled_full_refresh_envs = set()
 
         self._build_pip_ui()
         self._connect_signals()
@@ -100,9 +102,14 @@ class PipPanel(BasePanel):
         norm_key = self._path_key(env.path)
         if norm_key in self._env_cards:
             card = self._env_cards[norm_key]
-            card.env = env
             card.update_ui()
             self._apply_outdated_state_to_card(card)
+
+        if getattr(env, "_last_scan_mode", "full") == "fast" and norm_key in self._deferred_full_refresh_envs:
+            self._deferred_full_refresh_envs.discard(norm_key)
+            if norm_key not in self._scheduled_full_refresh_envs:
+                self._scheduled_full_refresh_envs.add(norm_key)
+                QTimer.singleShot(0, lambda path=env.path: self._start_background_full_refresh(path))
         QTimer.singleShot(200, self._check_all_tasks_done)
 
     def _check_all_tasks_done(self):
@@ -116,15 +123,29 @@ class PipPanel(BasePanel):
 
     # ── Single Env ───────────────────────────────────────────────────────
 
-    def _refresh_single_env(self, env_path: str):
+    def _refresh_single_env(self, env_path: str, scan_mode: str = "full", schedule_full: bool = False):
         target_key = self._path_key(env_path)
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
         if env:
             self._log(f"Refreshing {env.name}...", "system")
+            if schedule_full:
+                self._deferred_full_refresh_envs.add(target_key)
+            elif scan_mode == "full":
+                self._deferred_full_refresh_envs.discard(target_key)
             env.is_scanned = False
             if target_key in self._env_cards:
                 self._env_cards[target_key]._pkgs_loaded = False
-            self.pip_mgr.scan_environment(env)
+            self.pip_mgr.scan_environment(env, scan_mode=scan_mode)
+
+    def _start_background_full_refresh(self, env_path: str):
+        target_key = self._path_key(env_path)
+        self._scheduled_full_refresh_envs.discard(target_key)
+        env = self._find_env_by_path(self.pip_mgr.environments, env_path)
+        if not env:
+            return
+
+        self._log(f"Background refresh for {env.name}: checking updates and dependency tree...", "system")
+        self.pip_mgr.scan_environment(env, scan_mode="full")
 
     def _update_runtime_in_env(self, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -176,7 +197,7 @@ class PipPanel(BasePanel):
         else:
             self._log(f"Python runtime update failed for {env_name}: {message}", "error")
             QMessageBox.warning(self, "Runtime Update Failed", message or "Runtime update command failed.")
-        self._refresh_single_env(env_path)
+        self._refresh_single_env(env_path, scan_mode="fast", schedule_full=True)
 
     def _update_all_in_env(self, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -227,7 +248,7 @@ class PipPanel(BasePanel):
         self._active_update_envs.discard(env_path)
         if not self._update_queue and not self._active_update_envs:
             for p in self._affected_envs_update:
-                self._refresh_single_env(p)
+                self._refresh_single_env(p, scan_mode="fast", schedule_full=True)
             self._affected_envs_update.clear()
         elif self._update_queue:
             self._drain_update_queue()
@@ -258,7 +279,7 @@ class PipPanel(BasePanel):
         else:
             self._remove_running = False
             for p in self._affected_envs_remove:
-                self._refresh_single_env(p)
+                self._refresh_single_env(p, scan_mode="fast", schedule_full=True)
             self._affected_envs_remove.clear()
 
     def _start_pkg_install(self, env_path: str, pkg_names: str, force_reinstall: bool = False):
@@ -298,7 +319,7 @@ class PipPanel(BasePanel):
         else:
             self._install_running = False
             for p in self._affected_envs_install:
-                self._refresh_single_env(p)
+                self._refresh_single_env(p, scan_mode="fast", schedule_full=True)
             self._affected_envs_install.clear()
             if success:
                  QMessageBox.information(self, "Success", f"Installation of '{pkg_names}' completed.")
@@ -321,28 +342,19 @@ class PipPanel(BasePanel):
         if isinstance(state, bool):
             state = Qt.Checked if state else Qt.Unchecked
 
-        checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
-        partial_val = Qt.PartiallyChecked.value if hasattr(Qt.PartiallyChecked, "value") else 1
-        unchecked_val = Qt.Unchecked.value if hasattr(Qt.Unchecked, "value") else 0
         raw_state = state.value if hasattr(state, "value") else int(state)
 
-        if raw_state == unchecked_val:
+        # Treat toolbar interaction as a binary toggle. The checkbox may display
+        # a partial state as feedback, but user clicks should still behave as
+        # simple on/off for the outdated filter.
+        if self._outdated_filter_enabled:
             self._outdated_filter_enabled = False
             is_checked = False
             selection_mode = "clear_all"
-        elif raw_state == checked_val:
-            self._outdated_filter_enabled = True
-            is_checked = True
-            selection_mode = "select_all"
-        elif raw_state == partial_val:
-            # Treat user-entered partial clicks as "checked"; partial is for display feedback only.
-            self._outdated_filter_enabled = True
-            is_checked = True
-            selection_mode = "select_all"
         else:
-            self._outdated_filter_enabled = bool(raw_state)
-            is_checked = self._outdated_filter_enabled
-            selection_mode = "keep"
+            self._outdated_filter_enabled = True
+            is_checked = True
+            selection_mode = "select_all"
 
         for card in self._env_cards.values():
             card.set_outdated_only(is_checked, selection_mode=selection_mode)
@@ -367,12 +379,15 @@ class PipPanel(BasePanel):
 
     def _batch_update(self):
         env_packages = {}
+        env_objects = {}
         for _env_path, card in self._env_cards.items():
             env = card.env
-            if env.is_scanned:
-                pkgs = [pkg.name for pkg in env.packages if pkg.is_selected and pkg.has_update]
+            if getattr(env, "is_scanned", False):
+                pkgs = [pkg.name for pkg in env.packages if getattr(pkg, "is_selected", False) and getattr(pkg, "has_update", False)]
                 if pkgs:
-                    env_packages[env] = pkgs
+                    key = self._path_key(env.path)
+                    env_packages[key] = pkgs
+                    env_objects[key] = env
 
         if not env_packages:
             self._log("No updatable packages selected.", "system")
@@ -380,7 +395,8 @@ class PipPanel(BasePanel):
 
         total = sum(len(v) for v in env_packages.values())
         self.console.log_divider(f"BATCH UPDATE ({total} packages across {len(env_packages)} environments)")
-        for env, pkg_names in env_packages.items():
+        for key, pkg_names in env_packages.items():
+            env = env_objects[key]
             self._update_queue.extend([(pkg_name, env) for pkg_name in pkg_names])
         self._drain_update_queue()
 
@@ -390,9 +406,9 @@ class PipPanel(BasePanel):
         remove_list = []
         for env_path, card in self._env_cards.items():
             env = card.env
-            if env.is_scanned:
+            if getattr(env, "is_scanned", False):
                 for pkg in env.packages:
-                    if pkg.is_selected:
+                    if getattr(pkg, "is_selected", False):
                         remove_list.append((pkg.name, env))
 
         if not remove_list:

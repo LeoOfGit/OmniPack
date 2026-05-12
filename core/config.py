@@ -28,6 +28,7 @@ class AppConfig:
     window_state: str = ""
     pip_splitter_state: str = ""
     current_tab: int = 0
+    console_timestamp_enabled: bool = False
     
     # First-run scanning flags
     pip_scanned_once: bool = False
@@ -62,6 +63,7 @@ class ConfigManager:
                 current_tab=data.get("current_tab", 0),
                 pip_scanned_once=data.get("pip_scanned_once", False),
                 npm_scanned_once=data.get("npm_scanned_once", False),
+                console_timestamp_enabled=data.get("console_timestamp_enabled", False),
             )
         except Exception:
             return self._create_default_config()

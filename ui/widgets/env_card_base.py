@@ -241,6 +241,8 @@ class BaseEnvCard(QFrame):
                 if pkg.has_update and not getattr(pkg, "is_missing", False):
                     pkg.is_selected = False
 
+        self._ensure_filter_expanded()
+
         if outdated_only and self.is_expanded and self._pkgs_loaded:
             self._expand_outdated_branches(self.content_layout)
 
@@ -260,11 +262,33 @@ class BaseEnvCard(QFrame):
 
     def filter_packages(self, query: str):
         self._search_query = query.strip().lower()
+        self._ensure_filter_expanded()
         if self._search_timer is None:
             self._search_timer = QTimer(self)
             self._search_timer.setSingleShot(True)
             self._search_timer.timeout.connect(self._apply_filters)
         self._search_timer.start(300)
+
+    def _ensure_filter_expanded(self):
+        if not getattr(self.env, "is_scanned", False):
+            return
+
+        should_expand_for_search = bool(self._search_query) and any(
+            self._search_query in getattr(pkg, "name", "").lower()
+            or self._search_query in getattr(pkg, "version", "").lower()
+            for pkg in getattr(self.env, "packages", []) or []
+        )
+        should_expand_for_outdated = bool(self._outdated_only) and any(
+            getattr(pkg, "has_update", False) or getattr(pkg, "is_missing", False)
+            for pkg in getattr(self.env, "packages", []) or []
+        )
+
+        if (should_expand_for_search or should_expand_for_outdated) and not self.is_expanded:
+            self.is_expanded = True
+            self.content_container.setVisible(True)
+            self.toggle_lbl.setText("▼")
+            if not self._pkgs_loaded:
+                self._start_lazy_load()
 
     def _apply_filters(self):
         if not getattr(self.env, "is_scanned", False):

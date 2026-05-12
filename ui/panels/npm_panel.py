@@ -416,28 +416,19 @@ class NpmPanel(BasePanel):
         if isinstance(state, bool):
             state = Qt.Checked if state else Qt.Unchecked
 
-        checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
-        partial_val = Qt.PartiallyChecked.value if hasattr(Qt.PartiallyChecked, "value") else 1
-        unchecked_val = Qt.Unchecked.value if hasattr(Qt.Unchecked, "value") else 0
         raw_state = state.value if hasattr(state, "value") else int(state)
 
-        if raw_state == unchecked_val:
+        # Treat toolbar interaction as a binary toggle. The checkbox may display
+        # a partial state as feedback, but user clicks should still behave as
+        # simple on/off for the outdated filter.
+        if self._outdated_filter_enabled:
             self._outdated_filter_enabled = False
             is_checked = False
             selection_mode = "clear_all"
-        elif raw_state == checked_val:
-            self._outdated_filter_enabled = True
-            is_checked = True
-            selection_mode = "select_all"
-        elif raw_state == partial_val:
-            # Treat user-entered partial clicks as "checked"; partial is for display feedback only.
-            self._outdated_filter_enabled = True
-            is_checked = True
-            selection_mode = "select_all"
         else:
-            self._outdated_filter_enabled = bool(raw_state)
-            is_checked = self._outdated_filter_enabled
-            selection_mode = "keep"
+            self._outdated_filter_enabled = True
+            is_checked = True
+            selection_mode = "select_all"
 
         for card in self._env_cards.values():
             card.set_outdated_only(is_checked, selection_mode=selection_mode)
@@ -462,6 +453,7 @@ class NpmPanel(BasePanel):
 
     def _batch_update(self):
         env_packages = {}
+        env_objects = {}
         for _env_path, card in self._env_cards.items():
             env = card.env
             if getattr(env, "is_scanned", False):
@@ -471,7 +463,9 @@ class NpmPanel(BasePanel):
                         channel = pkg.metadata.get("channel", "latest") if getattr(pkg, "metadata", None) else "latest"
                         specs.append((pkg.name, channel))
                 if specs:
-                    env_packages[env] = specs
+                    key = self._path_key(env.path)
+                    env_packages[key] = specs
+                    env_objects[key] = env
 
         if not env_packages:
             self._log("No updatable packages selected.", "system")
@@ -479,7 +473,8 @@ class NpmPanel(BasePanel):
 
         total = sum(len(v) for v in env_packages.values())
         self.console.log_divider(f"BATCH UPDATE ({total} packages across {len(env_packages)} environments)")
-        for env, specs in env_packages.items():
+        for key, specs in env_packages.items():
+            env = env_objects[key]
             self._update_queue.extend([(name, ch, env) for name, ch in specs])
         self._drain_update_queue()
 

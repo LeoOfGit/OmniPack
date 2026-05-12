@@ -2,6 +2,7 @@ import os
 import subprocess
 import threading
 import re
+import time
 from PySide6.QtCore import QThread, Signal
 from core.config import ConfigManager
 from core.network_proxy import merge_env_for_command
@@ -19,21 +20,23 @@ class BaseCmdWorker(QThread):
     def __init__(self):
         super().__init__()
         self.success = False
-        self._log_buffer = []
 
     def _log(self, msg: str, tag: str):
-        self._log_buffer.append((msg, tag))
         # Emit each line in real-time so the console renders progressively
         # during long-running commands (pip install, npm install, etc.)
         self.log_msg.emit(msg, tag)
 
     def _flush_logs(self):
-        """Must be called in `finally` block of `run()` to emit batched logs."""
-        if self._log_buffer:
-            self.log_batch.emit(self._log_buffer)
-            self._log_buffer.clear()
+        """Retained for worker API compatibility."""
 
-    def _run_command(self, cmd: list[str], cwd: str = None, capture_output: bool = False) -> subprocess.CompletedProcess:
+    def _run_command(
+        self,
+        cmd: list[str],
+        cwd: str = None,
+        capture_output: bool = False,
+        stream_stdout: bool = True,
+        stream_stderr: bool = True,
+    ) -> subprocess.CompletedProcess:
         """
         Runs a command, streaming stdout/stderr line-by-line via self._log().
 
@@ -49,6 +52,11 @@ class BaseCmdWorker(QThread):
             except Exception:
                 proxy_settings = {}
         proc_env = merge_env_for_command(cmd, base_env=os.environ.copy(), proxy_settings=proxy_settings)
+        start_time = time.monotonic()
+        last_output_at = [start_time]
+        last_heartbeat_at = [start_time]
+        heartbeat_interval = 5.0
+        silence_hint_logged = [False]
 
         process = subprocess.Popen(
             cmd,
@@ -67,12 +75,15 @@ class BaseCmdWorker(QThread):
         captured_stdout = []
         captured_stderr = []
 
-        def read_stream(stream, tag, capture_list=None):
+        def read_stream(stream, tag, capture_list=None, should_stream=True):
             try:
                 for raw_line in stream:
                     line = ANSI_ESCAPE.sub("", raw_line).rstrip()
                     if line:
-                        self._log(line, tag)
+                        now = time.monotonic()
+                        last_output_at[0] = now
+                        if should_stream:
+                            self._log(line, tag)
                         if capture_list is not None:
                             capture_list.append(line)
             except Exception:
@@ -80,19 +91,37 @@ class BaseCmdWorker(QThread):
 
         cap_out = captured_stdout if capture_output else None
         cap_err = captured_stderr if capture_output else None
-        stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout", cap_out), daemon=True)
-        stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr", cap_err), daemon=True)
+        stdout_t = threading.Thread(target=read_stream, args=(process.stdout, "stdout", cap_out, stream_stdout), daemon=True)
+        stderr_t = threading.Thread(target=read_stream, args=(process.stderr, "stderr", cap_err, stream_stderr), daemon=True)
         stdout_t.start()
         stderr_t.start()
-        process.wait()
+
+        while True:
+            returncode = process.poll()
+            if returncode is not None:
+                break
+
+            now = time.monotonic()
+            if now - last_output_at[0] >= heartbeat_interval and now - last_heartbeat_at[0] >= heartbeat_interval:
+                elapsed = now - start_time
+                self._log(f"... still running ({elapsed:0.1f}s elapsed)", "system")
+                last_heartbeat_at[0] = now
+                if not silence_hint_logged[0] and elapsed >= 30.0:
+                    self._log(
+                        "... no subprocess output for a while; possible causes include a large download/build, a slow network/index, or waiting for another package-manager process/lock.",
+                        "stderr",
+                    )
+                    silence_hint_logged[0] = True
+            time.sleep(0.2)
+
         stdout_t.join(timeout=5)
         stderr_t.join(timeout=5)
 
-        self.success = (process.returncode == 0)
+        self.success = (returncode == 0)
         if capture_output:
             return subprocess.CompletedProcess(
-                process.args, process.returncode,
+                process.args, returncode,
                 stdout="\n".join(captured_stdout),
                 stderr="\n".join(captured_stderr),
             )
-        return subprocess.CompletedProcess(process.args, process.returncode)
+        return subprocess.CompletedProcess(process.args, returncode)
