@@ -1,13 +1,20 @@
 import os
 import json
 import subprocess
+import webbrowser
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 
 from core.manager_base import Environment, Package
 from core.network_proxy import merge_env_for_command
 from core.npm_spec import split_npm_spec
-from core.runtime_update import detect_nvm
+from core.runtime_update import (
+    detect_nvm,
+    download_runtime_installer,
+    build_installer_run_command,
+    get_node_installer_url,
+)
+from managers.base_worker import BaseCmdWorker
 from managers.npm_manager import NpmManager, NpmBaseHelper, resolve_npm_registry_url
 from ui.panels.base_panel import BasePanel
 from core.trace_logger import trace_event, is_trace_enabled, get_trace_path
@@ -52,6 +59,79 @@ class NpmDistTagsWorker(QThread):
             self.tags_ready.emit(self.pkg_name, data, "")
         except Exception as exc:
             self.tags_ready.emit(self.pkg_name, {}, str(exc))
+
+
+class RuntimeInstallerWorker(BaseCmdWorker):
+    """Download and run the official runtime installer as a winget fallback."""
+
+    installer_done = Signal(bool, str)  # success, message
+
+    def __init__(self, runtime_kind: str, version: str, proxy_settings=None):
+        super().__init__()
+        self.runtime_kind = runtime_kind
+        self.version = version
+        self.proxy_settings = proxy_settings or {}
+
+    def run(self):
+        try:
+            label = "Node.js" if self.runtime_kind == "node" else "Python"
+            self._log(
+                f"Downloading {label} {self.version} installer...",
+                "system",
+            )
+
+            def _progress(downloaded: int, total: int):
+                if total:
+                    pct = downloaded * 100 // total
+                    self._log(
+                        f"... {downloaded / 1_048_576:.1f} / {total / 1_048_576:.1f} MB ({pct}%)",
+                        "system",
+                    )
+                else:
+                    self._log(
+                        f"... {downloaded / 1_048_576:.1f} MB downloaded",
+                        "system",
+                    )
+
+            installer_path, err = download_runtime_installer(
+                self.runtime_kind,
+                self.version,
+                proxy_settings=self.proxy_settings,
+                progress_callback=_progress,
+            )
+            if err:
+                self.success = False
+                self._log(f"✗ Download failed: {err}", "error")
+                self.installer_done.emit(False, err)
+                return
+
+            self._log(f"✓ Downloaded to {installer_path}", "success")
+
+            cmd, cmd_err = build_installer_run_command(installer_path, self.runtime_kind)
+            if cmd_err:
+                self.success = False
+                self._log(f"✗ {cmd_err}", "error")
+                self.installer_done.emit(False, cmd_err)
+                return
+
+            self._log("Running installer (may require administrator privileges)...", "system")
+            self._run_command(cmd)
+
+            if self.success:
+                self._log("✓ Installer completed successfully", "success")
+            else:
+                self._log(
+                    "✗ Installer returned non-zero (try running as administrator, or "
+                    "download and install manually)",
+                    "error",
+                )
+            self.installer_done.emit(self.success, "")
+        except Exception as exc:
+            self.success = False
+            self._log(f"✗ Installer error: {exc}", "error")
+            self.installer_done.emit(False, str(exc))
+        finally:
+            self._flush_logs()
 
 
 class NpmPanel(BasePanel):
@@ -252,16 +332,75 @@ class NpmPanel(BasePanel):
         self.console.log_divider(f"RUNTIME UPDATE (Node.js) via {env.name} [{method}]")
         self.npm_mgr.update_runtime(env, use_nvm=use_nvm)
 
-    def _on_runtime_update_done(self, env_path: str, success: bool, message: str):
+    def _on_runtime_update_done(self, env_path: str, success: bool, message: str,
+                                 winget_failed: bool = False, target_version: str = ""):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
         env_name = env.name if env else env_path
         if success:
             self._log(f"Node.js runtime update finished (triggered by {env_name}).", "success")
+        elif winget_failed and target_version:
+            self._log(
+                f"Node.js runtime update failed (triggered by {env_name}): {message}",
+                "error",
+            )
+            self._offer_installer_fallback("node", target_version, env_path)
         else:
             self._log(f"Node.js runtime update failed (triggered by {env_name}): {message}", "error")
             QMessageBox.warning(self, "Runtime Update Failed", message or "Runtime update command failed.")
 
         # Node runtime is global in practice; refresh all env cards.
+        if not winget_failed:
+            for item in self.npm_mgr.environments:
+                self._refresh_single_env(item.path)
+
+    def _offer_installer_fallback(self, runtime_kind: str, version: str, env_path: str):
+        """Show a dialog offering to download and run the official installer."""
+        label = "Node.js" if runtime_kind == "node" else "Python"
+        url = get_node_installer_url(version) if runtime_kind == "node" else ""
+        msg = (
+            f"winget is unable to access its package source.\n\n"
+            f"Would you like to download the official {label} {version} installer "
+            f"and run it instead?\n\n"
+            f"This will download ~30 MB and run the installer (may need admin rights)."
+        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("winget Unavailable — Installer Fallback")
+        msg_box.setText(msg)
+        download_btn = msg_box.addButton("Download && Install", QMessageBox.AcceptRole)
+        open_btn = msg_box.addButton("Open Download Page", QMessageBox.ActionRole)
+        cancel_btn = msg_box.addButton("Cancel", QMessageBox.RejectRole)
+        msg_box.exec()
+        clicked = msg_box.clickedButton()
+
+        if clicked == download_btn:
+            self.console.log_divider(f"INSTALLER FALLBACK ({label} {version})")
+            self._start_installer_download(runtime_kind, version, env_path)
+        elif clicked == open_btn:
+            if url:
+                webbrowser.open(url)
+                self._log(f"Opened download page for {label} {version}.", "system")
+        # Cancel → nothing
+
+    def _start_installer_download(self, runtime_kind: str, version: str, env_path: str):
+        """Launch the installer download + run worker."""
+        self._installer_worker = RuntimeInstallerWorker(
+            runtime_kind,
+            version,
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
+        )
+        self._installer_worker.log_msg.connect(self._log)
+        self._installer_worker.log_batch.connect(self._log_batch)
+        self._installer_worker.installer_done.connect(
+            lambda success, msg: self._on_installer_done(success, msg)
+        )
+        self._installer_worker.start()
+
+    def _on_installer_done(self, success: bool, message: str):
+        if success:
+            self._log("Runtime installer completed. Refreshing environments...", "system")
+        elif message:
+            QMessageBox.warning(self, "Installer Failed", message)
+        # Refresh all env cards to pick up new runtime version
         for item in self.npm_mgr.environments:
             self._refresh_single_env(item.path)
 

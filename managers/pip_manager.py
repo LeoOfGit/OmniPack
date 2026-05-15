@@ -233,7 +233,10 @@ class PipManager(PackageManager):
         worker.finished.connect(
             lambda: [
                 self._active_workers.remove(worker) if worker in self._active_workers else None,
-                self.runtime_update_done.emit(env.path, worker.success, worker.result_message),
+                self.runtime_update_done.emit(
+                    env.path, worker.success, worker.result_message,
+                    worker.winget_failed, worker.target_version,
+                ),
             ]
         )
 
@@ -241,7 +244,8 @@ class PipManager(PackageManager):
     batch_update_done = Signal(str, list, bool) # env_path, pkg_names, success
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
-    runtime_update_done = Signal(str, bool, str) # env_path, success, message
+    runtime_update_done = Signal(str, bool, str, bool, str)
+    # env_path, success, message, winget_failed, target_version
 
 
 
@@ -486,12 +490,23 @@ class RuntimeUpdateWorker(BaseCmdWorker):
         super().__init__()
         self.env = env
         self.result_message = ""
+        self.winget_failed = False
+        self.target_version = ""
+
+    def _detect_winget_failure(self, result, cmd: list[str]) -> bool:
+        """Return True if the failure looks like a winget source issue."""
+        is_winget_cmd = os.path.basename(str(cmd[0])).lower() in {"winget", "winget.exe"}
+        if not is_winget_cmd:
+            return False
+        combined = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
+        return "failed when opening source" in combined or "0x8d15000f" in combined
 
     def run(self):
         try:
             current_ver = self.env.runtime_version or self.env.python_version
             cycle = self.env.runtime_cycle or parse_cycle("python", current_ver)
             latest = self.env.runtime_latest_version
+            self.target_version = latest or ""
             self._log(
                 f"Updating Python runtime for {self.env.name} ({current_ver or 'unknown'}"
                 + (f" -> {latest}" if latest else "")
@@ -514,21 +529,28 @@ class RuntimeUpdateWorker(BaseCmdWorker):
                     else:
                         self._log("Step 2/2: Upgrading virtual environment...", "system")
 
-                self._run_command(cmd)
+                result = self._run_command(cmd, capture_output=True)
 
                 if not self.success:
                     if i == 0 and multi_step:
-                        # winget failure: system Python may already be up to date;
-                        # log a warning and try the venv upgrade anyway.
-                        self._log(
-                            "System Python winget update returned non-zero "
-                            "(may already be current). Proceeding with venv upgrade...",
-                            "stderr",
-                        )
+                        if self._detect_winget_failure(result, cmd):
+                            self.winget_failed = True
+                            self._log("✗ winget source unavailable — installer fallback available", "stderr")
+                        else:
+                            self._log(
+                                "System Python winget update returned non-zero "
+                                "(may already be current). Proceeding with venv upgrade...",
+                                "stderr",
+                            )
                         self.success = True  # reset for next step
                         continue
-                    self.result_message = f"Python runtime update command failed."
-                    self._log(f"✗ {self.result_message}", "error")
+                    if self._detect_winget_failure(result, cmd):
+                        self.winget_failed = True
+                        self.result_message = "winget source unavailable."
+                        self._log(f"✗ winget failed — installer fallback available", "stderr")
+                    else:
+                        self.result_message = f"Python runtime update command failed."
+                        self._log(f"✗ {self.result_message}", "error")
                     return
 
             self.success = True
@@ -563,7 +585,7 @@ class UpdateWorker(BaseCmdWorker):
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
-            cmd = [uv_path, "pip", "install", "-U"] + self.source_args + [self.pkg_name] + args
+            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + [self.pkg_name] + args
             
             res = self._run_command(cmd, capture_output=True)
             combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
@@ -606,7 +628,7 @@ class BatchUpdateWorker(BaseCmdWorker):
             py_exe = resolve_python_executable(self.env)
 
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
-            cmd = [uv_path, "pip", "install", "-U"] + self.source_args + self.pkg_names + args
+            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + self.pkg_names + args
             res = self._run_command(cmd, capture_output=True)
             combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
 
@@ -683,7 +705,7 @@ class InstallWorker(BaseCmdWorker):
             
             args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
-            cmd = [uv_path, "pip", "install"]
+            cmd = [uv_path, "pip", "install", "-v"]
             cmd.extend(self.source_args)
             if self.force_reinstall:
                 cmd.append("--force-reinstall")

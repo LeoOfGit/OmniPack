@@ -52,11 +52,23 @@ class BaseCmdWorker(QThread):
             except Exception:
                 proxy_settings = {}
         proc_env = merge_env_for_command(cmd, base_env=os.environ.copy(), proxy_settings=proxy_settings)
+        proc_env["FORCE_COLOR"] = "1"
         start_time = time.monotonic()
         last_output_at = [start_time]
         last_heartbeat_at = [start_time]
         heartbeat_interval = 5.0
         silence_hint_logged = [False]
+
+        # ── heartbeat label based on command type ──
+        _cmd_base = os.path.basename(str(cmd[0])).lower() if cmd else ""
+        if _cmd_base in {"uv", "uv.exe", "pip", "pip.exe", "pip3", "pip3.exe"}:
+            _heartbeat_label = "downloading/installing packages..."
+        elif _cmd_base in {"npm", "npm.cmd", "npx", "npx.cmd", "pnpm", "pnpm.cmd", "yarn", "yarn.cmd"}:
+            _heartbeat_label = "downloading npm packages..."
+        elif _cmd_base in {"winget", "winget.exe"}:
+            _heartbeat_label = "waiting for winget..."
+        else:
+            _heartbeat_label = "still running..."
 
         process = subprocess.Popen(
             cmd,
@@ -70,22 +82,85 @@ class BaseCmdWorker(QThread):
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         )
 
-        ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\r")
+        ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07")
 
         captured_stdout = []
         captured_stderr = []
 
+        def _emit_line(line: str, tag: str, capture_list, do_stream: bool = True):
+            last_output_at[0] = time.monotonic()
+            if capture_list is not None:
+                capture_list.append(line)
+            if do_stream:
+                self._log(line, tag)
+
         def read_stream(stream, tag, capture_list=None, should_stream=True):
+            """Read stdout/stderr in chunks, splitting on \\r and \\n.
+
+            \\r-delimited segments are progress-bar updates (throttled to ~1/s).
+            \\n-delimited segments are regular log lines (emitted immediately).
+            """
             try:
-                for raw_line in stream:
-                    line = ANSI_ESCAPE.sub("", raw_line).rstrip()
-                    if line:
+                buf = ""
+                pending = ""  # latest \r-delimited progress text
+                last_pending_at = 0.0
+                pending_min_interval = 0.8  # seconds
+
+                def _flush_pending():
+                    nonlocal pending, last_pending_at
+                    if not pending:
+                        return
+                    _emit_line(pending, tag, capture_list, do_stream=should_stream)
+                    last_pending_at = time.monotonic()
+                    pending = ""
+
+                while True:
+                    chunk = stream.read(8192)
+                    if not chunk:
+                        break
+
+                    buf += chunk
+
+                    while True:
+                        cr = buf.find("\r")
+                        nl = buf.find("\n")
+                        if cr == -1 and nl == -1:
+                            break
+
+                        pos = cr if nl == -1 else (nl if cr == -1 else min(cr, nl))
+                        segment = buf[:pos]
+                        term = buf[pos]
+                        buf = buf[pos + 1:]
+
+                        cleaned = ANSI_ESCAPE.sub("", segment).rstrip()
+                        if not cleaned:
+                            continue
+
+                        if term == "\r":
+                            pending = cleaned
+                            now = time.monotonic()
+                            if should_stream and now - last_pending_at >= pending_min_interval:
+                                _emit_line(pending, tag, capture_list)
+                                last_pending_at = now
+                        else:  # \n
+                            if pending:
+                                _flush_pending()
+                            else:
+                                _emit_line(cleaned, tag, capture_list, do_stream=should_stream)
+
+                    # periodic flush of pending progress (for long stretches of \r-only output)
+                    if pending and should_stream:
                         now = time.monotonic()
-                        last_output_at[0] = now
-                        if should_stream:
-                            self._log(line, tag)
-                        if capture_list is not None:
-                            capture_list.append(line)
+                        if now - last_pending_at >= pending_min_interval:
+                            _emit_line(pending, tag, capture_list)
+                            last_pending_at = now
+
+                # flush remaining
+                _flush_pending()
+                if buf:
+                    cleaned = ANSI_ESCAPE.sub("", buf).rstrip()
+                    if cleaned:
+                        _emit_line(cleaned, tag, capture_list, do_stream=should_stream)
             except Exception:
                 pass
 
@@ -104,11 +179,11 @@ class BaseCmdWorker(QThread):
             now = time.monotonic()
             if now - last_output_at[0] >= heartbeat_interval and now - last_heartbeat_at[0] >= heartbeat_interval:
                 elapsed = now - start_time
-                self._log(f"... still running ({elapsed:0.1f}s elapsed)", "system")
+                self._log(f"... {_heartbeat_label} ({elapsed:0.0f}s)", "system")
                 last_heartbeat_at[0] = now
                 if not silence_hint_logged[0] and elapsed >= 30.0:
                     self._log(
-                        "... no subprocess output for a while; possible causes include a large download/build, a slow network/index, or waiting for another package-manager process/lock.",
+                        "... still no output from subprocess — large download or build in progress",
                         "stderr",
                     )
                     silence_hint_logged[0] = True

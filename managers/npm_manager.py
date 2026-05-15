@@ -589,6 +589,8 @@ class NpmRuntimeUpdateWorker(BaseCmdWorker):
         self.env = env
         self.use_nvm = use_nvm
         self.result_message = ""
+        self.winget_failed = False
+        self.target_version = ""
 
     def run(self):
         try:
@@ -600,6 +602,7 @@ class NpmRuntimeUpdateWorker(BaseCmdWorker):
             else:
                 cycle = self.env.runtime_cycle or parse_cycle("node", current_ver)
                 target_ver = self.env.runtime_latest_version
+            self.target_version = target_ver or ""
             method = "nvm" if self.use_nvm else "winget"
             self._log(
                 f"Updating Node.js runtime from {current_ver or 'unknown'}"
@@ -625,10 +628,20 @@ class NpmRuntimeUpdateWorker(BaseCmdWorker):
                 return
 
             for cmd in commands:
-                self._run_command(cmd)
+                result = self._run_command(cmd, capture_output=True)
                 if not self.success:
-                    self.result_message = "Node.js runtime update command failed."
-                    self._log(f"✗ {self.result_message}", "error")
+                    combined = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
+                    is_winget_cmd = os.path.basename(str(cmd[0])).lower() in {"winget", "winget.exe"}
+                    if is_winget_cmd and (
+                        "failed when opening source" in combined
+                        or "0x8d15000f" in combined
+                    ):
+                        self.winget_failed = True
+                        self.result_message = "winget source unavailable."
+                        self._log(f"✗ winget failed — installer fallback available", "stderr")
+                    else:
+                        self.result_message = "Node.js runtime update command failed."
+                        self._log(f"✗ {self.result_message}", "error")
                     return
 
             self.success = True
@@ -653,7 +666,8 @@ class NpmManager(PackageManager):
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
     updates_checked = Signal(Environment)
-    runtime_update_done = Signal(str, bool, str) # env_path, success, message
+    runtime_update_done = Signal(str, bool, str, bool, str)
+    # env_path, success, message, winget_failed, target_version
 
     def __init__(self, config_mgr):
         super().__init__()
@@ -859,6 +873,9 @@ class NpmManager(PackageManager):
         worker.finished.connect(
             lambda: [
                 self._active_workers.remove(worker) if worker in self._active_workers else None,
-                self.runtime_update_done.emit(env.path, worker.success, worker.result_message),
+                self.runtime_update_done.emit(
+                    env.path, worker.success, worker.result_message,
+                    worker.winget_failed, worker.target_version,
+                ),
             ]
         )

@@ -588,3 +588,125 @@ def build_node_runtime_update_command_nvm(
         return None, "Cannot update Node.js: missing target version."
 
     return [[nvm_path, "install", version_arg]], ""
+
+
+# ── Installer fallback (when winget fails) ──────────────────────────────────────
+
+
+def get_python_installer_url(version: str) -> str:
+    """Build the download URL for the official Python Windows installer (64-bit)."""
+    ver = _parse_numeric_version(version)
+    return f"https://www.python.org/ftp/python/{ver}/python-{ver}-amd64.exe"
+
+
+def get_node_installer_url(version: str) -> str:
+    """Build the download URL for the official Node.js Windows MSI installer (x64)."""
+    ver = _parse_numeric_version(version)
+    return f"https://nodejs.org/dist/v{ver}/node-v{ver}-x64.msi"
+
+
+def _resolve_installer_dest(runtime_kind: str, version: str) -> str:
+    """Return the full path where the installer should be saved."""
+    import tempfile
+    ver = _parse_numeric_version(version)
+    suffix = ".exe" if runtime_kind == "python" else ".msi"
+    filename = f"python-{ver}-amd64{suffix}" if runtime_kind == "python" else f"node-v{ver}-x64{suffix}"
+    return os.path.join(tempfile.gettempdir(), "OmniPack", filename)
+
+
+def download_runtime_installer(
+    runtime_kind: str,
+    version: str,
+    proxy_settings=None,
+    timeout: int = 600,
+    progress_callback=None,
+) -> tuple[str, str]:
+    """Download the official runtime installer to a temporary directory.
+
+    Args:
+        progress_callback: Optional callable(downloaded_bytes, total_bytes).
+                           Called at most once per second and once per 5 MiB.
+
+    Returns (installer_path, error).
+    On success, error is an empty string.
+    """
+    import time as _time
+
+    if runtime_kind == "python":
+        url = get_python_installer_url(version)
+    elif runtime_kind == "node":
+        url = get_node_installer_url(version)
+    else:
+        return "", f"Unsupported runtime kind: {runtime_kind}"
+
+    dest = _resolve_installer_dest(runtime_kind, version)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+    try:
+        with urlopen(
+            url,
+            timeout=timeout,
+            headers={"User-Agent": f"OmniPack/{__version__}"},
+            proxy_settings=proxy_settings or {},
+            force_proxy=True,
+        ) as response:
+            total = int(response.headers.get("Content-Length", 0))
+            downloaded = 0
+            last_cb_bytes = 0
+            last_cb_time = _time.monotonic()
+            cb_interval_bytes = 5_242_880  # 5 MiB
+            cb_interval_secs = 0.8
+            with open(dest, "wb") as f:
+                while True:
+                    chunk = response.read(1_048_576)  # 1 MiB
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and (
+                        downloaded - last_cb_bytes >= cb_interval_bytes
+                        or _time.monotonic() - last_cb_time >= cb_interval_secs
+                    ):
+                        progress_callback(downloaded, total)
+                        last_cb_bytes = downloaded
+                        last_cb_time = _time.monotonic()
+            if total and downloaded < total:
+                os.remove(dest)
+                return "", f"Incomplete download: {downloaded}/{total} bytes"
+        return dest, ""
+    except Exception as exc:
+        if os.path.exists(dest):
+            try:
+                os.remove(dest)
+            except Exception:
+                pass
+        return "", str(exc)
+
+
+def build_installer_run_command(
+    installer_path: str, runtime_kind: str
+) -> tuple[list[str], str]:
+    """Build the command to run the downloaded installer silently.
+
+    Returns (command_list, error). On success, error is an empty string.
+    """
+    if not os.path.isfile(installer_path):
+        return [], f"Installer not found: {installer_path}"
+
+    if runtime_kind == "python":
+        return [
+            installer_path,
+            "/quiet",
+            "InstallAllUsers=1",
+            "PrependPath=1",
+            "Include_test=0",
+        ], ""
+    elif runtime_kind == "node":
+        return [
+            "msiexec",
+            "/i",
+            installer_path,
+            "/quiet",
+            "/norestart",
+        ], ""
+    return [], f"Unsupported runtime kind: {runtime_kind}"
