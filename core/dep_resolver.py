@@ -18,7 +18,10 @@ from core.manager_base import Package, DepRequirement
 # It uses only stdlib modules (importlib.metadata, json, re, sys).
 _RESOLVER_SCRIPT = textwrap.dedent(r'''
 import importlib.metadata
+import ast
 import json
+import os
+import platform
 import re
 import sys
 
@@ -48,6 +51,287 @@ def get_dist_version(dist):
     if not version:
         version = getattr(dist, 'version', '')
     return str(version or '').strip()
+
+def split_requirement_marker(req_text):
+    if ';' not in req_text:
+        return req_text.strip(), ''
+    requirement_part, marker_part = req_text.split(';', 1)
+    return requirement_part.strip(), marker_part.strip()
+
+def _marker_environment():
+    impl = getattr(sys, 'implementation', None)
+    impl_version = getattr(impl, 'version', None)
+    if impl_version is not None:
+        version_parts = [str(getattr(impl_version, attr, 0)) for attr in ('major', 'minor', 'micro')]
+        implementation_version = '.'.join(version_parts)
+    else:
+        implementation_version = ''
+    return {
+        'python_version': '.'.join(str(x) for x in sys.version_info[:2]),
+        'python_full_version': '.'.join(str(x) for x in sys.version_info[:3]),
+        'os_name': os.name,
+        'sys_platform': sys.platform,
+        'platform_system': platform.system(),
+        'platform_machine': platform.machine(),
+        'platform_release': platform.release(),
+        'platform_version': platform.version(),
+        'platform_python_implementation': platform.python_implementation(),
+        'implementation_name': getattr(impl, 'name', ''),
+        'implementation_version': implementation_version,
+    }
+
+_MARKER_ENV = _marker_environment()
+
+def _tokenize_marker(marker):
+    pattern = re.compile(
+        r"""
+        \s*(
+            not\s+in
+            |==|!=|<=|>=|<|>
+            |\(|\)
+            |\band\b|\bor\b|\bin\b
+            |"[^"\\]*(?:\\.[^"\\]*)*"
+            |'[^'\\]*(?:\\.[^'\\]*)*'
+            |[A-Za-z_][A-Za-z0-9_.-]*
+        )
+        """,
+        re.VERBOSE,
+    )
+    tokens = []
+    pos = 0
+    while pos < len(marker):
+        match = pattern.match(marker, pos)
+        if not match:
+            raise ValueError(f'Unsupported marker syntax: {marker!r}')
+        token = re.sub(r'\s+', ' ', match.group(1).strip())
+        tokens.append(token)
+        pos = match.end()
+    return tokens
+
+def _coerce_marker_token(token):
+    if token in _MARKER_ENV:
+        return str(_MARKER_ENV[token] or ''), True
+    if token[:1] in {'"', "'"}:
+        try:
+            return str(ast.literal_eval(token)), False
+        except Exception:
+            return token[1:-1], False
+    return str(token), False
+
+def _marker_version_key(value):
+    parts = []
+    for piece in re.split(r'([0-9]+)', str(value or '')):
+        if not piece:
+            continue
+        parts.append(int(piece) if piece.isdigit() else piece.lower())
+    return parts
+
+def _compare_marker_values(left, op, right, version_like=False):
+    if op == 'in':
+        return str(left) in str(right)
+    if op == 'not in':
+        return str(left) not in str(right)
+
+    if version_like:
+        left_cmp = _marker_version_key(left)
+        right_cmp = _marker_version_key(right)
+    else:
+        left_cmp = str(left).lower()
+        right_cmp = str(right).lower()
+
+    if op == '==':
+        return left_cmp == right_cmp
+    if op == '!=':
+        return left_cmp != right_cmp
+    if op == '<':
+        return left_cmp < right_cmp
+    if op == '<=':
+        return left_cmp <= right_cmp
+    if op == '>':
+        return left_cmp > right_cmp
+    if op == '>=':
+        return left_cmp >= right_cmp
+    raise ValueError(f'Unsupported marker operator: {op}')
+
+def _compare_versions(left, right):
+    def _parts(value):
+        nums = [int(x) for x in re.findall(r'\d+', str(value or ''))]
+        return nums[:4]
+
+    a = _parts(left)
+    b = _parts(right)
+    max_len = max(len(a), len(b), 1)
+    a.extend([0] * (max_len - len(a)))
+    b.extend([0] * (max_len - len(b)))
+    if a < b:
+        return -1
+    if a > b:
+        return 1
+    return 0
+
+def _split_constraint_specifiers(constraint):
+    raw = str(constraint or '').strip()
+    if not raw:
+        return []
+    if raw.startswith('(') and raw.endswith(')'):
+        raw = raw[1:-1].strip()
+    return [part.strip() for part in raw.split(',') if part.strip()]
+
+def _pick_stronger_lower(current, candidate):
+    if current is None:
+        return candidate
+    current_op, current_ver = current
+    candidate_op, candidate_ver = candidate
+    cmp = _compare_versions(candidate_ver, current_ver)
+    if cmp > 0:
+        return candidate
+    if cmp < 0:
+        return current
+    if candidate_op == '>' and current_op == '>=':
+        return candidate
+    return current
+
+def _pick_stronger_upper(current, candidate):
+    if current is None:
+        return candidate
+    current_op, current_ver = current
+    candidate_op, candidate_ver = candidate
+    cmp = _compare_versions(candidate_ver, current_ver)
+    if cmp < 0:
+        return candidate
+    if cmp > 0:
+        return current
+    if candidate_op == '<' and current_op == '<=':
+        return candidate
+    return current
+
+def simplify_constraint(constraint):
+    specifiers = _split_constraint_specifiers(constraint)
+    if len(specifiers) <= 1:
+        return ', '.join(specifiers)
+
+    lower = None
+    upper = None
+    equals = []
+    not_equals = []
+    others = []
+    seen_not_equals = set()
+    seen_others = set()
+
+    for spec in specifiers:
+        match = re.match(r'(~=|>=|<=|!=|==|>|<)\s*([\d\w.+-]+)', spec)
+        if not match:
+            if spec not in seen_others:
+                others.append(spec)
+                seen_others.add(spec)
+            continue
+
+        op, ver = match.groups()
+        item = (op, ver)
+        if op in ('>=', '>'):
+            lower = _pick_stronger_lower(lower, item)
+        elif op in ('<=', '<'):
+            upper = _pick_stronger_upper(upper, item)
+        elif op == '==':
+            if item not in equals:
+                equals.append(item)
+        elif op == '!=':
+            if item not in seen_not_equals:
+                not_equals.append(item)
+                seen_not_equals.add(item)
+        else:
+            if spec not in seen_others:
+                others.append(spec)
+                seen_others.add(spec)
+
+    simplified = []
+    if lower:
+        simplified.append(f'{lower[0]}{lower[1]}')
+    if upper:
+        simplified.append(f'{upper[0]}{upper[1]}')
+    for op, ver in equals:
+        simplified.append(f'{op}{ver}')
+    for op, ver in not_equals:
+        simplified.append(f'{op}{ver}')
+    simplified.extend(others)
+
+    return ', '.join(simplified)
+
+def _evaluate_marker_fallback(marker):
+    tokens = _tokenize_marker(marker)
+    idx = 0
+
+    def parse_or():
+        nonlocal idx
+        value = parse_and()
+        while idx < len(tokens) and tokens[idx] == 'or':
+            idx += 1
+            value = value or parse_and()
+        return value
+
+    def parse_and():
+        nonlocal idx
+        value = parse_atom()
+        while idx < len(tokens) and tokens[idx] == 'and':
+            idx += 1
+            value = value and parse_atom()
+        return value
+
+    def parse_atom():
+        nonlocal idx
+        if idx >= len(tokens):
+            raise ValueError('Unexpected end of marker')
+        if tokens[idx] == '(':
+            idx += 1
+            value = parse_or()
+            if idx >= len(tokens) or tokens[idx] != ')':
+                raise ValueError('Unclosed marker parenthesis')
+            idx += 1
+            return value
+        return parse_comparison()
+
+    def parse_comparison():
+        nonlocal idx
+        left_token = tokens[idx]
+        idx += 1
+        if idx >= len(tokens):
+            raise ValueError('Missing marker operator')
+        op = tokens[idx]
+        idx += 1
+        if idx >= len(tokens):
+            raise ValueError('Missing marker value')
+        right_token = tokens[idx]
+        idx += 1
+
+        left_value, left_is_env = _coerce_marker_token(left_token)
+        right_value, right_is_env = _coerce_marker_token(right_token)
+        version_like = (
+            left_token in {'python_version', 'python_full_version', 'implementation_version'}
+            or right_token in {'python_version', 'python_full_version', 'implementation_version'}
+        )
+        if left_is_env and not right_is_env and right_token not in _MARKER_ENV and right_token[:1] not in {'"', "'"}:
+            right_value = right_token
+        return _compare_marker_values(left_value, op, right_value, version_like=version_like)
+
+    result = parse_or()
+    if idx != len(tokens):
+        raise ValueError('Trailing marker tokens')
+    return bool(result)
+
+def marker_applies(marker):
+    marker = str(marker or '').strip()
+    if not marker:
+        return True
+    for mod_name in ('packaging.markers', 'pip._vendor.packaging.markers'):
+        try:
+            module = __import__(mod_name, fromlist=['Marker'])
+            return bool(module.Marker(marker).evaluate(environment=dict(_MARKER_ENV)))
+        except Exception:
+            continue
+    try:
+        return _evaluate_marker_fallback(marker)
+    except Exception:
+        return True
 
 def build_graph():
     all_dists = list(importlib.metadata.distributions())
@@ -87,7 +371,11 @@ def build_graph():
             if re.search(r'extra\s*==', req_text):
                 continue
 
-            dep_name = re.split(r'[\s;>=<!\[\(]', req_text)[0]
+            requirement_part, marker_part = split_requirement_marker(req_text)
+            if marker_part and not marker_applies(marker_part):
+                continue
+
+            dep_name = re.split(r'[\s;>=<!\[\(]', requirement_part)[0]
             if not dep_name:
                 continue
             dep_norm = normalize(dep_name)
@@ -95,7 +383,7 @@ def build_graph():
                 continue
 
             # Extract version constraint
-            version_match = re.search(r'([\(]?[>=<!=~]+[\d\w.*,>=<!=~ ]+[\)]?)', req_text)
+            version_match = re.search(r'([\(]?[>=<!=~]+[\d\w.*,>=<!=~ ]+[\)]?)', requirement_part)
             constraint = version_match.group(1).strip() if version_match else ''
 
             if dep_norm not in grouped_requires:
@@ -108,7 +396,7 @@ def build_graph():
 
         for dep_norm, data in grouped_requires.items():
             is_installed = dep_norm in installed
-            combined_constraint = ', '.join(data['constraints'])
+            combined_constraint = simplify_constraint(', '.join(data['constraints']))
 
             installed[norm]['requires'].append({
                 'name': data['name'],

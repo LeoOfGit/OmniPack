@@ -84,7 +84,7 @@ class SettingsDialog(QDialog):
 
         is_pip = (kind == "pip")
         title = "Python Environments" if is_pip else "NPM Environments"
-        layout.addWidget(QLabel(f"{title} (Drag items to reorder):"))
+        layout.addWidget(QLabel(f"{title} (Drag to reorder; Double click to edit; Del key to remove):"))
 
         list_w = QListWidget()
         list_w.setDragDropMode(QAbstractItemView.InternalMove)
@@ -96,7 +96,8 @@ class SettingsDialog(QDialog):
             
         list_w.model().rowsMoved.connect(lambda *a, k=kind: self._sync_order(k))
         list_w.itemDoubleClicked.connect(lambda _i, k=kind: self._edit_env(k))
-        # list_w.setMinimumHeight(80)
+        list_w.installEventFilter(self)
+        list_w.setProperty("env_kind", kind)
         layout.addWidget(list_w)
 
         # Row 1: The "Input" actions (Auto / Manual / Batch)
@@ -314,82 +315,50 @@ class SettingsDialog(QDialog):
     # ---------- Unified logic ----------
 
     def _on_auto_add_clicked(self):
-        """Perform a real background scan for system Python environments."""
-        import sys
-        found_paths = set()
-        
+        """Scan for system Python environments using the comprehensive find_system_pythons()."""
+        from core.utils import find_system_pythons
+
         try:
-            # 1. Current running python
-            if sys.executable:
-                found_paths.add(sys.executable)
-            
-            # 2. PATH environments
-            path_env = os.environ.get("PATH", "")
-            for part in path_env.split(os.pathsep):
-                if not part or "windowsapps" in part.lower(): 
-                    continue
-                try:
-                    p = Path(part)
-                    if p.exists() and p.is_dir():
-                        # Check for python.exe or python
-                        for name in ["python.exe", "python3.exe", "python", "python3"]:
-                            target = p / name
-                            if target.is_file():
-                                found_paths.add(str(target))
-                except (OSError, PermissionError):
-                    continue
-
-            # 3. Common Windows install locations
-            if os.name == "nt":
-                programs = [os.environ.get("PROGRAMFILES"), os.environ.get("LOCALAPPDATA")]
-                for base in filter(None, programs):
-                    try:
-                        base_p = Path(base)
-                        # Check directly in Local/Programs/Python
-                        python_root = base_p / "Programs" / "Python"
-                        if python_root.exists() and python_root.is_dir():
-                            for folder in python_root.iterdir():
-                                try:
-                                    if folder.is_dir() and folder.name.lower().startswith("python"):
-                                        exe = folder / "python.exe"
-                                        if exe.is_file():
-                                            found_paths.add(str(exe))
-                                except (OSError, PermissionError):
-                                    continue
-                    except (OSError, PermissionError):
-                        continue
-
-            added_count = 0
-            existing_count = 0
-            total_scanned = len(found_paths)
-            existing_set = {self._norm_key(e["path"]) for e in self.config_mgr.config.pip_environments}
-            
-            for p in found_paths:
-                if self._norm_key(p) in existing_set:
-                    existing_count += 1
-                else:
-                    if self._process_path("pip", p, silent=True, save=False, reload=False, existing_keys=existing_set):
-                        added_count += 1
-            
-            # Comprehensive Feedback
-            if added_count > 0:
-                self.config_mgr.save_config()
-                self._load_envs("pip")
-                QMessageBox.information(self, "Auto Detect", 
-                    f"Scan Complete!\n\n"
-                    f"- Scanned locations: {total_scanned}\n"
-                    f"- Already in list: {existing_count}\n"
-                    f"- Newly Added: {added_count}\n\n"
-                    "Your environment list has been updated.")
-            else:
-                QMessageBox.information(self, "Auto Detect", 
-                    f"Scan Complete.\n\n"
-                    f"- Scanned locations: {total_scanned}\n"
-                    f"- Already in list: {existing_count}\n"
-                    f"- New found: 0\n\n"
-                    "No new Python environments were found in standard system locations.")
+            found = find_system_pythons()
         except Exception as e:
             QMessageBox.critical(self, "Scanner Error", f"A fatal error occurred during scanning:\n{str(e)}")
+            return
+
+        existing_set = {self._norm_key(e["path"]) for e in self.config_mgr.config.pip_environments}
+        added_count = 0
+        existing_count = 0
+
+        for py_info in found:
+            py_path = os.path.normpath(py_info["path"])
+            if self._norm_key(py_path) in existing_set:
+                existing_count += 1
+            else:
+                self.config_mgr.add_pip_env(
+                    path=py_path,
+                    name=py_info["name"],
+                    env_type="system",
+                    tags=py_info.get("tags", []),
+                    save=False,
+                )
+                existing_set.add(self._norm_key(py_path))
+                added_count += 1
+
+        if added_count > 0:
+            self.config_mgr.save_config()
+            self._load_envs("pip")
+            QMessageBox.information(self, "Auto Detect",
+                f"Scan Complete!\n\n"
+                f"- Found: {len(found)} locations\n"
+                f"- Already in list: {existing_count}\n"
+                f"- Newly Added: {added_count}\n\n"
+                "Your environment list has been updated.")
+        else:
+            QMessageBox.information(self, "Auto Detect",
+                f"Scan Complete.\n\n"
+                f"- Found: {len(found)} locations\n"
+                f"- Already in list: {existing_count}\n"
+                f"- New found: 0\n\n"
+                "No new Python environments were found in standard system locations.")
 
     def _add_pip_folder(self):
         p = self._pick_existing_directory("Select Folder")
@@ -1302,29 +1271,29 @@ class SettingsDialog(QDialog):
 
     def _update_uv_engine(self):
         from core.utils import get_uv_path
-        from core.network_proxy import merge_env_for_command, normalize_proxy_settings
-        
+        from core.network_proxy import merge_env_for_command, normalize_proxy_settings, urlopen as proxy_urlopen
+
         uv_path = get_uv_path(self.config_mgr)
         proxy_settings = normalize_proxy_settings(getattr(self.config_mgr.config, "proxy_settings", {}) or {})
-        
+
         # Disable button to prevent multiple clicks and show loading state
         update_btn = self.sender()
         if isinstance(update_btn, QPushButton):
             update_btn.setEnabled(False)
             update_btn.setText("Updating... Please wait")
-        
+
         # Define local worker class to avoid polluting global scope
         from PySide6.QtCore import QThread, Signal
         import subprocess
 
         class UvUpdateWorker(QThread):
             result_ready = Signal(bool, str, str)  # success, title, message
-            
+
             def __init__(self, uv_path, proxy_settings):
                 super().__init__()
                 self.uv_path = uv_path
                 self.proxy_settings = proxy_settings
-                
+
             def run(self):
                 flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
                 try:
@@ -1339,13 +1308,153 @@ class SettingsDialog(QDialog):
                     if res.returncode == 0:
                         out = res.stdout.strip() or res.stderr.strip()
                         self.result_ready.emit(True, "Success", f"Update successful:\n{out}")
-                    else:
-                        out = res.stderr.strip() or res.stdout.strip()
-                        self.result_ready.emit(False, "Failed", f"Update failed (code {res.returncode}):\n{out}")
+                        return
+
+                    combined = (res.stderr or "") + (res.stdout or "")
+                    if "Self-update is only available" in combined:
+                        self._download_latest_from_github()
+                        return
+
+                    out = res.stderr.strip() or res.stdout.strip()
+                    self.result_ready.emit(False, "Failed", f"Update failed (code {res.returncode}):\n{out}")
                 except FileNotFoundError:
                     self.result_ready.emit(False, "Not Found", f"Could not execute '{self.uv_path}'. Ensure uv is correctly configured.")
                 except Exception as e:
                     self.result_ready.emit(False, "Error", f"Error executing update:\n{e}")
+
+            def _download_latest_from_github(self):
+                import json
+                import sys
+                import platform
+                import zipfile
+                import tarfile
+                import io
+                import tempfile
+
+                # 1. Get latest release info from GitHub API
+                try:
+                    with proxy_urlopen(
+                        "https://api.github.com/repos/astral-sh/uv/releases/latest",
+                        timeout=10,
+                        headers={
+                            "User-Agent": f"OmniPack/{__version__}",
+                            "Accept": "application/vnd.github+json",
+                        },
+                        proxy_settings=self.proxy_settings,
+                    ) as response:
+                        data = json.loads(response.read().decode())
+                        tag = str(data.get("tag_name", "")).strip()
+                        if not tag:
+                            self.result_ready.emit(False, "Error", "Could not determine latest uv version from GitHub.")
+                            return
+                except Exception as e:
+                    self.result_ready.emit(False, "Download Failed", f"Could not fetch latest release info:\n{e}")
+                    return
+
+                # 2. Determine platform asset suffix
+                machine = platform.machine().lower()
+                if os.name == "nt":
+                    if machine in ("amd64", "x86_64"):
+                        asset_suffix = "x86_64-pc-windows-msvc.zip"
+                    elif machine in ("i386", "i686"):
+                        asset_suffix = "i686-pc-windows-msvc.zip"
+                    elif machine in ("arm64", "aarch64"):
+                        asset_suffix = "aarch64-pc-windows-msvc.zip"
+                    else:
+                        self.result_ready.emit(False, "Unsupported", f"Unsupported Windows architecture: {machine}")
+                        return
+                elif sys.platform == "darwin":
+                    asset_suffix = "aarch64-apple-darwin.tar.gz" if machine in ("arm64", "aarch64") else "x86_64-apple-darwin.tar.gz"
+                else:
+                    if machine in ("aarch64", "arm64"):
+                        asset_suffix = "aarch64-unknown-linux-gnu.tar.gz"
+                    elif machine in ("amd64", "x86_64"):
+                        asset_suffix = "x86_64-unknown-linux-gnu.tar.gz"
+                    elif machine in ("i386", "i686"):
+                        asset_suffix = "i686-unknown-linux-gnu.tar.gz"
+                    else:
+                        self.result_ready.emit(False, "Unsupported", f"Unsupported Linux architecture: {machine}")
+                        return
+
+                # 3. Find the download URL from release assets
+                download_url = ""
+                for asset in data.get("assets", []):
+                    name = str(asset.get("name", ""))
+                    if name.endswith(asset_suffix):
+                        download_url = str(asset.get("browser_download_url", ""))
+                        break
+                if not download_url:
+                    self.result_ready.emit(False, "Not Found", f"No matching asset found for: {asset_suffix}")
+                    return
+
+                # 4. Download the archive
+                try:
+                    with proxy_urlopen(
+                        download_url,
+                        timeout=300,
+                        headers={"User-Agent": f"OmniPack/{__version__}"},
+                        proxy_settings=self.proxy_settings,
+                        force_proxy=True,
+                    ) as response:
+                        archive_data = response.read()
+                except Exception as e:
+                    self.result_ready.emit(False, "Download Failed", f"Could not download uv release:\n{e}")
+                    return
+
+                # 5. Extract the uv binary from the archive
+                exe_name = "uv.exe" if os.name == "nt" else "uv"
+                try:
+                    if asset_suffix.endswith(".zip"):
+                        with zipfile.ZipFile(io.BytesIO(archive_data)) as zf:
+                            uv_member = None
+                            for name in zf.namelist():
+                                basename = os.path.basename(name.rstrip("/"))
+                                if basename in (exe_name, "uv"):
+                                    uv_member = name
+                                    break
+                            if not uv_member:
+                                self.result_ready.emit(False, "Extract Failed", "Could not find uv binary in downloaded archive.")
+                                return
+                            extracted = zf.read(uv_member)
+                    else:
+                        with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tf:
+                            uv_member = None
+                            for member in tf.getmembers():
+                                basename = os.path.basename(member.name.rstrip("/"))
+                                if basename in (exe_name, "uv"):
+                                    uv_member = member
+                                    break
+                            if not uv_member:
+                                self.result_ready.emit(False, "Extract Failed", "Could not find uv binary in downloaded archive.")
+                                return
+                            extracted = tf.extractfile(uv_member).read()
+                except Exception as e:
+                    self.result_ready.emit(False, "Extract Failed", f"Could not extract uv binary:\n{e}")
+                    return
+
+                # 6. Replace the existing binary atomically
+                target_dir = os.path.dirname(self.uv_path)
+                tmp = tempfile.NamedTemporaryFile(delete=False, dir=target_dir if os.path.isdir(target_dir) else None)
+                try:
+                    tmp.write(extracted)
+                    tmp.close()
+                    backup = self.uv_path + ".old"
+                    if os.path.exists(backup):
+                        os.remove(backup)
+                    if os.path.exists(self.uv_path):
+                        os.rename(self.uv_path, backup)
+                    os.rename(tmp.name, self.uv_path)
+                    if os.path.exists(backup):
+                        os.remove(backup)
+                except Exception as e:
+                    try:
+                        os.unlink(tmp.name)
+                    except Exception:
+                        pass
+                    self.result_ready.emit(False, "Replace Failed", f"Could not replace uv binary:\n{e}")
+                    return
+
+                self.result_ready.emit(True, "Success", f"uv updated to {tag} (via GitHub download).")
 
         self._uv_worker = UvUpdateWorker(uv_path, proxy_settings)
         
@@ -1379,6 +1488,15 @@ class SettingsDialog(QDialog):
                 
         self._uv_worker.result_ready.connect(on_result)
         self._uv_worker.start()
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Delete:
+            kind = obj.property("env_kind")
+            if kind in ("pip", "npm"):
+                self._remove_env(kind)
+                return True
+        return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
         if hasattr(self, "_pypi_progress_timer") and self._pypi_progress_timer.isActive():

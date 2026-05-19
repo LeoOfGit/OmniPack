@@ -55,6 +55,55 @@ def detect_channel(version: str) -> str:
     return "latest"
 
 class NpmBaseHelper:
+    @staticmethod
+    def _norm_path(path: Optional[str]) -> str:
+        if not path:
+            return ""
+        return os.path.normcase(os.path.normpath(path))
+
+    @classmethod
+    def get_global_prefix_and_root(cls) -> tuple[str, str]:
+        npm_path = cls.find_npm()
+        if not npm_path:
+            return "", ""
+        prefix_global = cls._probe_npm_output(npm_path, ["prefix", "-g"])
+        global_root = cls._probe_npm_output(npm_path, ["root", "-g"])
+        return prefix_global, global_root
+
+    @classmethod
+    def roaming_modules_path(cls) -> str:
+        if os.name != "nt":
+            return ""
+        return os.path.normpath(os.path.join(os.path.expandvars(r"%APPDATA%"), "npm", "node_modules"))
+
+    @classmethod
+    def resolve_env_command_context(cls, env: Environment) -> tuple[bool, Optional[str], Optional[str]]:
+        """
+        Return (use_global_flag, cwd, prefix_override) for npm commands.
+
+        `%APPDATA%\\npm\\node_modules` is a prefix-style global store on
+        Windows. Treating it as a normal project folder can update package
+        files without refreshing the sibling CLI shims in `%APPDATA%\\npm`.
+        """
+        is_global = (env.type == "global" or env.path == "global")
+        if is_global:
+            return True, None, None
+
+        env_path = os.path.normpath(str(env.path or ""))
+        env_key = cls._norm_path(env_path)
+        roaming_key = cls._norm_path(cls.roaming_modules_path())
+
+        if roaming_key and env_key == roaming_key:
+            prefix_dir = os.path.dirname(env_path)
+            return True, prefix_dir, prefix_dir
+
+        if os.path.basename(env_path).lower() == "node_modules":
+            parent_dir = os.path.dirname(env_path)
+            if parent_dir:
+                return False, parent_dir, parent_dir
+
+        return False, env.path, None
+
     @classmethod
     def find_npm(cls) -> Optional[str]:
         cmd_names = ["npm.cmd", "npm"] if os.name == "nt" else ["npm"]
@@ -148,18 +197,14 @@ class NpmBaseHelper:
         home = os.path.expanduser("~")
         _add_if_exists(os.path.join(home, "node_modules"))
 
-        npm_path = cls.find_npm()
-        if npm_path:
-            # Some tools install by prefixing into user-writable folders.
-            prefix_global = cls._probe_npm_output(npm_path, ["prefix", "-g"])
-            if prefix_global:
-                _add_if_exists(os.path.join(prefix_global, "node_modules"))
+        prefix_global, global_root = cls.get_global_prefix_and_root()
+        if prefix_global:
+            _add_if_exists(os.path.join(prefix_global, "node_modules"))
 
-            global_root = cls._probe_npm_output(npm_path, ["root", "-g"])
-            if global_root:
-                global_root_key = os.path.normcase(os.path.normpath(global_root))
-                discovered = [p for p in discovered if os.path.normcase(os.path.normpath(p)) != global_root_key]
-                seen = {os.path.normcase(os.path.normpath(p)) for p in discovered}
+        if global_root:
+            global_root_key = os.path.normcase(os.path.normpath(global_root))
+            discovered = [p for p in discovered if os.path.normcase(os.path.normpath(p)) != global_root_key]
+            seen = {os.path.normcase(os.path.normpath(p)) for p in discovered}
 
         return discovered
 
@@ -284,7 +329,7 @@ class NpmScanWorker(BaseCmdWorker):
                     "system",
                 )
 
-            is_global = (self.env.type == "global" or self.env.path == "global")
+            is_global, cmd_cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
             
             # Check if this is a standalone node_modules directory
             is_standalone_node_modules = False
@@ -305,16 +350,15 @@ class NpmScanWorker(BaseCmdWorker):
             else:
                 # Standard npm project or global packages
                 cmd = [npm_path, "list", "--depth=0", "--json"]
-                cwd = None
-                
                 if is_global:
                     cmd.insert(2, "-g")
+                    if prefix_override:
+                        cmd.extend(["--prefix", prefix_override])
                 else:
-                    cwd = self.env.path
-                    if not os.path.exists(os.path.join(cwd, "package.json")):
-                        self._log(f"Warning: No package.json found in {cwd}. Is this an NPM project directory?", "error")
+                    if not prefix_override and not os.path.exists(os.path.join(cmd_cwd, "package.json")):
+                        self._log(f"Warning: No package.json found in {cmd_cwd}. Is this an NPM project directory?", "error")
 
-                res = self._run_command(cmd, cwd=cwd if not is_global else None, capture_output=True, stream_stdout=False)
+                res = self._run_command(cmd, cwd=cmd_cwd, capture_output=True, stream_stdout=False)
 
                 output = (res.stdout or "").strip()
 
@@ -393,12 +437,13 @@ class NpmUpdateCheckWorker(BaseCmdWorker):
                 return
                 
             self._log(f"Checking updates for {self.env.name} from npm registry...", "system")
-            is_global = (self.env.type == "global" or self.env.path == "global")
-            cwd = None if is_global else self.env.path
+            is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
 
             outdated_cmd = [npm_path, "outdated", "--json"]
             if is_global:
                 outdated_cmd.insert(2, "-g")
+            if prefix_override:
+                outdated_cmd.extend(["--prefix", prefix_override])
             if self.registry_url:
                 outdated_cmd.extend(["--registry", self.registry_url])
             outdated_res = self._run_command(outdated_cmd, cwd=cwd, capture_output=True, stream_stdout=False)
@@ -493,8 +538,7 @@ class NpmActionWorker(BaseCmdWorker):
                 self._log("npm not found", "error")
                 return
 
-            is_global = (self.env.type == "global" or self.env.path == "global")
-            cwd = None if is_global else self.env.path
+            is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
             
             pkg_spec = self.pkg_name
             if self.channel and self.action in ["install", "update"]:
@@ -513,6 +557,8 @@ class NpmActionWorker(BaseCmdWorker):
             cmd = [npm_path, verb, pkg_spec, "--loglevel=http"]
             if is_global:
                 cmd.insert(2, "-g")
+            if prefix_override:
+                cmd.extend(["--prefix", prefix_override])
             if self.registry_url and verb == "install":
                 cmd.extend(["--registry", self.registry_url])
 
@@ -548,8 +594,7 @@ class NpmBatchUpdateWorker(BaseCmdWorker):
                 self.success = False
                 return
 
-            is_global = (self.env.type == "global" or self.env.path == "global")
-            cwd = None if is_global else self.env.path
+            is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
 
             install_specs = []
             names = []
@@ -565,6 +610,8 @@ class NpmBatchUpdateWorker(BaseCmdWorker):
             cmd = [npm_path, "install"] + install_specs + ["--loglevel=http"]
             if is_global:
                 cmd.insert(2, "-g")
+            if prefix_override:
+                cmd.extend(["--prefix", prefix_override])
             if self.registry_url:
                 cmd.extend(["--registry", self.registry_url])
 

@@ -217,6 +217,7 @@ class NpmPanel(BasePanel):
             card.add_package_requested.connect(self._start_pkg_install)
             card.config_package_requested.connect(self._config_package)
             card.selection_state_changed.connect(self._on_selection_state_changed)
+            card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
 
             self.npm_mgr.scan_environment(env)
 
@@ -695,11 +696,16 @@ class NpmPanel(BasePanel):
                 card.add_package_requested.connect(self._start_pkg_install)
                 card.config_package_requested.connect(self._config_package)
                 card.selection_state_changed.connect(self._on_selection_state_changed)
+                card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
                 self.npm_mgr.scan_environment(env)
 
             # Existing: force UI refresh
             for key in (old_keys & new_keys):
                 self._env_cards[key].update_ui()
+
+            # Reorder cards to match new env order (no scanning)
+            self._reorder_env_cards(new_envs, self._env_cards)
+            self._sync_expand_checkbox()
 
         dialog.settings_changed.connect(on_envs_changed)
         dialog.exec()

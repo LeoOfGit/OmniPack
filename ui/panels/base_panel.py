@@ -124,6 +124,14 @@ class BasePanel(QWidget):
         self.outdated_checkbox.stateChanged.connect(outdated_callback)
         self.tb_layout.addWidget(self.outdated_checkbox)
 
+        # Expand (tri-state master control for all cards)
+        self.expand_checkbox = QCheckBox("Expand")
+        self.expand_checkbox.setTristate(True)
+        self.expand_checkbox.setCheckState(Qt.Unchecked)
+        self.expand_checkbox.setToolTip("Expand/Collapse all environment cards")
+        self.expand_checkbox.stateChanged.connect(self._on_expand_checkbox_changed)
+        self.tb_layout.addWidget(self.expand_checkbox)
+
         # Space before right-aligned buttons
         self.tb_layout.addStretch()
 
@@ -165,6 +173,50 @@ class BasePanel(QWidget):
     def _deselect_all(self):
         """Implemented by subclasses to handle 'Clear Selection' action."""
         pass
+
+    def _on_expand_checkbox_changed(self, state):
+        partial_val = Qt.PartiallyChecked.value if hasattr(Qt.PartiallyChecked, "value") else 1
+        raw = state.value if hasattr(state, "value") else int(state)
+        cards = getattr(self, "_env_cards", {}).values()
+        if not cards:
+            return
+
+        self.expand_checkbox.blockSignals(True)
+
+        if raw == partial_val:
+            # Partial click → expand all
+            self._set_all_cards_expanded(True)
+            self.expand_checkbox.setCheckState(Qt.Checked)
+        elif state == Qt.Checked or raw == 2:
+            self._set_all_cards_expanded(True)
+        else:
+            self._set_all_cards_expanded(False)
+
+        self.expand_checkbox.blockSignals(False)
+
+    def _sync_expand_checkbox(self):
+        """Update the tri-state expand checkbox to reflect all cards' expansion state."""
+        cards = list(getattr(self, "_env_cards", {}).values())
+        if not cards:
+            self.expand_checkbox.blockSignals(True)
+            self.expand_checkbox.setCheckState(Qt.Unchecked)
+            self.expand_checkbox.blockSignals(False)
+            return
+
+        expanded = sum(1 for c in cards if c.is_expanded)
+        self.expand_checkbox.blockSignals(True)
+        if expanded == 0:
+            self.expand_checkbox.setCheckState(Qt.Unchecked)
+        elif expanded == len(cards):
+            self.expand_checkbox.setCheckState(Qt.Checked)
+        else:
+            self.expand_checkbox.setCheckState(Qt.PartiallyChecked)
+        self.expand_checkbox.blockSignals(False)
+
+    def _set_all_cards_expanded(self, expand: bool):
+        for card in getattr(self, "_env_cards", {}).values():
+            if card.is_expanded != expand:
+                card._toggle_collapse()
 
     def _on_selection_checkbox_changed(self, state):
         checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2
@@ -212,6 +264,19 @@ class BasePanel(QWidget):
     def _find_env_by_path(self, environments, env_path: str):
         target_key = self._path_key(env_path)
         return next((e for e in environments if self._path_key(e.path) == target_key), None)
+
+    def _reorder_env_cards(self, ordered_envs, env_cards_dict):
+        """Rearrange cards in scroll_layout to match the order of ordered_envs."""
+        ordered_keys = [
+            self._path_key(e.path) for e in ordered_envs
+            if self._path_key(e.path) in env_cards_dict
+        ]
+        # Remove all tracked cards from layout
+        for key in ordered_keys:
+            self.scroll_layout.removeWidget(env_cards_dict[key])
+        # Re-insert in target order (before the trailing stretch)
+        for idx, key in enumerate(ordered_keys):
+            self.scroll_layout.insertWidget(idx, env_cards_dict[key])
 
     def _emit_status_counts(self, environments):
         total_envs = len(environments)

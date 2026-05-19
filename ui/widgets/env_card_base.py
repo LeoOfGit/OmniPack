@@ -25,6 +25,7 @@ class BaseEnvCard(QFrame):
     install_missing_requested = Signal(str, str)      # pkg_name, env_path (for ghost deps)
     config_package_requested = Signal(str, str)       # pkg_name, env_path
     selection_state_changed = Signal(str, int, int)   # env_path, outdated_selected, outdated_total
+    expand_toggled = Signal(str, bool)                # env_path, is_expanded
 
     def __init__(self, env: Environment):
         super().__init__()
@@ -140,6 +141,7 @@ class BaseEnvCard(QFrame):
         self.is_expanded = not self.is_expanded
         self.content_container.setVisible(self.is_expanded)
         self.toggle_lbl.setText("▼" if self.is_expanded else "▶")
+        self.expand_toggled.emit(self.env.path, self.is_expanded)
 
         if self.is_expanded:
             if not self._pkgs_loaded:
@@ -287,6 +289,7 @@ class BaseEnvCard(QFrame):
             self.is_expanded = True
             self.content_container.setVisible(True)
             self.toggle_lbl.setText("▼")
+            self.expand_toggled.emit(self.env.path, True)
             if not self._pkgs_loaded:
                 self._start_lazy_load()
 

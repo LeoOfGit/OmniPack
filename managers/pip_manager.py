@@ -267,7 +267,12 @@ def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
                 break
 
 
-def _restore_package_state(pkgs: list, previous_pkgs: list, include_tree: bool = False):
+def _restore_package_state(
+    pkgs: list,
+    previous_pkgs: list,
+    include_tree: bool = False,
+    restore_update_state: bool = True,
+):
     previous_map = {
         getattr(pkg, "norm_name", ""): pkg
         for pkg in (previous_pkgs or [])
@@ -284,7 +289,7 @@ def _restore_package_state(pkgs: list, previous_pkgs: list, include_tree: bool =
         pkg.is_selected = getattr(previous, "is_selected", False)
         pkg.metadata = dict(getattr(previous, "metadata", {}) or {})
 
-        if getattr(previous, "version", "") == getattr(pkg, "version", ""):
+        if restore_update_state and getattr(previous, "version", "") == getattr(pkg, "version", ""):
             pkg.latest_version = getattr(previous, "latest_version", "")
             pkg.has_update = getattr(previous, "has_update", False)
             pkg.breaks_constraint = getattr(previous, "breaks_constraint", False)
@@ -448,7 +453,12 @@ class ScanWorker(BaseCmdWorker):
 
                     # Compute breaks_constraint for packages with updates
                     _compute_breaks_constraint(pkgs, dep_graph)
-                    _restore_package_state(pkgs, previous_pkgs, include_tree=False)
+                    _restore_package_state(
+                        pkgs,
+                        previous_pkgs,
+                        include_tree=False,
+                        restore_update_state=False,
+                    )
 
                     top_level_count = sum(1 for p in pkgs if p.is_top_level and not p.is_missing)
                     missing_count = sum(1 for p in pkgs if p.is_missing)

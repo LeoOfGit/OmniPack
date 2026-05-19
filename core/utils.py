@@ -234,6 +234,17 @@ def find_system_pythons():
                 for candidate in (ver_dir / "bin" / "python", ver_dir / "bin" / "python3"):
                     if candidate.exists() and (candidate.is_file() or candidate.is_symlink()):
                         add_python(str(candidate))
+
+        # Official Python.org macOS installer layout:
+        # /Library/Frameworks/Python.framework/Versions/X.Y/bin/python3
+        frameworks_root = Path("/Library/Frameworks/Python.framework/Versions")
+        if frameworks_root.exists():
+            for ver_dir in frameworks_root.iterdir():
+                if not ver_dir.is_dir():
+                    continue
+                candidate = ver_dir / "bin" / "python3"
+                if candidate.exists() and (candidate.is_file() or candidate.is_symlink()):
+                    add_python(str(candidate))
             
     return pythons
 

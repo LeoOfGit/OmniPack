@@ -1,5 +1,66 @@
 # Changelog - OmniPack
 
+## [v8] - 编译器加固、运行时安装回退与交互增强 (Compiler Hardening, Installer Fallback & UX)
+
+本次更新围绕三大主题：构建系统从单一 Zig 编译器升级为 MSVC 优先的智能编译链（兼顾缓存与性能）、winget 不可用时自动回退至官方安装器下载、以及一键展开/折叠等多项 UI 交互改进。
+
+### 🛠️ 构建系统 MSVC 编译器支持 (MSVC Compiler Toolchain)
+
+此前构建仅使用 Zig 编译器后端，无法利用 MSVC 的跨构建缓存（clcache）加速。本轮实现完整 MSVC 自动检测链：
+
+- **`detect_msvc_env()` 自动检测引擎**：支持三层搜索策略——① 显式路径（`msvc_path.cfg` 配置文件 → `MSVC_VCVARS_PATH` 环境变量 → VS Insiders 默认路径）；② VS Insiders 扁平布局（`Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvars64.bat`）；③ 传统布局（`<year>\<edition>\VC\Auxiliary\Build\vcvars64.bat`）。找到 `vcvars64.bat` 后通过 `_capture_vcvars_env()` 捕获完整环境变量并通过 `MSVC_USE_SCRIPT` 传递给 SCons。
+- **`_capture_vcvars_env()` 路径空格修复**：使用 `shell=True` + `cmd /V:ON /C "call \"<path>\" && set"` 替代手动拼接命令串，彻底解决 Visual Studio 路径含空格时 `subprocess.run` 参数解析失败的问题。
+- **编译器优先级**：`detect_msvc_env()` 成功 → 使用 MSVC（`--msvc=X.Y`）；失败 → 回退 Zig。MSVC 模式下可复用 clcache 跨构建缓存，大幅加速重复编译。
+- **`build_app.py` 命令行参数**：新增 `--clean` 选项（清理 dist 目录后全量重编译），不带参数时默认增量构建复用缓存。
+- **Nuitka MSVC 补丁脚本**：新增 `scripts/patch_nuitka_msvc.py`，为 Nuitka 的 `SconsUtils.py` 注入 `MSVC_USE_SCRIPT` 环境变量支持，使得 SCons 能通过环境变量而非注册表/vswhere 发现非标准安装的 Visual Studio（如 Insiders 版）。支持 `--check` / `--revert` 操作，自动清理 `.pyc` 缓存。
+- **入口点重命名**：`OmniPack.pyw` → `OmniPack.py`，构建与调试入口统一。
+
+### 🔄 运行时安装器回退：winget 不可用时的自动救援 (Runtime Installer Fallback)
+
+`winget` 在某些系统/网络环境下源不可用（`failed when opening source` / `0x8d15000f`），导致 Python/Node.js 运行时更新完全失败。本轮新增从官方源下载安装器的完整回退链路：
+
+- **下载引擎**：`download_runtime_installer()` 从 `python.org` / `nodejs.org` 下载官方安装器到临时目录，支持断点监控（每 ~0.8s 或每 5 MiB 回调进度），下载不完整自动清理。
+- **静默安装命令生成**：`build_installer_run_command()` — Python 使用 `/quiet InstallAllUsers=1 PrependPath=1`；Node.js 使用 `msiexec /i <msi> /quiet /norestart`。
+- **winget 失败检测**：`RuntimeUpdateWorker` (pip/npm) 检测子进程输出中的 `failed when opening source` 或 `0x8d15000f`，区分 "winget 源不可用" 与 "其他命令失败"。
+- **`runtime_update_done` 信号扩展**：从 3 参数 (`env_path, success, message`) 扩展为 5 参数 (`env_path, success, message, winget_failed, target_version`)，下游 Panel 可判断是否需要触发安装器回退。
+- **用户交互对话框**：`_offer_installer_fallback()` 弹出三选项对话框 — "Download & Install" 自动下载并静默安装、"Open Download Page" 在浏览器中打开下载页、"Cancel" 跳过。
+- **`RuntimeInstallerWorker`**：在 `pip_panel.py` / `npm_panel.py` 中分别实现，基于 `BaseCmdWorker` 共享基类，实时输出下载进度与安装状态到控制台。
+
+### 🖥️ UI 交互增强 (UI/UX Improvements)
+
+- **一键展开/折叠所有环境卡片**：工具栏新增 `Expand` 三态复选框。部分展开时显示半选态（`PartiallyChecked`），点击后统一展开；全展开时显示勾选态，点击后全部折叠。每个环境卡片展开/折叠时通过 `expand_toggled` 信号驱动复选框状态同步。
+- **Settings 环境列表增强**：拖拽排序保存后，主界面卡片顺序即时同步重排（`_reorder_env_cards()`）；双击编辑已有环境；按 `Delete` 键快捷删除选中项（`eventFilter` 监听 `Qt.Key_Delete`）；提示文案更新为 "Drag to reorder; Double click to edit; Del key to remove"。
+- **Settings Auto Detect 重构**：Python 自动扫描从内联路径遍历重构为调用 `find_system_pythons()` 统一函数，利用带标签的扫描结果（`py_info["name"]` / `py_info["tags"]`）通过 `config_mgr.add_pip_env()` 正式接口添加，消除重复代码。
+
+### 🧠 依赖解析增强 (Dependency Resolution)
+
+- **PEP 508 环境标记求值引擎**：`dep_resolver.py` 新增完整的 marker 解析与求值链 — `split_requirement_marker()` 分离 requirement 与 marker → `marker_applies()` 优先使用 `packaging.markers.Marker.evaluate()`（若可用）→ `_evaluate_marker_fallback()` 内置回退求值器。支持 `python_version`、`sys_platform`、`os_name`、`platform_machine` 等全部标准 marker 变量，自动跳过不适用于当前平台/环境的依赖项（如 `sys_platform != "win32"` 的条件依赖不再污染 Windows 上的依赖树）。
+- **版本约束智能简化**：`simplify_constraint()` 合并冗余约束 — `>=1.0, >=1.5` → `>=1.5`；`<2.0, <=1.9` → `<=1.9` — 使依赖树中显示的需求更清晰精简。
+- **`_restore_package_state()` 新参数**：新增 `restore_update_state` 开关。完整后台扫描（`--outdated` 已重新查询）时设为 `False`，不再从旧包状态恢复过期的 `has_update` / `latest_version`，避免陈旧数据污染新扫描结果。
+
+### 📦 NPM 环境路径解析修正 (NPM Path Resolution)
+
+- **`resolve_env_command_context()` 统一方法**：替代此前分散在各 Worker 中的 `is_global = (env.type == "global" or env.path == "global")` 判断。正确识别三种场景：
+  - 标记为 global → `-g` 标志，无 cwd
+  - 路径为 `%APPDATA%\npm\node_modules`（Roaming 全局包）→ `-g --prefix <dir>`，确保更新包文件同时刷新同级 CLI shims
+  - 路径以 `node_modules` 结尾 → cwd 为其父目录，支持本地项目
+- **`roaming_modules_path()`**：返回 Windows Roaming npm 的 `node_modules` 路径。
+- **`get_global_prefix_and_root()`**：通过 `npm prefix -g` / `npm root -g` 查询全局安装位置。
+- 所有 NPM Worker（`NpmScanWorker`、`NpmUpdateCheckWorker`、`NpmActionWorker`、`NpmBatchUpdateWorker`）统一采用新方法并支持 `--prefix` 参数。
+
+### ⚡ 控制台日志优化 (Console Log Refinements)
+
+- **命令感知心跳标签**：`\r` 进度行与 `\n` 日志行分流处理 — `\r` 结尾的行视为进度条更新（按 ~0.8s 节流避免刷屏），`\n` 结尾的行即时输出。
+- **上下文感知心跳**：长时间无输出时的心跳消息根据命令类型动态切换 — `uv/pip` → "downloading/installing packages..."，`npm` → "downloading npm packages..."，`winget` → "waiting for winget..."。
+- **长静默提示精简**：30 秒无输出的提示从多行详细说明精简为一行 "still no output from subprocess — large download or build in progress"。
+- **`uv -v` 详情标志**：`UpdateWorker`、`BatchUpdateWorker`、`InstallWorker` 中 `uv pip install` 命令统一添加 `-v` 标志，提供更丰富的下载/构建日志。
+
+### 🐧 跨平台增强
+
+- **macOS Python.org 框架路径**：`find_system_pythons()` 新增扫描 `/Library/Frameworks/Python.framework/Versions/X.Y/bin/python3`，自动发现通过官方 pkg 安装的 Python。
+
+---
+
 ## [v7] - 打包加固与离线缓存 (Packaging Hardening & Offline Cache)
 
 ### 🔒 配置文件持久化修复 (Persistent Config)

@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; Register Visual Studio 18 Insiders so that vswhere.exe (and thereby
+; SCons/Nuitka) can discover the MSVC toolchain.
+;
+; Double-click to import, or:  reg import vs18_insiders_register.reg
+;
+; The registry path is:
+;   HKLM\SOFTWARE\Microsoft\VisualStudio\Setup\Instances\{e10b5fae-6a76-5ea9-bcc1-ae6ca0f491d3}
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\Setup\Instances\{e10b5fae-6a76-5ea9-bcc1-ae6ca0f491d3}]
+"installationPath"="C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\"
+"installationVersion"="18.0.0.0"
+"displayName"="Visual Studio 18 Insiders"
+"instanceId"="{e10b5fae-6a76-5ea9-bcc1-ae6ca0f491d3}"
+"productPath"="C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\Common7\\IDE\\devenv.exe"
+"enginePath"="C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\resources\\app\\ServiceHub\\Services\\Microsoft.VisualStudio.Setup.Service"
