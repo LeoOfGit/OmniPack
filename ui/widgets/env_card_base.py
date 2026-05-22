@@ -236,7 +236,12 @@ class BaseEnvCard(QFrame):
         if selection_mode == "select_all":
             for pkg in self.env.packages:
                 if pkg.has_update and not getattr(pkg, "is_missing", False):
-                    if not getattr(pkg, "breaks_constraint", False) and not getattr(pkg, "build_variant_mismatch", False):
+                    metadata = getattr(pkg, "metadata", {}) or {}
+                    if (
+                        not getattr(pkg, "breaks_constraint", False)
+                        and not getattr(pkg, "build_variant_mismatch", False)
+                        and metadata.get("can_update", True)
+                    ):
                         pkg.is_selected = True
         elif selection_mode == "clear_all":
             for pkg in self.env.packages:
@@ -278,6 +283,7 @@ class BaseEnvCard(QFrame):
         should_expand_for_search = bool(self._search_query) and any(
             self._search_query in getattr(pkg, "name", "").lower()
             or self._search_query in getattr(pkg, "version", "").lower()
+            or self._search_query in str((getattr(pkg, "metadata", {}) or {}).get("search_text", "")).lower()
             for pkg in getattr(self.env, "packages", []) or []
         )
         should_expand_for_outdated = bool(self._outdated_only) and any(
@@ -323,6 +329,9 @@ class BaseEnvCard(QFrame):
         match_names = set()
         for pkg in self.env.packages:
             if query in getattr(pkg, "name", "").lower() or query in getattr(pkg, "version", "").lower():
+                match_names.add(pkg.norm_name)
+                continue
+            if query in str((getattr(pkg, "metadata", {}) or {}).get("search_text", "")).lower():
                 match_names.add(pkg.norm_name)
         
         ancestor_names = set()

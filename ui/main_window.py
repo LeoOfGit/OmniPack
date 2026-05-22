@@ -34,6 +34,8 @@ class OmniPackWindow(QMainWindow):
         # Central Stack
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
+        self.panel_entries = []
+        self.panel_scan_flags = {}
 
         # Tab button registry for state persistence
         self.tab_buttons = []
@@ -54,41 +56,14 @@ class OmniPackWindow(QMainWindow):
         self.switcher_layout.setContentsMargins(0, 0, 10, 0)
         self.switcher_layout.setSpacing(0)
 
-        self._add_app_tab("Python", 0)
-        self.switcher_layout.addSpacing(2)
-        self._add_app_tab("Node.js", 1)
-        
-        # Double Line Separator
-        self.switcher_layout.addSpacing(10)
-        for _ in range(2):
-            line = QFrame()
-            line.setFrameShape(QFrame.VLine)
-            line.setFrameShadow(QFrame.Plain)
-            line.setStyleSheet("background-color: #666;") # Muted color
-            line.setFixedWidth(1)
-            line.setFixedHeight(21) # Shorter for elegance
-            self.switcher_layout.addWidget(line)
-            self.switcher_layout.addSpacing(5) # Gap between the two lines
-        self.switcher_layout.addSpacing(7) # Combined with 3 to keep roughly 10 offset
-
-        self.help_btn = QPushButton("💡 Guide")
-        self.help_btn.setObjectName("HelpButton")
-        self.help_btn.setFixedHeight(22)
-        self.help_btn.clicked.connect(self._show_help)
-        self.switcher_layout.addWidget(self.help_btn)
+        # Panels
+        self._init_panels()
+        self._build_switcher_ui()
 
         self.status_bar.addPermanentWidget(self.switcher_widget)
 
         # Theme
         self._apply_dark_theme()
-
-        # Panels
-        self._init_pip_panel()
-        self._init_npm_panel()
-
-        # Sync splitters dynamically
-        self.pip_panel.splitter.splitterMoved.connect(lambda: self._sync_splitters(self.pip_panel, self.npm_panel))
-        self.npm_panel.splitter.splitterMoved.connect(lambda: self._sync_splitters(self.npm_panel, self.pip_panel))
 
         # Restore UI State (this sets the active tab and triggers scan)
         self._restore_ui_state()
@@ -106,10 +81,38 @@ class OmniPackWindow(QMainWindow):
         except Exception:
             pass
 
-    def _sync_splitters(self, source_panel, target_panel):
-        target_panel.splitter.blockSignals(True)
-        target_panel.splitter.setSizes(source_panel.splitter.sizes())
-        target_panel.splitter.blockSignals(False)
+    def _build_switcher_ui(self):
+        for index, entry in enumerate(self.panel_entries):
+            if index > 0:
+                self.switcher_layout.addSpacing(2)
+            self._add_app_tab(entry["label"], index)
+
+        self.switcher_layout.addSpacing(10)
+        for _ in range(2):
+            line = QFrame()
+            line.setFrameShape(QFrame.VLine)
+            line.setFrameShadow(QFrame.Plain)
+            line.setStyleSheet("background-color: #666;")
+            line.setFixedWidth(1)
+            line.setFixedHeight(21)
+            self.switcher_layout.addWidget(line)
+            self.switcher_layout.addSpacing(5)
+        self.switcher_layout.addSpacing(7)
+
+        self.help_btn = QPushButton("💡 Guide")
+        self.help_btn.setObjectName("HelpButton")
+        self.help_btn.setFixedHeight(22)
+        self.help_btn.clicked.connect(self._show_help)
+        self.switcher_layout.addWidget(self.help_btn)
+
+    def _sync_splitters(self, source_panel):
+        for entry in self.panel_entries:
+            target_panel = entry["panel"]
+            if target_panel is source_panel:
+                continue
+            target_panel.splitter.blockSignals(True)
+            target_panel.splitter.setSizes(source_panel.splitter.sizes())
+            target_panel.splitter.blockSignals(False)
 
     def _on_status_changed(self, msg: str, counts: str):
         self.status_label.setText(msg)
@@ -130,35 +133,58 @@ class OmniPackWindow(QMainWindow):
 
     def _switch_tab(self, index: int, btn: QPushButton):
         self.stack.setCurrentIndex(index)
-        
-        # Immediately update status bar to reflect the new active panel
-        if index == 0 and hasattr(self.pip_panel, "_update_status_counts"):
-            self.pip_panel._update_status_counts()
-        elif index == 1 and hasattr(self.npm_panel, "_update_status_counts"):
-            self.npm_panel._update_status_counts()
+        entry = self.panel_entries[index]
+        panel = entry["panel"]
 
-        # Auto-scan the first time user switches to it
-        if index == 1 and not getattr(self, '_npm_scanned', False):
-            self._npm_scanned = True
-            if self.config_mgr.config.npm_settings.get("auto_refresh_on_start", True):
-                QTimer.singleShot(200, self.npm_panel.start_scan)
-        elif index == 0 and not getattr(self, '_pip_scanned', False):
-            self._pip_scanned = True
-            QTimer.singleShot(200, self.pip_panel.start_scan)
+        if hasattr(panel, "_update_status_counts"):
+            panel._update_status_counts()
+
+        panel_key = entry["key"]
+        if self.panel_scan_flags.get(panel_key):
+            return
+
+        should_scan = True
+        auto_refresh_setting = entry.get("auto_refresh_setting")
+        if auto_refresh_setting:
+            settings_obj = getattr(self.config_mgr.config, auto_refresh_setting, {}) or {}
+            should_scan = bool(settings_obj.get("auto_refresh_on_start", True))
+
+        self.panel_scan_flags[panel_key] = True
+        if should_scan:
+            QTimer.singleShot(200, panel.start_scan)
 
     # ── Panel Init ───────────────────────────────────────────────────────
 
-    def _init_pip_panel(self):
-        from ui.panels.pip_panel import PipPanel
-        self.pip_panel = PipPanel(self.config_mgr, self)
-        self.pip_panel.status_changed.connect(self._on_status_changed)
-        self.stack.addWidget(self.pip_panel)
+    def _register_panel(self, key: str, label: str, panel, auto_refresh_setting: str = ""):
+        panel.status_changed.connect(self._on_status_changed)
+        self.stack.addWidget(panel)
+        self.panel_entries.append({
+            "key": key,
+            "label": label,
+            "panel": panel,
+            "auto_refresh_setting": auto_refresh_setting,
+        })
+        self.panel_scan_flags[key] = False
+        panel.splitter.splitterMoved.connect(lambda *_args, source=panel: self._sync_splitters(source))
+        return panel
 
-    def _init_npm_panel(self):
+    def _init_panels(self):
+        from ui.panels.pip_panel import PipPanel
         from ui.panels.npm_panel import NpmPanel
-        self.npm_panel = NpmPanel(self.config_mgr, self)
-        self.npm_panel.status_changed.connect(self._on_status_changed)
-        self.stack.addWidget(self.npm_panel)
+
+        self.pip_panel = self._register_panel("pip", "Python", PipPanel(self.config_mgr, self))
+        self.npm_panel = self._register_panel("npm", "Node.js", NpmPanel(self.config_mgr, self), auto_refresh_setting="npm_settings")
+
+        if os.name == "nt":
+            from ui.panels.winget_panel import WingetPanel
+            self.winget_panel = self._register_panel(
+                "winget",
+                "WinGet",
+                WingetPanel(self.config_mgr, self),
+                auto_refresh_setting="winget_settings",
+            )
+        else:
+            self.winget_panel = None
 
     # ── UI State Persistence ─────────────────────────────────────────────
 
@@ -170,8 +196,8 @@ class OmniPackWindow(QMainWindow):
         self._ensure_visible_on_screen()
         if self.config_mgr.config.pip_splitter_state:
             state_bytes = bytes.fromhex(self.config_mgr.config.pip_splitter_state)
-            self.pip_panel.splitter.restoreState(state_bytes)
-            self.npm_panel.splitter.restoreState(state_bytes)
+            for entry in self.panel_entries:
+                entry["panel"].splitter.restoreState(state_bytes)
 
         saved_tab = self.config_mgr.config.current_tab
         if 0 <= saved_tab < len(self.tab_buttons):
@@ -188,8 +214,7 @@ class OmniPackWindow(QMainWindow):
     def _save_ui_state(self):
         self.config_mgr.config.window_geometry = self.saveGeometry().toHex().data().decode()
         self.config_mgr.config.window_state = self.saveState().toHex().data().decode()
-        # Save splitter from the currently active panel
-        active_panel = self.pip_panel if self.stack.currentIndex() == 0 else self.npm_panel
+        active_panel = self.panel_entries[self.stack.currentIndex()]["panel"]
         self.config_mgr.config.pip_splitter_state = active_panel.splitter.saveState().toHex().data().decode()
         self.config_mgr.config.current_tab = self.stack.currentIndex()
         self.config_mgr.save_config()

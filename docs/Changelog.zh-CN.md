@@ -1,5 +1,48 @@
 # Changelog - OmniPack
 
+## [v9] - WinGet 系统级与用户级包管理支持 (WinGet System & User Package Management)
+
+本次更新新加入了 Windows 系统内置包管理器 **WinGet** 的完整集成，支持对系统全局以及当前用户级别的软件进行可视化扫描、自动更新、锁定（Pin）、卸载与安装。同时完成了 UI 面板注册架构重构，支持在不同操作系统下动态加载对应管理器。
+
+### 🚀 WinGet 深度整合 (WinGet Support)
+
+- **环境双 Scope 扫描 (Dual Scope Scanning)**：
+  - 支持 **系统范围 (System/Machine)** 与 **用户范围 (User)** 的独立环境扫描，分别对应虚拟路径 `winget://machine` 和 `winget://user`。
+  - **智能跨范围数据迁移与去重 (Smart Package Redistribution)**：读取 Windows 注册表 `Uninstall` 键下的 `InstallLocation`（支持 32/64 位及 HKLM/HKCU 注册表路径，支持 %USERPROFILE% 等前缀分析），将物理路径在用户目录下的软件智能划归为 User 范围，将 Program Files 等目录下的软件划归为 Machine 范围；若同一应用在两个范围重复安装，卡片上会自动显示 `[Also Installed In User/Machine]` 徽章标记，防重复探测。
+- **等宽列切片命令行解析 (Console Tabular Parser)**：
+  - 使用字符渲染宽度解析机制（自动对东亚宽字符进行 `padding/restore`），通过固定列宽切片，彻底解决了 Winget 本地化（多语言）输出以及部分列数据为空时导致的列错位、合并漂移等解析难题。
+- **生命周期完整管控 (Full Lifecycle Actions)**：
+  - **安装 (Install)**：支持直接输入 WinGet ID 进行精准安装，支持自动推荐及静默安装。
+  - **更新 (Update & Batch Update)**：支持对单款应用更新，或勾选多款应用进行 **批量并发升级**。
+  - **静默/交互卸载 (Uninstall/Remove)**：支持单款及批量并发静默卸载，带有安全确认对话框。
+  - **锁定更新 (Blocking Pin)**：原生集成 `winget pin`。用户可以在 UI 界面通过 ⚙ 按钮直接锁定软件更新，锁定后显示 `[Pinned]` 徽章，同时不会被 "Outdated" 全局选项自动勾选。
+  - **版本异常与降级保护**：当本地安装版本新于 Registry 注册表最新版本时，自动显示 `[⚠ Newer]` 徽章并阻止误升级。
+  - **多层 Scope 自动回退 (Scope Fallback)**：当安装或升级因权限/路径冲突在 Machine 范围失败时，会自动回退尝试以 `user` 范围（如 `winget install --scope user`）再次运行，最大程度保障操作成功率。
+
+### ⚙️ 后端设置与实时诊断 (WinGet Settings & Diagnostics)
+
+- **WinGet 后端管理 (Backend Settings)**：
+  - Settings 页面新增 WinGet 后端设置（仅在 Windows 操作系统下可见）。
+  - **自定义引擎路径**：支持自动探测系统 PATH 上的 `winget.exe`，也支持用户手动浏览并指定特定路径。
+  - **安装模式选择**：支持配置默认的安装模式：静默模式 (`silent`)、交互模式 (`interactive`)、默认模式 (`default`)。
+  - **实时诊断面板**：可在 Settings 界面实时查看 WinGet 可用状态、绝对路径、当前版本号、已开启的 Registry 源个数以及详细的源状态错误。
+
+### 🏗️ UI 面板注册重构 (Unified Panel Registration)
+
+- **动态面板系统**：
+  - 重构了主窗口 `ui/main_window.py` 内部结构，将写死的 Pip/Npm 面板完全抽象，改为基于配置字典的 `_register_panel()` 动态面板注册机制。
+  - **按平台加载**：仅当检测到 Windows 系统时才注册 WinGet 面板，其他系统自动隐藏，消除了跨平台冗余。
+  - 统一了动态 Splitter 尺寸联动同步、首屏卡片防抖懒加载扫描、状态栏 counts 更新以及当前活动 Tab 的持久化记忆逻辑。
+
+### 📦 通用控件与编译增强 (General Widget & Script Improvements)
+
+- **徽章渲染系统扩展**：`PackageCard` 增加元数据 Badge 渲染机制，支持带有悬停提示 (ToolTip) 与自定义 QSS 样式的多种彩色徽章（如 `[Pinned]`、`[Also Installed]`、`[⚠ Newer]`、`[Unknown]`）。
+- **可配置化 gear 动作按钮**：当包 metadata 标记 `supports_config` 为 True 时，卡片上会自动渲染 `⚙` 配置图标并绑定专属弹窗（如 Python/Npm 显示 tag/版本，WinGet 显示 Pin/卸载路径等）。
+- **跨平台 Nuitka 编译缓存清理补丁**：
+  - 优化了 `scripts/patch_nuitka_msvc.py` 中的 pyc 缓存清理机制，使用 `importlib.util.cache_from_source(path)` 进行动态缓存路径解析，不再依赖硬编码的 Python 版本后缀，自动清理全平台/多版本 `__pycache__` 缓存。
+
+---
+
 ## [v8] - 编译器加固、运行时安装回退与交互增强 (Compiler Hardening, Installer Fallback & UX)
 
 本次更新围绕三大主题：构建系统从单一 Zig 编译器升级为 MSVC 优先的智能编译链（兼顾缓存与性能）、winget 不可用时自动回退至官方安装器下载、以及一键展开/折叠等多项 UI 交互改进。

@@ -1,8 +1,8 @@
-# OmniPack V4 用户指南 (User Guide)
+# OmniPack V9 用户指南 (User Guide)
 
 <img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128px">
 
-欢迎使用 **OmniPack**！愿本程序成为您管理 Python 虚拟环境与 Node.js 项目依赖的得力工具。
+欢迎使用 **OmniPack**！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。
 
 ---
 
@@ -11,9 +11,10 @@
 2. [环境管理 (Environments)](#2-环境管理)
 3. [Python (uv/pip) 深度管理](#3-python-uvpip-深度管理)
 4. [Node.js (npm) 项目管理](#4-nodejs-npm-项目管理)
-5. [设置中心 (Settings Center)](#5-设置中心)
-6. [高级配置与环境变量参考](#6-高级配置与环境变量参考)
-7. [常见问题解答 (FAQ)](#7-常见问题解答-faq)
+5. [WinGet 系统包管理 (Windows 特有)](#5-winget-系统包管理-windows-特有)
+6. [设置中心 (Settings Center)](#6-设置中心)
+7. [高级配置与环境变量参考](#7-高级配置与环境变量参考)
+8. [常见问题解答 (FAQ)](#8-常见问题解答-faq)
 
 ---
 
@@ -51,7 +52,7 @@ OmniPack 的主界面经过精心设计，分为四个核心交互区域。
 - **左侧统计区**：`Envs: {n} | Packages: {m} ( {u} Outdated )`。实时反映当前扫描出的环境总数、包总数及待更新统计。
 - **中间状态区**：显示当前正在执行的操作（如 "Ready", "Scanning...", "Installing..."）。
 - **右侧切换区**：
-    - **Python / Node.js 按钮**：用于在两种包管理面板间快速切换。
+    - **Python / Node.js / WinGet 按钮**：用于在不同的包管理面板之间快速切换（WinGet 面板仅在 Windows 系统下可见）。
     - **💡 Guide 按钮**：点击即可弹出本用户指南窗口。
 
 > **注意**：若程序获得了管理员权限，**(Admin)** 标识会显示在窗口的**最上方标题栏**。
@@ -157,9 +158,38 @@ OmniPack 将 NPM 的 `Dist-Tags` 机制进行了 GUI 封装。
 
 ---
 
-## 5. 设置中心 (Settings Center)
+## 5. WinGet 系统包管理 (Windows 特有)
 
-设置对话框是 OmniPack 的后台核心，按功能划分为五个清晰的选项卡：
+在 Windows 10/11 操作系统下，OmniPack 会自动在状态栏右侧注册 **WinGet** 包管理面板。它能对您系统上通过 Microsoft Store、WinGet 源或本地安装的桌面应用程序进行统一纳管。
+
+### 5.1 双 Scope 环境自动探测 (Dual Scope Environment)
+在主界面左侧会展示两个虚拟的系统环境：
+- **System (Machine)**：显示系统全局安装的软件（对应 `winget://machine`），通常位于 `Program Files` 目录下，更新时需要管理员权限。
+- **User**：显示当前用户专属安装的软件（对应 `winget://user`），通常位于用户个人目录下（如 `%USERPROFILE%\AppData`）。
+- **去重与范围智能判定 (Package Redistribution)**：
+  - OmniPack 内置了注册表物理路径审计机制。在扫描软件时，它会读取卸载路径，如果发现某个全局上报的软件其实物理安装在用户目录中，会自动将其归类到 **User** 虚拟环境中，保证信息的绝对精准。
+  - 若同一个软件在系统和用户下都被安装了，卡片上会自动挂载 `[Also Installed In User/Machine]` 彩色徽章。
+
+### 5.2 精准管理与锁定更新 (Full Actions & Pinning)
+- **获取更新 (Upgrades)**：如果有可用更新，应用卡片上会显示 `⇧` 按钮。
+- **配置与锁定 (Blocking Pin)**：
+  - 点击应用卡片上的 **⚙ 配置按钮**，会弹出专属配置框。
+  - 支持设置 **锁定更新 (winget blocking pin)**。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 `[Pinned]` 徽章，同时不会被工具栏 "Outdated" 选项自动勾选，避免大面积静默升级破坏特定软件版本。
+  - 在配置框中，您还可以直接查看该软件的**物理安装路径 (Uninstall Location)** 并进行一键鼠标选定与复制，极其方便定位软件根目录。
+- **版本异常警告 (⚠ Newer Badge)**：
+  - 如果您从官网安装了比 WinGet 云端注册表更新的版本，系统会挂载 `[⚠ Newer]` 徽章警告，并阻止 `Outdated` 自动勾选它，防止误退级。
+- **安装新包 (Install)**：
+  - 点击卡片标题栏的 `+` 按钮，可以输入任意 WinGet 软件 ID（如 `Google.Chrome`）直接进行下载并静默或交互安装。
+- **智能范围回退机制 (Scope Fallback)**：
+  - 在 Machine 范围升级或安装大型软件如果遇到文件占用或写入权限问题而报错，OmniPack 会自动执行 Fallback，改为以 `--scope user` 尝试向用户范围下载安装，极大地提高了对软件版本自动更新的宽容度。
+
+![Winget 管理主界面](../resources/Winget.png)
+
+---
+
+## 6. 设置中心 (Settings Center)
+
+设置对话框是 OmniPack 的后台核心，按功能划分为五个清晰的选项卡（在 Windows 下）：
 
 1.  **Python/NPM Environments**：环境列表维护区，支持增删改查及排序。
 2.  **Sources (注册表/镜像源)**：
@@ -183,9 +213,14 @@ OmniPack 将 NPM 的 `Dist-Tags` 机制进行了 GUI 封装。
 
 ![代理设置](../resources/Settings-Proxy.png)
 
+5.  **WinGet (Windows 专属设置)**：
+    *   **安装模式选择**：支持配置 winget 安装和升级的全局行为模式：静默模式 (`silent`)、交互模式 (`interactive`)、默认模式 (`default`)。
+    *   ** winget.exe 路径**：支持自动探测系统 PATH 上的 winget 进程，也支持手动浏览定位自定义的 winget 绝对路径。
+    *   **实时诊断状态**：在设置页面内建 Diagnostics 控制台，可实时探知 winget 引擎是否可用、系统物理绝对路径、运行版本以及已启用的注册表源数量与可能上报的源配置错误。
+
 ---
 
-## 6. 高级配置与环境变量参考
+## 7. 高级配置与环境变量参考
 
 通过设置系统环境变量，您可以进一步解锁 OmniPack 的潜在功能：
 
@@ -199,7 +234,7 @@ OmniPack 将 NPM 的 `Dist-Tags` 机制进行了 GUI 封装。
 
 ---
 
-## 7. 常见问题解答 (FAQ)
+## 8. 常见问题解答 (FAQ)
 
 **Q: 某些npm应用已经发布新版本，但程序未能检测到**
 A: 很多npm的镜像源对nightly、preview等非正式版本的更新不及时，换用官方源即可。
@@ -221,6 +256,12 @@ A: `⇧` 只更新环境内的包（pip/npm dependencies）；`Py` / `Nd` 更新
 
 **Q: (Admin) 状态是什么触发的？**
 A: 在 Windows 上以源码运行时，OmniPack 默认会自动请求管理员提权（可通过 `OMNIPACK_REQUIRE_ADMIN=0` 环境变量关闭）。提权成功后标题栏会显示 `(Admin)` 标记。打包发布版本则根据实际运行环境自动判断。
+
+**Q: 为什么在 macOS 或 Linux 上我看不到 WinGet 选项卡或面板？**
+A: WinGet 是 Windows 系统的内置包管理器，因此 OmniPack 仅在 Windows 操作系统下动态注册并显示 WinGet 面板和设置选项。
+
+**Q: WinGet 更新时提示需要管理员权限怎么办？**
+A: 升级系统全局应用（Machine 范围）通常需要写入 `C:\Program Files` 等系统敏感路径，这需要管理员特权。建议右键以管理员身份运行 OmniPack，或在系统提示时接受 UAC 提权请求。如果更新失败，OmniPack 会自动执行 Fallback，尝试以 `--scope user` 权限进行安装，最大程度保障部署成功。
 
 ---
 

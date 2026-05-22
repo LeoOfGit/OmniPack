@@ -163,15 +163,35 @@ def proxy_env_for_command(cmd: list[str], proxy_settings: Optional[dict]) -> Dic
 
     env = {}
     if "http" in proxies:
-        env["HTTP_PROXY"] = proxies["http"]
-        env["http_proxy"] = proxies["http"]
+        p_val = proxies["http"]
+        env["HTTP_PROXY"] = p_val
+        env["http_proxy"] = p_val
+        if _is_npm_command(cmd):
+            env["NPM_CONFIG_PROXY"] = p_val
+            env["NPM_CONFIG_STRICT_SSL"] = "false"
+            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+            env["NODE_NO_WARNINGS"] = "1"
     if "https" in proxies:
-        env["HTTPS_PROXY"] = proxies["https"]
-        env["https_proxy"] = proxies["https"]
+        p_val = proxies["https"]
+        env["HTTPS_PROXY"] = p_val
+        env["https_proxy"] = p_val
+        if _is_npm_command(cmd):
+            env["NPM_CONFIG_HTTPS_PROXY"] = p_val
+            env["NPM_CONFIG_STRICT_SSL"] = "false"
+            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+            env["NODE_NO_WARNINGS"] = "1"
     return env
 
 
 def merge_env_for_command(cmd: list[str], base_env: Optional[dict] = None, proxy_settings: Optional[dict] = None) -> dict:
     env = dict(base_env or os.environ)
-    env.update(proxy_env_for_command(cmd, proxy_settings))
+    p_env = proxy_env_for_command(cmd, proxy_settings)
+    
+    if os.name == "nt":
+        for k in p_env:
+            for existing_k in list(env.keys()):
+                if existing_k.lower() == k.lower():
+                    del env[existing_k]
+                    
+    env.update(p_env)
     return env

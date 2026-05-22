@@ -542,7 +542,33 @@ def build_node_runtime_update_command(cycle: str, is_major_upgrade: bool = False
         # in Current first and may not be promoted to LTS yet (e.g. v26).
         package_id = "OpenJS.NodeJS"
     else:
-        package_id = "OpenJS.NodeJS.LTS" if major % 2 == 0 else "OpenJS.NodeJS"
+        expected_id = "OpenJS.NodeJS.LTS" if major % 2 == 0 else "OpenJS.NodeJS"
+        alternative_id = "OpenJS.NodeJS" if major % 2 == 0 else "OpenJS.NodeJS.LTS"
+        package_id = expected_id
+
+        winget = shutil.which("winget")
+        if winget:
+            try:
+                cmd = [winget, "list", "--id", expected_id, "--exact", "--accept-source-agreements"]
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    timeout=10,
+                )
+                if res.returncode != 0:
+                    cmd_alt = [winget, "list", "--id", alternative_id, "--exact", "--accept-source-agreements"]
+                    res_alt = subprocess.run(
+                        cmd_alt,
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                        timeout=10,
+                    )
+                    if res_alt.returncode == 0:
+                        package_id = alternative_id
+            except Exception:
+                pass
+
     action = "install" if is_major_upgrade else "upgrade"
     return [[
         "winget",

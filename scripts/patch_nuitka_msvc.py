@@ -92,13 +92,21 @@ def apply(path):
         f.write(new_content)
 
     # Invalidate .pyc cache
-    pyc = path.replace(".py", ".cpython-314.pyc")
-    pycache = os.path.join(os.path.dirname(path), "__pycache__",
-                           os.path.basename(path).replace(".py", ".cpython-314.pyc"))
-    for p in (pyc, pycache):
-        if os.path.isfile(p):
-            os.remove(p)
-            print(f"  Removed cache: {p}")
+    import importlib.util
+    pyc = importlib.util.cache_from_source(path)
+    if os.path.isfile(pyc):
+        os.remove(pyc)
+        print(f"  Removed cache: {pyc}")
+    
+    # Also clean up the __pycache__ directory for any other version suffixes
+    pycache_dir = os.path.join(os.path.dirname(path), "__pycache__")
+    if os.path.isdir(pycache_dir):
+        base = os.path.basename(path).replace(".py", "")
+        for entry in os.listdir(pycache_dir):
+            if entry.startswith(base):
+                p = os.path.join(pycache_dir, entry)
+                os.remove(p)
+                print(f"  Removed cache: {p}")
 
     print(f"Patched: {path}")
 

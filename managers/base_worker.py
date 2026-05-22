@@ -16,6 +16,9 @@ class BaseCmdWorker(QThread):
     """
     log_msg = Signal(str, str)
     log_batch = Signal(list)
+    
+    # Class-level lock to prevent concurrent Winget executions, which trigger 0x8a150001 internal error
+    _winget_lock = threading.Lock()
 
     def __init__(self):
         super().__init__()
@@ -43,6 +46,26 @@ class BaseCmdWorker(QThread):
         When capture_output=True, the collected stdout/stderr text is included
         in the returned CompletedProcess so callers can parse JSON output.
         """
+        _cmd_base = os.path.basename(str(cmd[0])).lower() if cmd else ""
+        is_winget = _cmd_base in {"winget", "winget.exe"}
+        
+        if is_winget:
+            self._winget_lock.acquire()
+            
+        try:
+            return self._run_command_impl(cmd, cwd, capture_output, stream_stdout, stream_stderr)
+        finally:
+            if is_winget:
+                self._winget_lock.release()
+
+    def _run_command_impl(
+        self,
+        cmd: list[str],
+        cwd: str = None,
+        capture_output: bool = False,
+        stream_stdout: bool = True,
+        stream_stderr: bool = True,
+    ) -> subprocess.CompletedProcess:
         self._log(f"> {' '.join(cmd)}", "cmd")
 
         proxy_settings = getattr(self, "proxy_settings", None)
@@ -70,6 +93,14 @@ class BaseCmdWorker(QThread):
         else:
             _heartbeat_label = "still running..."
 
+        is_interactive = "--interactive" in cmd
+        creationflags = 0
+        if os.name == "nt":
+            if is_interactive:
+                creationflags = subprocess.CREATE_NEW_CONSOLE
+            else:
+                creationflags = subprocess.CREATE_NO_WINDOW
+
         process = subprocess.Popen(
             cmd,
             cwd=cwd,
@@ -79,7 +110,7 @@ class BaseCmdWorker(QThread):
             text=True,
             encoding="utf-8",
             errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            creationflags=creationflags
         )
 
         ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07")

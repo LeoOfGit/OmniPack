@@ -20,6 +20,7 @@ class AppConfig:
     npm_apps: Dict[str, dict] = field(default_factory=dict)     # {name: {display_name, channel, ...}}
     npm_channels: Dict[str, dict] = field(default_factory=dict) # {name: {label, suffix, color}}
     npm_settings: dict = field(default_factory=dict)            # {auto_refresh_on_start, theme, ...}
+    winget_settings: dict = field(default_factory=dict)         # {enabled, auto_refresh_on_start, ...}
     proxy_settings: dict = field(default_factory=dict)          # {enabled, http_proxy, https_proxy, targets}
     pypi_cache_settings: dict = field(default_factory=dict)     # {auto_refresh_on_start, stale_after_hours}
 
@@ -55,6 +56,7 @@ class ConfigManager:
                 npm_apps=data.get("npm_apps", {}),
                 npm_channels=data.get("npm_channels", {}),
                 npm_settings=data.get("npm_settings", {}),
+                winget_settings=data.get("winget_settings", {}),
                 proxy_settings=data.get("proxy_settings", {}),
                 pypi_cache_settings=data.get("pypi_cache_settings", {}),
                 window_geometry=data.get("window_geometry", ""),
@@ -73,6 +75,7 @@ class ConfigManager:
         config.pip_settings = self._default_pip_settings()
         config.npm_channels = self._default_npm_channels()
         config.npm_settings = self._default_npm_settings()
+        config.winget_settings = self._default_winget_settings()
         config.proxy_settings = self._default_proxy_settings()
         config.pypi_cache_settings = self._default_pypi_cache_settings()
         return config
@@ -103,6 +106,12 @@ class ConfigManager:
             "auto_refresh_on_start": True,
             "source_mode": "system",  # system | official | custom
             "registry_url": "",
+        }
+
+    @staticmethod
+    def _default_winget_settings() -> Dict[str, object]:
+        return {
+            "install_mode": "silent",
         }
 
     @staticmethod
@@ -138,6 +147,17 @@ class ConfigManager:
             self.config.npm_settings = {}
         for k, v in npm_defaults.items():
             self.config.npm_settings.setdefault(k, v)
+
+        winget_defaults = self._default_winget_settings()
+        if not isinstance(self.config.winget_settings, dict):
+            self.config.winget_settings = {}
+        for k, v in winget_defaults.items():
+            self.config.winget_settings.setdefault(k, v)
+
+        install_mode = str(self.config.winget_settings.get("install_mode", "silent") or "silent").strip().lower()
+        if install_mode not in {"default", "silent", "interactive"}:
+            install_mode = "silent"
+        self.config.winget_settings["install_mode"] = install_mode
 
         proxy_defaults = self._default_proxy_settings()
         if not isinstance(self.config.proxy_settings, dict):

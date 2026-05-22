@@ -6,17 +6,18 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?logo=python)
 ![Node.js](https://img.shields.io/badge/Node.js-NPM-green.svg?logo=nodedotjs)
+![WinGet](https://img.shields.io/badge/WinGet-Windows-blue.svg?logo=windows)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-brightgreen.svg?logo=qt)
 ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-*专注于开发者所需的**隔离环境管家**。*
-> **OmniPack 是一款专为 Python (uv/pip) 和 Node.js (npm) 设计的高性能图形化管理工具。** 旨在帮助开发者更直观地管控本地散乱的虚拟环境，深度透视依赖树，并显著提升包管理效率。
+*专注于开发者所需的**隔离环境与系统包管理管家**。*
+> **OmniPack 是一款专为 Python (uv/pip)、Node.js (npm) 以及 Windows 系统包管理器 (WinGet) 设计的高性能图形化管理工具。** 旨在帮助开发者更直观地管控本地散乱的虚拟环境、深度透视依赖树，并在 Windows 下统一纳管系统应用，显著提升包管理效率。
 ---
 ![OmniPack Node.js View](./resources/Node.js.png)
 
 ## 💡 为什么需要 OmniPack？
 
-在市面上，我们已经有了像 UniGetUI 这样优秀的全局应用商店，也有了原生的强大命令行工具（如 `pip` 和 `npm`）。**那么，OmniPack 解决的是什么痛点？**
+在市面上，我们已经有了像 UniGetUI 这样优秀的全局应用商店，也有了原生的强大命令行工具（如 `pip`、`npm`、`winget`）。**那么，OmniPack 解决的是什么痛点？**
 
 如果你是一名资深开发者，你的磁盘上肯定散落着**数十个**包含 `.venv` 或 `node_modules` 的历史项目文件夹。
 - 每次想要检查或更新某个项目的依赖，你都需要经历：找路径 -> 打开终端 -> `cd` -> `activate` -> 敲击冗长的命令... 
@@ -48,6 +49,14 @@ OmniPack 就是为此而生：**它不是系统应用商店，它是你在工程
 不止于 `npm install`。OmniPack 会动态拉取云端模块的 **Dist-Tags**，让你能在 `latest`, `beta`, `rc` 等分支通道间进行秒级下拉切换与预览。
 
 ![OmniPack Dependency Tree](./resources/SelectTag.png)
+
+### 🪟 Windows 内置 WinGet 深度集成 (Windows 特有)
+无需打开复杂的命令行或第三方应用商店，OmniPack 原生纳管 Windows 内置包管理器 **WinGet**：
+- **双 Scope 独立扫描**：智能区分系统全局安装 (Machine) 与当前用户专属安装 (User) 的桌面应用程序。
+- **物理路径智能分配与去重**：自动读取 Windows 注册表并审计物理安装路径（如 `%USERPROFILE%`），将物理定位在用户目录下的软件智能重分配到 User 范围，消除重叠；若在双端同时存在，自动挂载 `[Also Installed In User/Machine]` 徽章避免重复。
+- **命令行等宽解析**：针对 WinGet 繁琐的控制台本地化表格输出，自研基于东亚宽字符宽度 padding 的等宽解析引擎，彻底解决空值列与列错位漂移的问题。
+- **锁定更新 (Blocking Pin)**：原生支持 `winget pin` 指令。可在 UI 中一键对特定应用开启 Blocking Pin，卡片展示 `[Pinned]` 徽章并在全局 "Outdated" 时阻止自动勾选，保护系统特定工具版本。
+- **智能 Scope 自动回退 (Scope Fallback)**：在升级或安装因目录占用、特权写入受阻时，后台自动 fallback 回退执行 `--scope user` 权限进行补救重试，最大程度保障部署成功。
 
 ### 🧭 运行时补丁感知与更新
 OmniPack 明确区分了**包更新**与**运行时更新**：

@@ -97,3 +97,18 @@ def detect_system_npm_registry_url() -> str:
     output = _run_quick([npm_path, "config", "get", "registry"], timeout=3)
     value = _clean_value(output.splitlines()[0] if output else "")
     return value
+
+
+def detect_system_winget_source_url() -> str:
+    if os.name != "nt":
+        return ""
+    output = _run_quick(["winget", "source", "list"], timeout=3)
+    if not output:
+        return ""
+    for line in output.splitlines():
+        line = line.strip()
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].lower() == "winget":
+            return parts[1]
+    return ""
+

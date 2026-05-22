@@ -138,6 +138,22 @@ class PackageCard(QFrame):
                 ch_lbl.setStyleSheet("color: #888;")
             row_layout.addWidget(ch_lbl)
 
+        for badge in (pkg.metadata or {}).get("badges", []):
+            if isinstance(badge, str):
+                badge = {"text": badge}
+            badge_text = str(badge.get("text", "")).strip()
+            if not badge_text:
+                continue
+            badge_lbl = QLabel(badge_text)
+            badge_lbl.setObjectName("PkgMetaBadge")
+            tooltip = str(badge.get("tooltip", "")).strip()
+            if tooltip:
+                badge_lbl.setToolTip(tooltip)
+            style = str(badge.get("style", "")).strip()
+            if style:
+                badge_lbl.setStyleSheet(style)
+            row_layout.addWidget(badge_lbl)
+
         # Action Buttons
         if pkg.is_missing:
             # Install button for missing deps
@@ -148,15 +164,18 @@ class PackageCard(QFrame):
             install_btn.clicked.connect(lambda: self.install_requested.emit(pkg.name))
             row_layout.addWidget(install_btn)
         else:
-            if pkg.metadata and "channels_available" in pkg.metadata:
+            supports_config = bool((pkg.metadata or {}).get("supports_config")) or (pkg.metadata and "channels_available" in pkg.metadata)
+            if supports_config:
                 conf_btn = QPushButton("⚙")
                 conf_btn.setObjectName("ActionBtnConfig")
                 conf_btn.setToolTip(f"Configure {pkg.name}")
                 conf_btn.setCursor(Qt.PointingHandCursor)
-                conf_btn.clicked.connect(lambda: self.config_requested.emit(pkg.name))
+                conf_btn.clicked.connect(lambda: self.config_requested.emit(self._action_target()))
                 row_layout.addWidget(conf_btn)
             # Update Button (Only if update available)
             if pkg.has_update:
+                can_update = bool((pkg.metadata or {}).get("can_update", True))
+                blocked_reason = str((pkg.metadata or {}).get("update_blocked_reason", "")).strip()
                 if getattr(pkg, "breaks_constraint", False):
                     up_btn = QPushButton("⇧")
                     up_btn.setObjectName("PkgUpdateBtnWarning")
@@ -178,10 +197,14 @@ class PackageCard(QFrame):
                 else:
                     up_btn = QPushButton("⇧")
                     up_btn.setObjectName("PkgUpdateBtn")
-                    up_btn.setCursor(Qt.PointingHandCursor)
-                    up_btn.setToolTip(f"Update {pkg.name}")
-                    target_channel = channel or "latest"
-                    up_btn.clicked.connect(lambda: self.update_requested.emit(pkg.name, target_channel))
+                    if can_update:
+                        up_btn.setCursor(Qt.PointingHandCursor)
+                        up_btn.setToolTip(f"Update {pkg.name}")
+                        target_channel = channel or "latest"
+                        up_btn.clicked.connect(lambda: self.update_requested.emit(self._action_target(), target_channel))
+                    else:
+                        up_btn.setEnabled(False)
+                        up_btn.setToolTip(blocked_reason or f"{pkg.name} cannot be updated right now.")
                     row_layout.addWidget(up_btn)
             else:
                 spacer = QWidget()
@@ -193,7 +216,7 @@ class PackageCard(QFrame):
             rm_btn.setObjectName("ActionBtnRemove")
             rm_btn.setCursor(Qt.PointingHandCursor)
             rm_btn.setToolTip(f"Remove {pkg.name}")
-            rm_btn.clicked.connect(lambda: self.remove_requested.emit(pkg.name))
+            rm_btn.clicked.connect(lambda: self.remove_requested.emit(self._action_target()))
             row_layout.addWidget(rm_btn)
 
         main_layout.addWidget(row_widget)
@@ -250,7 +273,7 @@ class PackageCard(QFrame):
             QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            self.update_requested.emit(pkg.name, target_channel)
+            self.update_requested.emit(self._action_target(), target_channel)
 
     def _confirm_variant_update(self, pkg, target_channel):
         variant_info = _build_variant_tooltip(pkg)
@@ -264,7 +287,11 @@ class PackageCard(QFrame):
             QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            self.update_requested.emit(pkg.name, target_channel)
+            self.update_requested.emit(self._action_target(), target_channel)
+
+    def _action_target(self) -> str:
+        metadata = getattr(self.pkg, "metadata", {}) or {}
+        return str(metadata.get("target_id", self.pkg.name))
 
     def _toggle_children(self):
         """Toggle expand/collapse of child dependencies."""

@@ -1,10 +1,14 @@
 import json
+import os
+import subprocess
 import urllib.parse
 from typing import Optional
 from core.config import ConfigManager
+from core.network_proxy import merge_env_for_command
 from core.network_proxy import urlopen as proxy_urlopen
 from core.npm_spec import split_npm_spec, has_explicit_tag
 from core.pypi_cache import search_cached_packages, get_cache_status
+from core.winget_helpers import build_search_blurb, build_winget_command, parse_winget_table
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QPushButton, QCheckBox, QStackedWidget, QWidget, QFrame, QGridLayout
@@ -31,6 +35,8 @@ class SearchWorker(QThread):
             self._emit_status(f"Searching '{self.query}'...")
             if self.registry_type == 'pip':
                 results = self._search_pypi()
+            elif self.registry_type == 'winget':
+                results = self._search_winget()
             else:
                 results = self._search_npm()
 
@@ -78,6 +84,41 @@ class SearchWorker(QThread):
                 "name": pkg.get("name", ""),
                 "version": pkg.get("version", ""),
                 "description": pkg.get("description", "").replace('\n', ' ')
+            })
+        return results
+
+    def _search_winget(self) -> list:
+        self._emit_status("Querying winget sources...")
+        cfg = ConfigManager()
+        settings = getattr(cfg.config, "winget_settings", {}) or {}
+        source_name = str(settings.get("default_source", "") or "").strip()
+        cmd = build_winget_command(
+            "search",
+            self.query,
+            source_name=source_name,
+            count=30,
+            winget_path=settings.get("winget_path", ""),
+        )
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            env=merge_env_for_command(cmd, proxy_settings=self.proxy_settings),
+        )
+        if res.returncode != 0:
+            error_text = (res.stderr or res.stdout or "").strip() or "winget search failed"
+            raise Exception(error_text)
+
+        results = []
+        for row in parse_winget_table(res.stdout, mode="search"):
+            results.append({
+                "name": row.get("name", ""),
+                "version": row.get("version", ""),
+                "description": build_search_blurb(row),
+                "target_id": row.get("id", row.get("name", "")),
             })
         return results
 
@@ -129,7 +170,7 @@ class AddPackageDialog(QDialog):
 
     def __init__(self, registry_type: str, parent=None):
         super().__init__(parent)
-        self.registry_type = registry_type # 'pip' or 'npm'
+        self.registry_type = registry_type # 'pip' | 'npm' | 'winget'
         self.setWindowTitle(f"Search & Add {registry_type.upper()} Package")
         self.resize(500, 600)
 
@@ -175,6 +216,8 @@ class AddPackageDialog(QDialog):
         self.search_input = QLineEdit()
         if self.registry_type == "pip":
             self.search_input.setPlaceholderText("Type package name to search local PyPI cache...")
+        elif self.registry_type == "winget":
+            self.search_input.setPlaceholderText("Type an app name or package ID to search winget...")
         else:
             self.search_input.setPlaceholderText("Type a package name to search online...")
         self.search_input.textChanged.connect(self._on_search_text_changed)
@@ -200,7 +243,7 @@ class AddPackageDialog(QDialog):
         btn_layout_1.addStretch()
         self.cancel_btn_1 = QPushButton("Cancel")
         self.cancel_btn_1.clicked.connect(self.reject)
-        self.proceed_btn_1 = QPushButton("Install" if self.registry_type == 'pip' else "Next >")
+        self.proceed_btn_1 = QPushButton("Install" if self.registry_type in {'pip', 'winget'} else "Next >")
         self.proceed_btn_1.setEnabled(False)
         self.proceed_btn_1.clicked.connect(self._on_proceed)
         btn_layout_1.addWidget(self.cancel_btn_1)
@@ -314,7 +357,7 @@ class AddPackageDialog(QDialog):
         self.status_lbl.setText(f"Found {len(results)} matches for '{self.search_input.text()}':")
         for r in results:
             item = QListWidgetItem()
-            item.setData(Qt.UserRole, r["name"])
+            item.setData(Qt.UserRole, r.get("target_id", r["name"]))
             title = f"{r['name']} ({r['version']})"
             desc = r['description']
             if len(desc) > 80: desc = desc[:77] + "..."
@@ -361,6 +404,8 @@ class AddPackageDialog(QDialog):
 
         if self.registry_type == 'pip':
             self._final_force = self.force_check.isChecked()
+            self.accept()
+        elif self.registry_type == 'winget':
             self.accept()
         else:
             # NPM Configuration

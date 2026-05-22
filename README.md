@@ -6,18 +6,19 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?logo=python)
 ![Node.js](https://img.shields.io/badge/Node.js-NPM-green.svg?logo=nodedotjs)
+![WinGet](https://img.shields.io/badge/WinGet-Windows-blue.svg?logo=windows)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-brightgreen.svg?logo=qt)
 ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-*The ultimate **sandbox environment manager** for modern developers.*
-> **OmniPack is a high-performance GUI wrapper for Python (uv/pip) and Node.js (npm).** It helps you manage scattered virtualenvs, explore deep dependency trees, and handle local packages with unprecedented visual efficiency.
+*The ultimate **sandbox environment & system package manager** for modern developers.*
+> **OmniPack is a high-performance GUI wrapper for Python (uv/pip), Node.js (npm), and Windows Package Manager (WinGet).** It helps you manage scattered virtualenvs, explore deep dependency trees, handle local packages, and seamlessly control system-wide applications with unprecedented visual efficiency.
 
 ---
 ![OmniPack Node.js View](./resources/Node.js.png)
 
 ## 💡 Why OmniPack?
 
-There are already excellent global app stores like UniGetUI and powerful native CLI tools like `pip` and `npm`. **What pain power does OmniPack solve?**
+There are already excellent global app stores like UniGetUI and powerful native CLI tools like `pip`, `npm`, and `winget`. **What pain power does OmniPack solve?**
 
 If you're a seasoned developer, your disk is likely scattered with **dozens** of legacy project folders containing `.venv` or `node_modules`.
 - Every time you want to check or update dependencies for a project, you have to find the path -> open terminal -> `cd` -> `activate` -> type long commands... 
@@ -49,6 +50,14 @@ We know you have dozens of projects. Just select those folders in [Everything] o
 More than just `npm install`. OmniPack dynamically pulls **Dist-Tags** from the cloud, allowing second-level switching and previewing between channels like `latest`, `beta`, or `rc`.
 
 ![OmniPack Dependency Tree](./resources/SelectTag.png)
+
+### 🪟 Windows Native WinGet Deep Integration (Windows Only)
+No need to launch a convoluted CLI or a cluttered third-party app store. OmniPack natively manages the built-in Windows Package Manager **WinGet**:
+- **Dual-Scope Scanning**: Separates system-wide global software (Machine scope) from user-specific software (User scope) for comprehensive app detection.
+- **Smart Path Redistribution & De-duplication**: Automatically parses Windows registry and audits physical install paths (e.g. `%USERPROFILE%`). User-installed apps are intelligently relocated from Machine to User scopes to eliminate overlap; double-installed apps display a `[Also Installed In User/Machine]` badge.
+- **Fixed-Width Column Slicing Console Parser**: Built with an East-Asian character-rendering width-padding calculation engine, making the table parser completely immune to column merging, empty values, or language-specific localized formatting.
+- **Ignore Updates with Blocking Pin**: Integrated with the native `winget pin` command. Toggle Blocking Pins on specific apps via a ⚙ button, showing a `[Pinned]` badge, and automatically skipping updates in the global "Outdated" filter.
+- **Intelligent Scope Fallback**: If an install or upgrade fails due to write permissions, locked folders, or path mismatch, OmniPack automatically attempts fallback installation with `--scope user` to ensure high success rates.
 
 ### 🧭 Runtime Patch Awareness & Update
 OmniPack distinguishes **package updates** from **runtime updates**:

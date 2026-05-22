@@ -5,8 +5,10 @@
 .venv/
 docs/GenerateUserGuide/
 dist/
+
 __pycache__/
 clean_cache.py
 GitHub.pyw
 omnipack_config.json
 packaging_ignore.txt
+sync.ffs_db

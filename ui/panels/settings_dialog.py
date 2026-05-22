@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QFileDialog, QMessageBox, QInputDialog, QDialogButtonBox, QWidget,
-    QTabWidget, QGroupBox, QLineEdit, QButtonGroup, QAbstractItemView, QCheckBox, QPlainTextEdit,
+    QTabWidget, QGroupBox, QLineEdit, QButtonGroup, QAbstractItemView, QCheckBox, QPlainTextEdit, QComboBox,
     QTextEdit, QSizePolicy, QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt, Signal, QTimer
@@ -27,7 +27,9 @@ from core.source_profiles import (
     COMMON_NPM_REGISTRIES,
     detect_system_pip_index_url,
     detect_system_npm_registry_url,
+    detect_system_winget_source_url,
 )
+from ui.panels.winget_settings_page import WingetTaskWorker
 
 
 class SettingsDialog(QDialog):
@@ -45,6 +47,7 @@ class SettingsDialog(QDialog):
         self._npm_system_url = ""
         self._pip_custom_url = ""
         self._npm_custom_url = ""
+        self._winget_workers = set()
         self._pypi_cache_log_cursor = 0
         self._pypi_progress_timer = QTimer(self)
         self._pypi_progress_timer.setInterval(500)
@@ -59,6 +62,7 @@ class SettingsDialog(QDialog):
         self._load_source_settings()
         self._load_proxy_settings()
         self._load_pypi_cache_settings()
+        self._load_winget_settings()
         self._set_initial_tab()
 
     def _create_ui(self):
@@ -130,6 +134,7 @@ class SettingsDialog(QDialog):
 
     def _set_initial_tab(self):
         tab_map = {"pip": 0, "npm": 1, "sources": 2, "backend": 3, "proxy": 4}
+        tab_map["winget"] = 3
         self.tabs.setCurrentIndex(tab_map.get(self._initial_tab, 0))
 
     @staticmethod
@@ -398,7 +403,7 @@ class SettingsDialog(QDialog):
         
         layout = QVBoxLayout(page)
 
-        hint = QLabel("Source settings affect pip/uv/npm commands and PyPI cache refresh source selection.")
+        hint = QLabel("Source settings affect pip/uv/npm commands, PyPI cache refresh, and WinGet source selection.")
         hint.setObjectName("SettingsHint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -413,10 +418,14 @@ class SettingsDialog(QDialog):
         ]
         pip_cards, self.pip_source_mode_group, self.pip_source_mode_buttons = self._create_mode_cards(pip_modes)
         pip_layout.addWidget(pip_cards)
-        pip_layout.addWidget(QLabel("Index URL:"))
+
+        pip_url_row = QHBoxLayout()
+        pip_url_row.addWidget(QLabel("Index URL:"))
         self.pip_index_url = QLineEdit()
         self.pip_index_url.textChanged.connect(self._on_pip_url_edited)
-        pip_layout.addWidget(self.pip_index_url)
+        pip_url_row.addWidget(self.pip_index_url, 1)
+        pip_layout.addLayout(pip_url_row)
+
         pip_layout.addWidget(self._build_preset_row(COMMON_PIP_MIRRORS, "pip"))
         layout.addWidget(pip_group)
 
@@ -430,12 +439,34 @@ class SettingsDialog(QDialog):
         ]
         npm_cards, self.npm_source_mode_group, self.npm_source_mode_buttons = self._create_mode_cards(npm_modes)
         npm_layout.addWidget(npm_cards)
-        npm_layout.addWidget(QLabel("Registry URL:"))
+
+        npm_url_row = QHBoxLayout()
+        npm_url_row.addWidget(QLabel("Registry URL:"))
         self.npm_registry_url = QLineEdit()
         self.npm_registry_url.textChanged.connect(self._on_npm_url_edited)
-        npm_layout.addWidget(self.npm_registry_url)
+        npm_url_row.addWidget(self.npm_registry_url, 1)
+        npm_layout.addLayout(npm_url_row)
+
         npm_layout.addWidget(self._build_preset_row(COMMON_NPM_REGISTRIES, "npm"))
         layout.addWidget(npm_group)
+
+        if os.name == "nt":
+            winget_group = QGroupBox("Windows Apps (WinGet)")
+            winget_layout = QVBoxLayout(winget_group)
+
+            winget_url_row = QHBoxLayout()
+            winget_url_row.addWidget(QLabel("Source URL:"))
+            self.winget_source_url = QLineEdit()
+            winget_url_row.addWidget(self.winget_source_url, 1)
+            winget_layout.addLayout(winget_url_row)
+
+            _WINGET_PRESETS = [
+                ("Winget CDN", "https://cdn.winget.microsoft.com/cache"),
+                ("MS Store", "https://storeedgefd.dsx.mp.microsoft.com/v9.0"),
+            ]
+            winget_layout.addWidget(self._build_preset_row(_WINGET_PRESETS, "winget"))
+
+            layout.addWidget(winget_group)
 
         layout.addStretch()
         return scroll
@@ -444,41 +475,78 @@ class SettingsDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        
+
         page = QWidget()
         scroll.setWidget(page)
-        
+
         layout = QVBoxLayout(page)
 
-        hint = QLabel("Backend behavior for OmniPack internals (engine and local PyPI search cache).")
+        hint = QLabel("Backend behavior for OmniPack internals, package cache, and WinGet scanning/updating.")
         hint.setObjectName("SettingsHint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
         engine_group = QGroupBox("Internal Engine (uv)")
         engine_layout = QVBoxLayout(engine_group)
-        engine_layout.addWidget(QLabel("Custom uv path (leave blank to auto-detect from bundled/system):"))
 
-        uv_row = QHBoxLayout()
-        self.uv_path_edit = QLineEdit()
-        self.uv_path_edit.setPlaceholderText("e.g. C:\\tools\\uv.exe")
-        self.uv_path_edit.textChanged.connect(self._on_uv_path_edited)
-        uv_row.addWidget(self.uv_path_edit)
+        self.uv_path_label = QLabel("Detecting...")
+        self.uv_path_label.setWordWrap(True)
+        self.uv_path_label.setStyleSheet("color: gray; font-size: 11px;")
+        engine_layout.addWidget(self.uv_path_label)
 
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self._browse_uv_path)
-        uv_row.addWidget(browse_btn)
-        engine_layout.addLayout(uv_row)
-
-        update_btn = QPushButton("Check for Update / Self Update (uv)")
-        update_btn.clicked.connect(self._update_uv_engine)
-        engine_layout.addWidget(update_btn)
+        uv_btn_row = QHBoxLayout()
+        uv_path_btn = QPushButton("Path")
+        uv_path_btn.clicked.connect(self._browse_uv_path)
+        uv_btn_row.addWidget(uv_path_btn)
+        uv_auto_btn = QPushButton("Auto")
+        uv_auto_btn.clicked.connect(self._reset_uv_path)
+        uv_btn_row.addWidget(uv_auto_btn)
+        uv_update_btn = QPushButton("Check && Update")
+        uv_update_btn.clicked.connect(self._update_uv_engine)
+        uv_btn_row.addWidget(uv_update_btn)
+        uv_btn_row.addStretch()
+        engine_layout.addLayout(uv_btn_row)
 
         self.uv_version_label = QLabel("Testing engine...")
         self.uv_version_label.setWordWrap(True)
         self.uv_version_label.setStyleSheet("color: gray; font-size: 11px; font-style: italic;")
         engine_layout.addWidget(self.uv_version_label)
         layout.addWidget(engine_group)
+
+        if os.name == "nt":
+            winget_group = QGroupBox("WinGet Backend")
+            winget_layout = QVBoxLayout(winget_group)
+
+            self.winget_path_label = QLabel("Detecting...")
+            self.winget_path_label.setWordWrap(True)
+            self.winget_path_label.setStyleSheet("color: gray; font-size: 11px;")
+            winget_layout.addWidget(self.winget_path_label)
+
+            winget_btn_row = QHBoxLayout()
+            winget_path_btn = QPushButton("Path")
+            winget_path_btn.clicked.connect(self._browse_winget_path)
+            winget_btn_row.addWidget(winget_path_btn)
+            winget_auto_btn = QPushButton("Auto")
+            winget_auto_btn.clicked.connect(self._reset_winget_path)
+            winget_btn_row.addWidget(winget_auto_btn)
+            winget_update_btn = QPushButton("Diagnose")
+            winget_update_btn.clicked.connect(self._refresh_winget_diagnostics)
+            winget_btn_row.addWidget(winget_update_btn)
+            self.winget_mode_combo = QComboBox()
+            self.winget_mode_combo.addItem("silent", "silent")
+            self.winget_mode_combo.addItem("default", "default")
+            self.winget_mode_combo.addItem("interactive", "interactive")
+            self.winget_mode_combo.currentIndexChanged.connect(self._mark_changed)
+            winget_btn_row.addWidget(self.winget_mode_combo)
+            winget_btn_row.addStretch()
+            winget_layout.addLayout(winget_btn_row)
+
+            self.winget_diag_label = QLabel("Click button to run WinGet diagnostics...")
+            self.winget_diag_label.setWordWrap(True)
+            self.winget_diag_label.setStyleSheet("color: gray; font-size: 11px; font-style: italic;")
+            winget_layout.addWidget(self.winget_diag_label)
+
+            layout.addWidget(winget_group)
 
         cache_group = QGroupBox("PyPI Search Cache")
         cache_layout = QVBoxLayout(cache_group)
@@ -552,6 +620,7 @@ class SettingsDialog(QDialog):
         self._save_source_settings()
         self._save_proxy_settings()
         self._save_pypi_cache_settings()
+        self._save_winget_settings()
         if self._changed:
             self.settings_changed.emit()
             self._changed = False
@@ -626,7 +695,7 @@ class SettingsDialog(QDialog):
         self.proxy_target_github.toggled.connect(self._on_proxy_fields_changed)
         target_layout.addWidget(self.proxy_target_github)
 
-        self.proxy_target_winget = QCheckBox("winget command (Node.js/Python runtime update check)")
+        self.proxy_target_winget = QCheckBox("winget commands (runtime checks, app scans, installs, updates)")
         self.proxy_target_winget.toggled.connect(self._on_proxy_fields_changed)
         target_layout.addWidget(self.proxy_target_winget)
 
@@ -661,9 +730,8 @@ class SettingsDialog(QDialog):
         pip_settings = getattr(self.config_mgr.config, "pip_settings", {}) or {}
         npm_settings = getattr(self.config_mgr.config, "npm_settings", {}) or {}
 
-        self.uv_path_edit.blockSignals(True)
-        self.uv_path_edit.setText(str(pip_settings.get("uv_path", "")).strip())
-        self.uv_path_edit.blockSignals(False)
+        self._uv_custom_path = str(pip_settings.get("uv_path", "")).strip()
+        self._refresh_uv_path_label()
         self._check_uv_version()
 
         self._pip_custom_url = str(pip_settings.get("index_url", "")).strip()
@@ -674,6 +742,23 @@ class SettingsDialog(QDialog):
         self._set_mode_value(self.pip_source_mode_buttons, str(pip_settings.get("source_mode", "system")))
         self._set_mode_value(self.npm_source_mode_buttons, str(npm_settings.get("source_mode", "system")))
         self._apply_source_ui()
+
+        if os.name == "nt":
+            self._winget_system_url = detect_system_winget_source_url()
+            winget_settings = getattr(self.config_mgr.config, "winget_settings", {}) or {}
+            saved_winget_url = str(winget_settings.get("source_url", "")).strip()
+            
+            self.winget_source_url.blockSignals(True)
+            if saved_winget_url:
+                self.winget_source_url.setText(saved_winget_url)
+            else:
+                self.winget_source_url.setText("")
+                
+            if self._winget_system_url:
+                self.winget_source_url.setPlaceholderText(f"系统当前: {self._winget_system_url}")
+            else:
+                self.winget_source_url.setPlaceholderText("系统当前: (未检测到自定义源地址)")
+            self.winget_source_url.blockSignals(False)
 
     def _load_proxy_settings(self):
         settings = normalize_proxy_settings(getattr(self.config_mgr.config, "proxy_settings", {}) or {})
@@ -719,6 +804,23 @@ class SettingsDialog(QDialog):
         if not self._pypi_progress_timer.isActive():
             self._pypi_progress_timer.start()
 
+    def _load_winget_settings(self):
+        if os.name != "nt":
+            return
+        settings = getattr(self.config_mgr.config, "winget_settings", {}) or {}
+
+        self.winget_mode_combo.blockSignals(True)
+
+        self._winget_custom_path = str(settings.get("winget_path", "") or "").strip()
+
+        mode_value = str(settings.get("install_mode", "silent") or "silent").strip().lower()
+        mode_index = self.winget_mode_combo.findData(mode_value)
+        self.winget_mode_combo.setCurrentIndex(mode_index if mode_index >= 0 else 0)
+
+        self.winget_mode_combo.blockSignals(False)
+
+        self._refresh_winget_diagnostics()
+
     def _save_source_settings(self):
         pip_mode = self._get_selected_mode(self.pip_source_mode_group)
         npm_mode = self._get_selected_mode(self.npm_source_mode_group)
@@ -729,15 +831,39 @@ class SettingsDialog(QDialog):
         new_pip = dict(pip_settings)
         new_pip["source_mode"] = pip_mode
         new_pip["index_url"] = self._pip_custom_url
-        new_pip["uv_path"] = self.uv_path_edit.text().strip()
+        new_pip["uv_path"] = self._uv_custom_path
 
         new_npm = dict(npm_settings)
         new_npm["source_mode"] = npm_mode
         new_npm["registry_url"] = self._npm_custom_url
 
+        changed_local = False
         if new_pip != pip_settings or new_npm != npm_settings:
             self.config_mgr.config.pip_settings = new_pip
             self.config_mgr.config.npm_settings = new_npm
+            changed_local = True
+
+        if os.name == "nt":
+            winget_settings = getattr(self.config_mgr.config, "winget_settings", {}) or {}
+            new_winget = dict(winget_settings)
+            input_url = self.winget_source_url.text().strip()
+            new_winget["source_url"] = input_url
+            
+            old_url = winget_settings.get("source_url", "")
+            if new_winget != winget_settings:
+                self.config_mgr.config.winget_settings = new_winget
+                changed_local = True
+                
+            if input_url != old_url:
+                target_url = input_url if input_url else "https://cdn.winget.microsoft.com/cache"
+                self._start_winget_worker(
+                    "source-update-url",
+                    name="winget",
+                    arg=target_url,
+                    source_type="Microsoft.PreIndexed.Package"
+                )
+
+        if changed_local:
             self.config_mgr.save_config()
             self._changed = True
 
@@ -770,6 +896,105 @@ class SettingsDialog(QDialog):
             self.config_mgr.config.pypi_cache_settings = new_settings
             self.config_mgr.save_config()
             self._changed = True
+
+    def _save_winget_settings(self):
+        if os.name != "nt":
+            return
+        existing = getattr(self.config_mgr.config, "winget_settings", {}) or {}
+        new_settings = {
+            "install_mode": str(self.winget_mode_combo.currentData() or "silent").strip().lower(),
+            "winget_path": self._winget_custom_path,
+        }
+        if existing != new_settings:
+            self.config_mgr.config.winget_settings = new_settings
+            self.config_mgr.save_config()
+            self._changed = True
+
+    def _mark_changed(self, _value=None):
+        self._changed = True
+
+    def _start_winget_worker(self, task_name: str, **kwargs):
+        if os.name != "nt":
+            return
+        proxy_settings = normalize_proxy_settings(getattr(self.config_mgr.config, "proxy_settings", {}) or {})
+        if "winget_path" not in kwargs:
+            kwargs["winget_path"] = getattr(self, "_winget_custom_path", "")
+        worker = WingetTaskWorker(task_name, proxy_settings, **kwargs)
+        worker.finished_task.connect(self._on_winget_worker_finished)
+        worker.finished.connect(lambda w=worker: self._winget_workers.discard(w))
+        worker.finished.connect(worker.deleteLater)
+        self._winget_workers.add(worker)
+        worker.start()
+
+    def _refresh_winget_path_label(self):
+        from core.winget_helpers import find_winget_executable
+        resolved = find_winget_executable() or "not found"
+        if self._winget_custom_path:
+            self.winget_path_label.setText(f"Custom: {self._winget_custom_path}")
+        else:
+            self.winget_path_label.setText(f"Auto-detected: {resolved}")
+
+    def _refresh_winget_diagnostics(self):
+        if os.name != "nt":
+            return
+        self._refresh_winget_path_label()
+        self.winget_diag_label.setText("Checking WinGet status...")
+        self._start_winget_worker("diagnostics", winget_path=self._winget_custom_path)
+
+    def _browse_winget_path(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select winget Executable",
+            "",
+            "Executable (*.exe);;All Files (*)" if os.name == "nt" else "Executable (*);;All Files(*)",
+        )
+        if path:
+            self._winget_custom_path = path
+            self._refresh_winget_path_label()
+            self._refresh_winget_diagnostics()
+            self._changed = True
+
+    def _reset_winget_path(self):
+        self._winget_custom_path = ""
+        self._refresh_winget_path_label()
+        self._refresh_winget_diagnostics()
+        self._changed = True
+
+    def _on_winget_worker_finished(self, task_name: str, payload, error: str):
+        if task_name == "diagnostics":
+            if error:
+                self.winget_diag_label.setText(f"Diagnostics failed: {error}")
+                return
+            available = bool((payload or {}).get("available"))
+            if not available:
+                self.winget_diag_label.setText("WinGet executable not found.")
+                return
+            msg = (
+                f"Available: yes\n"
+                f"Path: {(payload or {}).get('path', '')}\n"
+                f"Version: {(payload or {}).get('version', '(unknown)')}\n"
+                f"Sources: {(payload or {}).get('source_count', 0)}"
+            )
+            source_error = str((payload or {}).get("source_error", "")).strip()
+            if source_error:
+                msg += f"\nSource status: {source_error}"
+            self.winget_diag_label.setText(msg)
+            return
+        elif task_name == "source-update-url":
+            if error:
+                QMessageBox.warning(
+                    self,
+                    "WinGet 源更新失败",
+                    f"更新系统全局 WinGet 源地址失败：\n{error}\n\n"
+                    "提示：修改系统全局配置通常需要管理员权限。虽然 OmniPack 默认会申请管理员权限，但在部分限制环境中仍可能被拦截，请确认 OmniPack 是否已正常获得管理员权限。"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "WinGet 源已更新",
+                    "系统全局 Windows WinGet 镜像源已成功更新！"
+                )
+            return
 
     def _on_proxy_fields_changed(self, _value=None):
         self._changed = True
@@ -917,7 +1142,7 @@ class SettingsDialog(QDialog):
         return {
             "source_mode": self._get_selected_mode(self.pip_source_mode_group),
             "index_url": self._pip_custom_url,
-            "uv_path": self.uv_path_edit.text().strip(),
+            "uv_path": self._uv_custom_path,
         }
 
     def _resolve_pypi_refresh_source_from_ui(self) -> dict:
@@ -1065,9 +1290,13 @@ class SettingsDialog(QDialog):
         if source_kind == "pip":
             self._pip_custom_url = url
             self._set_mode_value(self.pip_source_mode_buttons, "custom")
-        else:
+        elif source_kind == "npm":
             self._npm_custom_url = url
             self._set_mode_value(self.npm_source_mode_buttons, "custom")
+        elif source_kind == "winget":
+            self.winget_source_url.setText(url)
+            self._mark_changed()
+            return
         self._apply_source_ui()
         self._refresh_pypi_cache_status_text()
 
@@ -1156,9 +1385,13 @@ class SettingsDialog(QDialog):
         if btn:
             btn.setChecked(True)
 
-    def _on_uv_path_edited(self, text: str):
-        self._changed = True
-        self._check_uv_version()
+    def _refresh_uv_path_label(self):
+        from core.utils import get_uv_path
+        resolved = get_uv_path(self.config_mgr)
+        if self._uv_custom_path:
+            self.uv_path_label.setText(f"Custom: {self._uv_custom_path}")
+        else:
+            self.uv_path_label.setText(f"Auto-detected: {resolved}")
 
     def _browse_uv_path(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -1168,8 +1401,16 @@ class SettingsDialog(QDialog):
             "Executable (*.exe);;All Files (*)" if os.name == "nt" else "Executable (*);;All Files(*)",
         )
         if path:
-            self.uv_path_edit.setText(path)
+            self._uv_custom_path = path
+            self._refresh_uv_path_label()
+            self._check_uv_version()
             self._changed = True
+
+    def _reset_uv_path(self):
+        self._uv_custom_path = ""
+        self._refresh_uv_path_label()
+        self._check_uv_version()
+        self._changed = True
 
     def _check_uv_version(self):
         # Prevent spamming network/disk IO while typing
@@ -1186,12 +1427,10 @@ class SettingsDialog(QDialog):
     def _run_uv_version_check(self):
         from core.utils import get_uv_path
         from core.network_proxy import urlopen as proxy_urlopen, normalize_proxy_settings
-        
-        # Save current typed value temporarily to config so get_uv_path can read it
+
         old_uv_path = str(self.config_mgr.config.pip_settings.get("uv_path", ""))
-        self.config_mgr.config.pip_settings["uv_path"] = self.uv_path_edit.text().strip()
+        self.config_mgr.config.pip_settings["uv_path"] = self._uv_custom_path
         uv_path = get_uv_path(self.config_mgr)
-        # Restore, wait for actual save logic when pressing OK
         self.config_mgr.config.pip_settings["uv_path"] = old_uv_path
         proxy_settings = normalize_proxy_settings(getattr(self.config_mgr.config, "proxy_settings", {}) or {})
 
@@ -1499,6 +1738,11 @@ class SettingsDialog(QDialog):
         return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
+        for worker in list(getattr(self, "_winget_workers", set())):
+            try:
+                worker.wait(1500)
+            except Exception:
+                pass
         if hasattr(self, "_pypi_progress_timer") and self._pypi_progress_timer.isActive():
             self._pypi_progress_timer.stop()
         if self._changed:
