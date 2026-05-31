@@ -33,6 +33,12 @@ class PipEnvCard(BaseEnvCard):
         self.h_layout.addWidget(self.count_lbl)
 
         # Action Buttons
+        self.term_btn = QPushButton(">_")
+        self.term_btn.setObjectName("EnvActivateBtn")
+        self.term_btn.setToolTip("Open in Terminal (Activate Environment)")
+        self.term_btn.clicked.connect(lambda: self.activate_requested.emit(self.env.path))
+        self.h_layout.addWidget(self.term_btn)
+
         refresh_btn = QPushButton("↻")
         refresh_btn.setObjectName("EnvRefreshBtn")
         refresh_btn.setToolTip("Refresh Environment")

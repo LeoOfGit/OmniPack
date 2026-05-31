@@ -47,8 +47,8 @@ class WingetScanWorker(BaseCmdWorker):
         p = normalize_proxy_settings(self.proxy_settings)
         self.proxy_url = p["https_proxy"] or p["http_proxy"] if p["enabled"] and p["targets"].get("winget") else ""
 
-    def _capture_rows(self, cmd: list[str], mode: str) -> list[dict]:
-        result = self._run_command(cmd, capture_output=True, stream_stdout=False, stream_stderr=False)
+    def _capture_rows(self, cmd: list[str], mode: str, timeout: float = 25.0) -> list[dict]:
+        result = self._run_command(cmd, capture_output=True, stream_stdout=False, stream_stderr=False, timeout=timeout)
         stdout = result.stdout or ""
         stderr = result.stderr or ""
         
@@ -197,6 +197,7 @@ class WingetScanWorker(BaseCmdWorker):
                     "target_id": pkg_id or pkg_name,
                     "package_id": pkg_id,
                     "scope": self.env.type,
+                    "installed_scope": self.env.type,
                     "source": source_name,
                     "display_name": f"{prefix_html} {pkg_name or pkg_id}",
                     "search_text": " ".join(part for part in [prefix_code, pkg_id, source_name, current_version, latest_version] if part),
@@ -396,6 +397,11 @@ class WingetManager(PackageManager):
     def reload_envs(self):
         self._load_envs()
 
+    @staticmethod
+    def invalidate_scan_cache():
+        WingetScanWorker._last_global_scan_time = 0.0
+        WingetScanWorker._last_global_scan_data = None
+
     def _current_settings(self) -> dict:
         return _winget_settings_snapshot(self.config_mgr)
 
@@ -408,6 +414,9 @@ class WingetManager(PackageManager):
 
     @staticmethod
     def _resolve_scope(env: Environment, package_spec: dict, fallback_scope: str = "all") -> str:
+        installed_scope = str(package_spec.get("installed_scope", "")).strip().lower()
+        if installed_scope in {"user", "machine"}:
+            return installed_scope
         spec_scope = str(package_spec.get("scope", "")).strip().lower()
         if spec_scope in {"user", "machine"}:
             return spec_scope
@@ -537,6 +546,8 @@ class WingetManager(PackageManager):
             self.env_scanned.emit(env)
 
     def scan_environment(self, env: Environment):
+        if not getattr(env, "is_scanned", False):
+            self.invalidate_scan_cache()
         worker = WingetScanWorker(env, self._current_settings(), proxy_settings=self._proxy_settings())
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
@@ -557,96 +568,71 @@ class WingetManager(PackageManager):
             ]
         )
 
-    def update_package(self, env: Environment, package_spec: dict):
+    def build_update_fallback_install_command(self, env: Environment, package_spec: dict) -> list[str]:
         pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()
         scope = self._resolve_scope(env, package_spec, self._current_settings().get("default_scope", "all"))
-        winget_path = self._current_settings().get("winget_path", "")
-        proxy_url = self._get_proxy_url()
-        cmd = build_winget_command(
-            "upgrade",
-            "--id",
-            pkg_id,
-            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
-            scope_value=scope,
-            install_mode=self._current_settings().get("install_mode", "default"),
-            accept_package_agreements=True,
-            exact=True,
-            winget_path=winget_path,
-            proxy_url=proxy_url,
-        )
-        alt_scope = "user" if scope == "machine" else "machine"
-        fallback = build_winget_command(
-            "upgrade",
-            "--id",
-            pkg_id,
-            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
-            scope_value=alt_scope,
-            install_mode=self._current_settings().get("install_mode", "default"),
-            accept_package_agreements=True,
-            exact=True,
-            winget_path=winget_path,
-            proxy_url=proxy_url,
-        )
-        worker = WingetSingleActionWorker(cmd, proxy_settings=self._proxy_settings(), fallback_cmd=fallback)
-        self._start_action_worker(worker, lambda: self.update_done.emit(env.path, pkg_id, worker.success))
-
-    def batch_update_packages(self, env: Environment, package_specs: list[dict]):
-        scoped_settings = dict(self._current_settings())
-        scoped_settings["default_scope"] = self._resolve_scope(env, {"scope": getattr(env, "type", "")}, scoped_settings.get("default_scope", "all"))
-        worker = WingetBatchUpdateWorker(package_specs, scoped_settings, proxy_settings=self._proxy_settings())
-        self._start_action_worker(worker, lambda: self.batch_update_done.emit(env.path, package_specs, worker.success))
-
-    def remove_package(self, env: Environment, package_spec: dict):
-        pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()
-        scope = self._resolve_scope(env, package_spec, self._current_settings().get("default_scope", "all"))
-        winget_path = self._current_settings().get("winget_path", "")
-        proxy_url = self._get_proxy_url()
-        cmd = build_winget_command(
-            "uninstall",
-            "--id",
-            pkg_id,
-            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
-            scope_value=scope,
-            install_mode=self._current_settings().get("install_mode", "default"),
-            accept_package_agreements=False,
-            exact=True,
-            winget_path=winget_path,
-            proxy_url=proxy_url,
-        )
-        alt_scope = "user" if scope == "machine" else "machine"
-        fallback = build_winget_command(
-            "uninstall",
-            "--id",
-            pkg_id,
-            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
-            scope_value=alt_scope,
-            install_mode=self._current_settings().get("install_mode", "default"),
-            accept_package_agreements=False,
-            exact=True,
-            winget_path=winget_path,
-            proxy_url=proxy_url,
-        )
-        worker = WingetSingleActionWorker(cmd, proxy_settings=self._proxy_settings(), fallback_cmd=fallback)
-        self._start_action_worker(worker, lambda: self.remove_done.emit(env.path, pkg_id, worker.success))
-
-    def install_package(self, env: Environment, package_ref: str):
-        pkg_ref = str(package_ref or "").strip()
-        source_name = self._current_settings().get("default_source", "")
-        install_mode = self._current_settings().get("install_mode", "default")
-        cmd = build_winget_command(
+        return build_winget_command(
             "install",
             "--id",
-            pkg_ref,
-            source_name=source_name,
-            scope_value=self._resolve_scope(env, {"scope": getattr(env, "type", "")}, self._current_settings().get("default_scope", "all")),
-            install_mode=install_mode,
+            pkg_id,
+            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
+            scope_value=scope,
+            install_mode=self._current_settings().get("install_mode", "default"),
             accept_package_agreements=True,
             exact=True,
             winget_path=self._current_settings().get("winget_path", ""),
             proxy_url=self._get_proxy_url(),
         )
-        worker = WingetSingleActionWorker(cmd, proxy_settings=self._proxy_settings())
-        self._start_action_worker(worker, lambda: self.install_done.emit(env.path, pkg_ref, worker.success))
+
+    def build_update_command(self, env: Environment, package_spec: dict) -> list[str]:
+        pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()
+        scope = self._resolve_scope(env, package_spec, self._current_settings().get("default_scope", "all"))
+        cmd = build_winget_command(
+            "upgrade",
+            "--id",
+            pkg_id,
+            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
+            scope_value=scope,
+            install_mode=self._current_settings().get("install_mode", "default"),
+            accept_package_agreements=True,
+            exact=True,
+            winget_path=self._current_settings().get("winget_path", ""),
+            proxy_url=self._get_proxy_url(),
+        )
+        return cmd
+
+    def build_remove_command(self, env: Environment, package_spec: dict) -> list[str]:
+        pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()
+        scope = self._resolve_scope(env, package_spec, self._current_settings().get("default_scope", "all"))
+        cmd = build_winget_command(
+            "uninstall",
+            "--id",
+            pkg_id,
+            source_name=package_spec.get("source", "") or self._current_settings().get("default_source", ""),
+            scope_value=scope,
+            install_mode=self._current_settings().get("install_mode", "default"),
+            accept_package_agreements=False,
+            exact=True,
+            winget_path=self._current_settings().get("winget_path", ""),
+            proxy_url=self._get_proxy_url(),
+        )
+        return cmd
+
+    def build_install_command(self, env: Environment, package_ref: str) -> list[str]:
+        pkg_ref = str(package_ref or "").strip()
+        cmd = build_winget_command(
+            "install",
+            "--id",
+            pkg_ref,
+            source_name=self._current_settings().get("default_source", ""),
+            scope_value=self._resolve_scope(env, {"scope": getattr(env, "type", "")}, self._current_settings().get("default_scope", "all")),
+            install_mode=self._current_settings().get("install_mode", "default"),
+            accept_package_agreements=True,
+            exact=True,
+            winget_path=self._current_settings().get("winget_path", ""),
+            proxy_url=self._get_proxy_url(),
+        )
+        return cmd
 
     def set_pin_state(self, env: Environment, package_spec: dict, enabled: bool):
         pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()

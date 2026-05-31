@@ -44,6 +44,19 @@ class WingetTaskWorker(QThread):
 
     def run(self):
         try:
+            if self.task_name == "enable-proxy":
+                cmd = [self._resolve_winget(), "settings", "--enable", "ProxyCommandLineOptions"]
+                result = self._run(cmd)
+                error = "" if result.returncode == 0 else ((result.stderr or result.stdout or "").strip() or "winget settings --enable failed")
+                self.finished_task.emit(self.task_name, result.stdout or result.stderr, error)
+                return
+            if self.task_name == "disable-proxy":
+                cmd = [self._resolve_winget(), "settings", "--disable", "ProxyCommandLineOptions"]
+                result = self._run(cmd)
+                error = "" if result.returncode == 0 else ((result.stderr or result.stdout or "").strip() or "winget settings --disable failed")
+                self.finished_task.emit(self.task_name, result.stdout or result.stderr, error)
+                return
+
             if self.task_name == "diagnostics":
                 self.finished_task.emit(self.task_name, self._run_diagnostics(), "")
                 return

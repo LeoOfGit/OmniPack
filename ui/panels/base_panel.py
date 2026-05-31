@@ -60,11 +60,27 @@ class BasePanel(QWidget):
 
         self.splitter.addWidget(self.left_container)
 
-        # ── Right: Console ──
+        # ── Right: Console and Terminal Splitter ──
+        self.right_splitter = QSplitter(Qt.Vertical)
+        self.right_splitter.setHandleWidth(1)
+        self.right_splitter.setMinimumWidth(self.CONSOLE_MIN_WIDTH)
+
+        # Always add the traditional ConsolePanel at the top
         from ui.widgets.console_panel import ConsolePanel
-        self.console = ConsolePanel(self.splitter, self.config_mgr)
-        self.console.setMinimumWidth(self.CONSOLE_MIN_WIDTH)
-        self.splitter.addWidget(self.console)
+        self.console = ConsolePanel(self.right_splitter, self.config_mgr)
+        self.right_splitter.addWidget(self.console)
+
+        mode = getattr(self.config_mgr.config, "console_mode", "real_terminal")
+        if mode == "real_terminal":
+            from ui.widgets.terminal_panel import RealTerminalPanel
+            self.terminal = RealTerminalPanel(self.right_splitter, config_mgr=self.config_mgr)
+            self.right_splitter.addWidget(self.terminal)
+            self.right_splitter.setStretchFactor(0, 1)
+            self.right_splitter.setStretchFactor(1, 2)
+        else:
+            self.terminal = self.console
+            
+        self.splitter.addWidget(self.right_splitter)
 
         # Splitter behavior
         self.splitter.setCollapsible(0, False)

@@ -48,16 +48,40 @@ class PackageCard(QFrame):
 
         self.setObjectName("MissingPackageCard" if pkg.is_missing else "PackageCard")
 
-        main_layout = QVBoxLayout()
-        self.setLayout(main_layout)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
-        # --- Row container ---
-        row_widget = QWidget()
-        row_widget.setObjectName("PackageCardRow")
+        self.row_widget = None
+        
+        # --- Children Container (collapsible) ---
+        self.children_container = QWidget()
+        self.children_container.setVisible(False)
+        self.children_layout = QVBoxLayout()
+        self.children_container.setLayout(self.children_layout)
+        self.children_layout.setContentsMargins(0, 0, 0, 0)
+        self.children_layout.setSpacing(1)
+        self.main_layout.addWidget(self.children_container)
+        
+        self._build_row_ui()
+
+    def _build_row_ui(self):
+        if self.row_widget:
+            self.main_layout.removeWidget(self.row_widget)
+            self.row_widget.deleteLater()
+            
+        self.row_widget = QWidget()
+        self.row_widget.setObjectName("PackageCardRow")
         row_layout = QHBoxLayout()
-        row_widget.setLayout(row_layout)
+        self.row_widget.setLayout(row_layout)
+        
+        # Insert row_widget at the top of main_layout
+        self.main_layout.insertWidget(0, self.row_widget)
+        
+        pkg = self.pkg
+        depth = self.depth
+        
         indent = 8 + (depth * 20)
         row_layout.setContentsMargins(indent, 4, 8, 4)
 
@@ -157,12 +181,12 @@ class PackageCard(QFrame):
         # Action Buttons
         if pkg.is_missing:
             # Install button for missing deps
-            install_btn = QPushButton("+")
-            install_btn.setObjectName("ActionBtnInstall")
-            install_btn.setCursor(Qt.PointingHandCursor)
-            install_btn.setToolTip(f"Install {pkg.name}")
-            install_btn.clicked.connect(lambda: self.install_requested.emit(pkg.name))
-            row_layout.addWidget(install_btn)
+            self.action_btn = QPushButton("+")
+            self.action_btn.setObjectName("ActionBtnInstall")
+            self.action_btn.setCursor(Qt.PointingHandCursor)
+            self.action_btn.setToolTip(f"Install {pkg.name}")
+            self.action_btn.clicked.connect(lambda: self.install_requested.emit(pkg.name))
+            row_layout.addWidget(self.action_btn)
         else:
             supports_config = bool((pkg.metadata or {}).get("supports_config")) or (pkg.metadata and "channels_available" in pkg.metadata)
             if supports_config:
@@ -219,16 +243,9 @@ class PackageCard(QFrame):
             rm_btn.clicked.connect(lambda: self.remove_requested.emit(self._action_target()))
             row_layout.addWidget(rm_btn)
 
-        main_layout.addWidget(row_widget)
+        # Removed main_layout.addWidget(row_widget)
 
-        # --- Children container (collapsible) ---
-        self.children_container = QWidget()
-        self.children_container.setVisible(False)
-        self.children_layout = QVBoxLayout()
-        self.children_container.setLayout(self.children_layout)
-        self.children_layout.setContentsMargins(0, 0, 0, 0)
-        self.children_layout.setSpacing(1)
-        main_layout.addWidget(self.children_container)
+        # Children container setup moved to __init__
 
     def _on_check_changed(self, state):
         checked_val = Qt.Checked.value if hasattr(Qt.Checked, "value") else 2

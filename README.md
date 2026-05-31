@@ -30,6 +30,13 @@ OmniPack was born for this: **It's not a system app store; it's your environment
 
 ## ✨ Core Features
 
+### 🖥️ Built-in Interactive PTY Terminal (New in v10)
+Say goodbye to the "blind" read-only simulated console! OmniPack v10 features a full-fledged Pseudo-Terminal (PTY) engine integrated directly into the UI:
+- **True PTY Integration**: Uses `pywinpty` on Windows and native `pty`/`os.fork()` on macOS/Linux to run real interactive shells with 0 MB size overhead.
+- **Rich ANSI Capabilities**: Streamed output is parsed by the lightweight `pyte` library, supporting full ANSI color palette mapping and dynamic progress bars (e.g. `uv` / `pip` / `npm` downloads).
+- **Silent Synchronization & Marker Interceptor**: Changing environments or working directories on the left instantly and silently switches directories (`cd`) or activates virtualenvs in the terminal. When performing package actions, OmniPack writes CLI commands to the terminal and monitors operation success via a unique UUID marker, triggering an incremental **Fast Refresh** on completion.
+- **Highly Customizable**: Choose your preferred default shell (`cmd.exe`, `powershell.exe`, `pwsh.exe`, or custom shell binaries) and switch console modes instantly under the new Terminal settings tab.
+
 ### 🚀 High-Speed Engine: Native `uv` Power
 It's not just fast; it’s fast even in a GUI! OmniPack natively integrates [Astral sh](https://github.com/astral-sh/uv)'s acclaimed `uv` engine. Enjoy order-of-magnitude faster downloads and resolution compared to traditional pip.
 

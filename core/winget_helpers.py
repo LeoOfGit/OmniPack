@@ -16,6 +16,14 @@ def find_winget_executable(custom_path: str = "") -> str:
     # 2. Try custom path if provided
     if custom_path and os.path.exists(custom_path):
         return custom_path
+
+    # 3. Try standard WindowsApps location which might be missing from PATH during UAC elevation
+    if os.name == "nt":
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            fallback = os.path.join(local_appdata, "Microsoft", "WindowsApps", "winget.exe")
+            if os.path.exists(fallback):
+                return fallback
         
     return ""
 
@@ -73,9 +81,6 @@ def build_winget_command(
 ) -> list[str]:
     winget = find_winget_executable(winget_path)
     cmd = [winget or "winget"]
-    if proxy_url:
-        # Wrap proxy in quotes to ensure WinGet parses credentials (@, :) correctly
-        cmd.extend(["--proxy", f'"{proxy_url}"'])
     cmd.extend(args)
     root_cmd = str(args[0]).strip().lower() if args else ""
     if accept_package_agreements and root_cmd in {"install", "upgrade"}:
@@ -100,6 +105,9 @@ def build_winget_command(
         apply_install_mode_option(cmd, install_mode)
     elif args and args[0] in {"list", "search", "source", "pin"}:
         cmd.append("--disable-interactivity")
+    if proxy_url:
+        # Wrap proxy in quotes to ensure WinGet parses credentials (@, :) correctly
+        cmd.extend(["--proxy", proxy_url])
     return cmd
 
 

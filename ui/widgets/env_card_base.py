@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 import re
-from core.manager_base import Environment
+from core.manager_base import Environment, Package
 from core.trace_logger import trace_event, is_trace_enabled
 from ui.widgets.package_card import PackageCard
 
@@ -26,6 +26,7 @@ class BaseEnvCard(QFrame):
     config_package_requested = Signal(str, str)       # pkg_name, env_path
     selection_state_changed = Signal(str, int, int)   # env_path, outdated_selected, outdated_total
     expand_toggled = Signal(str, bool)                # env_path, is_expanded
+    activate_requested = Signal(str)                  # env_path
 
     def __init__(self, env: Environment):
         super().__init__()
@@ -151,6 +152,7 @@ class BaseEnvCard(QFrame):
 
     def _start_lazy_load(self):
         """Standard loading logic. Subclasses can override."""
+        self._summary_lbl = None
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             if item.widget():
@@ -198,9 +200,18 @@ class BaseEnvCard(QFrame):
             summary_parts.append(f"{missing} missing")
 
         if sum([top_count, transitive_count, missing]) > 0:
-            summary_lbl = QLabel(f"  📊 {' · '.join(summary_parts)}")
-            summary_lbl.setObjectName("EnvTreeSummary")
-            self.content_layout.addWidget(summary_lbl)
+            if not hasattr(self, '_summary_lbl') or not self._summary_lbl:
+                self._summary_lbl = QLabel()
+                self._summary_lbl.setObjectName("EnvTreeSummary")
+                # Insert at the top (or after loading label)
+                self.content_layout.insertWidget(0, self._summary_lbl)
+            self._summary_lbl.setText(f"  📊 {' · '.join(summary_parts)}")
+            
+    def update_summary_label(self):
+        top_level_pkgs = [p for p in self.env.packages if getattr(p, "is_top_level", True) and not getattr(p, "is_missing", False)]
+        if not top_level_pkgs:
+            top_level_pkgs = [p for p in self.env.packages if not getattr(p, "is_missing", False)]
+        self._add_summary_label(top_level_pkgs)
 
 
     def _process_load_queue(self):
@@ -208,14 +219,7 @@ class BaseEnvCard(QFrame):
         count = 0
         while self._pkg_load_queue and count < batch_size:
             pkg = self._pkg_load_queue.pop(0)
-            card = PackageCard(pkg, depth=0, env=self.env)
-            card.update_requested.connect(lambda p_name, ch: self.update_package_requested.emit(p_name, ch, self.env.path))
-            card.remove_requested.connect(lambda p_name: self.remove_package_requested.emit(p_name, self.env.path))
-            card.install_requested.connect(lambda p_name: self._on_install_missing(p_name))
-            card.selection_changed.connect(self._on_pkg_selection_changed)
-            card.config_requested.connect(lambda p_name: self.config_package_requested.emit(p_name, self.env.path))
-
-            self.content_layout.addWidget(card)
+            self._create_and_add_package_card(pkg)
             count += 1
 
         if self._pkg_load_queue:
@@ -225,6 +229,49 @@ class BaseEnvCard(QFrame):
                 self._expand_outdated_branches(self.content_layout)
             self._apply_filters()
             self._refresh_selection_states()
+
+    def _create_and_add_package_card(self, pkg: Package, insert_idx: int = -1) -> PackageCard:
+        card = PackageCard(pkg, depth=0, env=self.env)
+        card.update_requested.connect(lambda p_name, ch: self.update_package_requested.emit(p_name, ch, self.env.path))
+        card.remove_requested.connect(lambda p_name: self.remove_package_requested.emit(p_name, self.env.path))
+        card.install_requested.connect(lambda p_name: self._on_install_missing(p_name))
+        card.selection_changed.connect(self._on_pkg_selection_changed)
+        card.config_requested.connect(lambda p_name: self.config_package_requested.emit(p_name, self.env.path))
+        
+        if insert_idx >= 0:
+            self.content_layout.insertWidget(insert_idx, card)
+        else:
+            self.content_layout.addWidget(card)
+        return card
+
+    def _find_package_card(self, pkg_name: str, layout=None) -> PackageCard:
+        if layout is None:
+            layout = self.content_layout
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if isinstance(widget, PackageCard):
+                if widget.pkg.name == pkg_name:
+                    return widget
+                if widget._children_loaded:
+                    found = self._find_package_card(pkg_name, widget.children_layout)
+                    if found:
+                        return found
+        return None
+
+    def update_package_in_ui(self, pkg: Package):
+        card = self._find_package_card(pkg.name)
+        if card:
+            card.refresh_ui(pkg)
+
+    def add_package_to_ui(self, pkg: Package):
+        # Insert after summary label, or at the end
+        insert_idx = 1 if hasattr(self, '_summary_lbl') else 0
+        self._create_and_add_package_card(pkg, insert_idx)
+
+    def remove_package_from_ui(self, pkg_name: str):
+        card = self._find_package_card(pkg_name)
+        if card:
+            card.deleteLater()
 
     def _on_install_missing(self, pkg_name: str):
         self.add_package_requested.emit(self.env.path, pkg_name, False)

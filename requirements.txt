@@ -1,6 +1,8 @@
 PySide6>=6.4.0
+pywinpty>=2.0.1; sys_platform == "win32"
+pyte>=0.8.2
 
-# Complile Only
+# Compile Only
 # nuitka
 # zstandard
 # Pillow

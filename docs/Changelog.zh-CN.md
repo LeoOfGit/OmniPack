@@ -1,5 +1,37 @@
 # Changelog - OmniPack
 
+## [v10] - 真实 PTY 交互终端集成、WinGet 代理自愈保障与安全机制升级 (Real PTY Terminal, WinGet Proxy Auto-Heal & Security Upgrades)
+
+本次更新新加入了真正的 **PTY (Pseudo-Terminal) 交互终端** 集成，彻底摒弃了此前纯文本模拟控制台的局限性。支持完整的 ANSI 渲染、键盘捕获、命令同步注入以及增量刷新；同时，重构了 WinGet 命令行代理切换机制，引入了稳健的“启动即自愈代理”及系统级崩溃弹窗屏蔽锁；此外，将高风险的环境卸载与冲突警告模态确认（QMessageBox）重新安全归位，全面实现了全防灾与高流畅度运行。
+
+### 🚀 真实 PTY 伪终端整合与静默同步 (Real PTY Terminal & Silent Sync)
+
+- **跨平台 PTY 后端与 ANSI 高彩渲染 (PTY Engine & ANSI Rendering)**：
+  - Windows 下动态引入 `pywinpty`，macOS/Linux 直接调用标准库 `pty` 实现 0 增量跨平台共享。底层引入 `pyte` 解析器，完美高亮流式呈现 `uv`、`pip`、`npm` 等包管理器的**动态字符进度条**，杜绝了乱码和刷屏。
+- **按键劫持与双控制台热切换 (Input Hijack & Coexistence)**：
+  - 重构 `_TerminalTextEdit` 文本框实现全按键劫持（支持 Tab 补全、方向键历史、密码隐形及 Ctrl+C 中断）。右侧区域以 `QSplitter` 动态组合：上为 Simulated 只读日志，下为 Real Terminal 伪终端，支持热切换和首选项持久化。
+- **环境静默同步与增量 Fast Refresh (Venv Sync & Fast Refresh)**：
+  - 用户在界面跳转或激活虚拟环境时，主程序静默向 PTY 发送 `cd`/`activate` 命令实现终端联动。
+  - 面板操作（如批量更新）直接转为命令行写入 PTY 终端，末尾拼接 UUID 标记（Marker）。后台正则检测 Marker，命令一结束即触发**增量快速刷新 (Fast Refresh)**，避免了界面长期锁定。
+
+### ⚙️ WinGet 代理自愈保障与模拟控制台联动 (WinGet Proxy Auto-Heal & Console Logging)
+
+- **启动自愈 WinGet 代理状态 (Start-up Auto-Heal)**：
+  - 当软件启动并首次切入 WinGet 面板触发扫描刷新时，只要检测到配置文件中的代理为启用状态，系统会自动静默拉起 `winget settings --enable ProxyCommandLineOptions` 确保命令，彻底自愈因版本覆盖安装或先前配置丢失导致代理实际未生效的系统级问题。
+- **诊断指示标签降噪与控制台投射 (Settings Dialog Logging & Target Label)**：
+  - 移除了由于配置或开关 WinGet 代理而弹出的所有前台模态对话框，将其静默且纯文本地输出在 WinGet 设置最下方的诊断状态标签（`self.winget_diag_label`）中。
+  - 引入 `_log_to_parent` 机制，在开始/结束执行 WinGet 代理或源设置时，向外层模拟控制台原样输出执行 of CLI 命令（如 `Executing: winget settings...`）与任务终态（Success/Error）。
+- **防 GC 闪退与系统级弹窗完全封印 (Thread GC Protection & SetErrorMode)**：
+  - 采用活跃线程防收留集合，杜绝后台自愈 QThread 因局部变量被 Python 垃圾回收所引发的 PySide 经典闪退。
+  - 主入口点 `run_main()` 注入 `SetErrorMode(0x0001 | 0x0002 | 0x8000)`，从根本上封锁并免除了管理员权限下执行商店别名 `winget` 偶发的 `0xc0000142` 系统级初始化崩溃弹窗。
+
+### 🛡️ 高风险操作强模态确认安全归位 (Secure Action Recovery)
+
+- **QMessageBox 强阻断避免误操作**：
+  - 纠正了非模态提示所带来的潜在环境损坏风险，将涉及 Python/Node.js/WinGet 三大板块的**软件卸载**、**批量卸载**、**升级依赖约束警告**以及**构建分支切换提示**等高风险破坏性操作全部重新改回 `QMessageBox` 的强阻断式模态询问弹窗，坚决捍卫用户开发环境的安全性。
+
+---
+
 ## [v9] - WinGet 系统级与用户级包管理支持 (WinGet System & User Package Management)
 
 本次更新新加入了 Windows 系统内置包管理器 **WinGet** 的完整集成，支持对系统全局以及当前用户级别的软件进行可视化扫描、自动更新、锁定（Pin）、卸载与安装。同时完成了 UI 面板注册架构重构，支持在不同操作系统下动态加载对应管理器。

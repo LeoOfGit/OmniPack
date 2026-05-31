@@ -3,7 +3,7 @@ from time import perf_counter
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QApplication, QCheckBox
 from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat, QFont
-from PySide6.QtCore import Qt, QEvent, Property
+from PySide6.QtCore import Qt, QEvent, Property, Signal
 
 class LogTextEdit(QTextEdit):
     """Subclass to support custom QSS properties without warnings."""
@@ -23,8 +23,12 @@ class LogTextEdit(QTextEdit):
     error_color = Property(str, fget=lambda s: s._get_prop("error_color"), fset=lambda s, v: s._set_prop("error_color", v))
     divider_color = Property(str, fget=lambda s: s._get_prop("divider_color"), fset=lambda s, v: s._set_prop("divider_color", v))
 
+
+
 class ConsolePanel(QFrame):
     """Terminal-style console panel with colored output logging."""
+    
+    pty_output_ready = Signal(str)
 
     def __init__(self, parent=None, config_mgr=None):
         super().__init__(parent)
@@ -179,6 +183,11 @@ class ConsolePanel(QFrame):
     def clear(self):
         self.text_edit.clear()
         self._reset_timing_origin()
+
+    def write(self, data: str):
+        """Simulate writing to terminal."""
+        self.log(data.strip(), "cmd")
+        self.pty_output_ready.emit(data)
 
     def _on_timestamp_toggled(self, enabled: bool):
         self._timestamp_enabled = enabled

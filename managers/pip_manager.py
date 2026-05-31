@@ -140,6 +140,28 @@ class PipManager(PackageManager):
         
     log_msg = Signal(str, str) # text, tag
     log_batch = Signal(list)
+    specific_packages_scanned = Signal(str, list, list) # env_path, found_pkgs, requested_names
+
+    def scan_specific_packages(self, env: Environment, pkg_names: list[str]):
+        """Runs a targeted background scan for specific packages."""
+        if not env or not pkg_names:
+            return
+        uv_path = get_uv_path()
+        source_args = build_pip_source_args(self.config_mgr)
+        worker = PipPartialScanWorker(env, pkg_names, source_args=source_args, uv_path=uv_path)
+        worker.packages_scanned.connect(self._on_partial_scan_done)
+        worker.log_msg.connect(self.log_msg.emit)
+        worker.log_batch.connect(self.log_batch.emit)
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: self._cleanup_worker(worker))
+        worker.start()
+
+    def _on_partial_scan_done(self, env_path: str, pkgs: list, requested_names: list):
+        self.specific_packages_scanned.emit(env_path, pkgs, requested_names)
+
+    def _cleanup_worker(self, worker):
+        if worker in self._active_workers:
+            self._active_workers.remove(worker)
 
     def _on_env_scanned(self, env: Environment):
         for i, e in enumerate(self.environments):
@@ -164,65 +186,34 @@ class PipManager(PackageManager):
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
 
-    def update_package(self, env: Environment, pkg_name: str):
-        worker = UpdateWorker(
-            env,
-            pkg_name,
-            source_args=build_pip_source_args(self.config_mgr),
-            uv_path=get_uv_path(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        # Notify UI when update is done so it can refresh the list
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg_name, worker.success)])
+    def build_install_command(self, env: Environment, pkg_names: str, force_reinstall: bool = False) -> list[str]:
+        uv_path = get_uv_path(self.config_mgr)
+        env_path = os.path.normpath(env.path)
+        py_exe = resolve_python_executable(env)
+        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+        cmd = [uv_path, "pip", "install"]
+        cmd.extend(build_pip_source_args(self.config_mgr))
+        if force_reinstall:
+            cmd.append("--force-reinstall")
+        cmd.extend(pkg_names.split())
+        cmd.extend(args)
+        return cmd
 
-    def batch_update_packages(self, env: Environment, pkg_names: list):
-        worker = BatchUpdateWorker(
-            env,
-            pkg_names,
-            source_args=build_pip_source_args(self.config_mgr),
-            uv_path=get_uv_path(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda pkg_list=pkg_names: [
-            self._active_workers.remove(worker) if worker in self._active_workers else None,
-            self.batch_update_done.emit(env.path, pkg_list, worker.success),
-        ])
+    def build_remove_command(self, env: Environment, pkg_names: list[str]) -> list[str]:
+        uv_path = get_uv_path(self.config_mgr)
+        env_path = os.path.normpath(env.path)
+        py_exe = resolve_python_executable(env)
+        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+        cmd = [uv_path, "pip", "uninstall"] + pkg_names + args
+        return cmd
 
-    def remove_package(self, env: Environment, pkg_name: str):
-        worker = RemoveWorker(
-            env,
-            pkg_name,
-            uv_path=get_uv_path(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.remove_done.emit(env.path, pkg_name, worker.success)])
-
-    def install_package(self, env: Environment, pkg_names: str, force_reinstall: bool = False):
-        worker = InstallWorker(
-            env,
-            pkg_names,
-            force_reinstall,
-            source_args=build_pip_source_args(self.config_mgr),
-            uv_path=get_uv_path(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.install_done.emit(env.path, pkg_names, worker.success)])
+    def build_update_command(self, env: Environment, pkg_names: list[str]) -> list[str]:
+        uv_path = get_uv_path(self.config_mgr)
+        env_path = os.path.normpath(env.path)
+        py_exe = resolve_python_executable(env)
+        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+        cmd = [uv_path, "pip", "install", "-U"] + build_pip_source_args(self.config_mgr) + pkg_names + args
+        return cmd
 
     def update_runtime(self, env: Environment):
         worker = RuntimeUpdateWorker(env)
@@ -266,13 +257,72 @@ def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
             if pkg.breaks_constraint:
                 break
 
+class PipPartialScanWorker(BaseCmdWorker):
+    packages_scanned = Signal(str, list, list)
 
-def _restore_package_state(
-    pkgs: list,
-    previous_pkgs: list,
-    include_tree: bool = False,
-    restore_update_state: bool = True,
-):
+    def __init__(self, env: Environment, pkg_names: list[str], source_args=None, uv_path="uv"):
+        super().__init__()
+        self.env = env
+        self.pkg_names = pkg_names
+        self.source_args = list(source_args or [])
+        self.uv_path = uv_path
+
+    def run(self):
+        try:
+            uv_path = self.uv_path
+            py_exe = resolve_python_executable(self.env)
+            args = ["--system", "--python", self.env.path] if self.env.type == "system" else ["--python", py_exe]
+            
+            # List installed
+            cmd = [uv_path, "pip", "list", "--format", "json"] + args
+            res = self._run_command(cmd, capture_output=True, stream_stdout=False)
+            
+            pkgs = []
+            target_names = {n.lower() for n in self.pkg_names}
+            
+            if res.returncode == 0 and res.stdout:
+                json_stdout = res.stdout[res.stdout.find('['):] if '[' in res.stdout else res.stdout
+                if json_stdout.strip():
+                    try:
+                        end_idx = json_stdout.rfind(']')
+                        if end_idx != -1:
+                            json_stdout = json_stdout[:end_idx+1]
+                        data = json.loads(json_stdout)
+                        for item in data:
+                            name = item.get("name", "")
+                            if name.lower() in target_names:
+                                pkgs.append(Package(name=name, version=item.get("version")))
+                    except Exception:
+                        pass
+            
+            # Check outdated
+            cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
+            res_outdated = self._run_command(cmd_outdated, capture_output=True, stream_stdout=False)
+            if res_outdated.returncode == 0 and res_outdated.stdout:
+                json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
+                if json_stdout.strip():
+                    try:
+                        end_idx = json_stdout.rfind(']')
+                        if end_idx != -1:
+                            json_stdout = json_stdout[:end_idx+1]
+                        data = json.loads(json_stdout)
+                        outdated_map = {item.get("name", "").lower(): item for item in data}
+                        for pkg in pkgs:
+                            info = outdated_map.get(pkg.name.lower())
+                            if info:
+                                pkg.latest_version = info.get("latest_version")
+                                pkg.has_update = True
+                    except Exception:
+                        pass
+            
+            self.packages_scanned.emit(self.env.path, pkgs, self.pkg_names)
+        except Exception as e:
+            self._log(f"Partial Scan Error: {e}", "error")
+        finally:
+            self._flush_logs()
+
+
+def _restore_package_state(current_pkgs: list[Package], previous_pkgs: list[Package], include_tree: bool = False, restore_update_state: bool = True):
     previous_map = {
         getattr(pkg, "norm_name", ""): pkg
         for pkg in (previous_pkgs or [])
@@ -281,7 +331,7 @@ def _restore_package_state(
     if not previous_map:
         return
 
-    for pkg in pkgs:
+    for pkg in current_pkgs:
         previous = previous_map.get(getattr(pkg, "norm_name", ""))
         if not previous:
             continue
@@ -484,7 +534,14 @@ class ScanWorker(BaseCmdWorker):
             self._log(f"✓ Found {len(pkgs)} packages, {count_updates} updates in {self.env.name}", "success")
              
         except Exception as e:
+            import traceback
             self._log(f"Scan Error for {self.env.path}: {e}", "error")
+            self._log(traceback.format_exc(), "stderr")
+            if 'pkgs' in locals():
+                self.env.packages = pkgs
+                self.env.dep_graph = {
+                    pkg.norm_name: pkg for pkg in pkgs if getattr(pkg, "norm_name", "")
+                }
             self.env.is_scanned = True 
             self.env._last_scan_mode = self.scan_mode
              

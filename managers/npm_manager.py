@@ -417,6 +417,72 @@ class NpmScanWorker(BaseCmdWorker):
             self.env_scanned.emit(self.env)
             self._flush_logs()
 
+class NpmPartialScanWorker(BaseCmdWorker):
+    packages_scanned = Signal(str, list, list)  # env_path, pkgs, requested_names
+
+    def __init__(self, env: Environment, pkg_names: list[str], config_mgr):
+        super().__init__()
+        self.env = env
+        self.pkg_names = pkg_names
+        self.config_mgr = config_mgr
+
+    def run(self):
+        try:
+            npm_path = NpmBaseHelper.find_npm()
+            if not npm_path:
+                return
+
+            is_global, cmd_cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
+            cmd = [npm_path, "list", "--depth=0", "--json"] + self.pkg_names
+            if is_global:
+                cmd.insert(2, "-g")
+            if prefix_override:
+                cmd.extend(["--prefix", prefix_override])
+
+            res = self._run_command(cmd, cwd=cmd_cwd, capture_output=True, stream_stdout=False)
+            output = (res.stdout or "").strip()
+
+            pkgs = []
+            if output:
+                try:
+                    data = json.loads(output)
+                    dependencies = data.get("dependencies", {})
+                    for name, info in dependencies.items():
+                        if isinstance(info, dict):
+                            version = info.get("version", "")
+                            if version:
+                                meta = {"channel": detect_channel(version), "channels_available": ["latest"], "display_name": name, "description": ""}
+                                pkgs.append(Package(name=name, version=version, description=meta["description"], metadata=meta))
+                except json.JSONDecodeError:
+                    pass
+
+            # Also try to check outdated for these specific packages to get latest_version
+            outdated_cmd = [npm_path, "outdated", "--json"] + self.pkg_names
+            if is_global:
+                outdated_cmd.insert(2, "-g")
+            if prefix_override:
+                outdated_cmd.extend(["--prefix", prefix_override])
+            
+            outdated_res = self._run_command(outdated_cmd, cwd=cmd_cwd, capture_output=True, stream_stdout=False)
+            out_output = (outdated_res.stdout or "").strip()
+            if out_output:
+                try:
+                    out_data = json.loads(out_output)
+                    for pkg in pkgs:
+                        info = out_data.get(pkg.name)
+                        if info and isinstance(info, dict):
+                            latest = info.get("latest")
+                            if latest and latest != pkg.version:
+                                pkg.latest_version = latest
+                                pkg.has_update = True
+                except json.JSONDecodeError:
+                    pass
+
+            self.packages_scanned.emit(self.env.path, pkgs, self.pkg_names)
+        except Exception as e:
+            self._log(f"Partial Scan Error: {e}", "error")
+        finally:
+            self._flush_logs()
 
 class NpmUpdateCheckWorker(BaseCmdWorker):
     updates_checked = Signal(Environment)
@@ -713,6 +779,7 @@ class NpmManager(PackageManager):
     remove_done = Signal(str, str, bool) # env_path, pkg_name, success
     install_done = Signal(str, str, bool) # env_path, pkg_names, success
     updates_checked = Signal(Environment)
+    specific_packages_scanned = Signal(str, list, list) # env_path, found_pkgs, requested_names
     runtime_update_done = Signal(str, bool, str, bool, str)
     # env_path, success, message, winget_failed, target_version
 
@@ -814,6 +881,25 @@ class NpmManager(PackageManager):
     def reload_envs(self):
         self._load_envs()
 
+    def scan_specific_packages(self, env: Environment, pkg_names: list[str]):
+        """Runs a targeted background scan for specific packages."""
+        if not env or not pkg_names:
+            return
+        worker = NpmPartialScanWorker(env, pkg_names, self.config_mgr)
+        worker.packages_scanned.connect(self._on_partial_scan_done)
+        worker.log_msg.connect(self.log_msg.emit)
+        worker.log_batch.connect(self.log_batch.emit)
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda: self._cleanup_worker(worker))
+        worker.start()
+
+    def _on_partial_scan_done(self, env_path: str, pkgs: list, requested_names: list):
+        self.specific_packages_scanned.emit(env_path, pkgs, requested_names)
+
+    def _cleanup_worker(self, worker):
+        if worker in self._active_workers:
+            self._active_workers.remove(worker)
+
     def _on_env_scanned(self, env: Environment):
         for i, e in enumerate(self.environments):
             if e.path == env.path:
@@ -850,66 +936,52 @@ class NpmManager(PackageManager):
                 break
         self.updates_checked.emit(env)
 
-    def update_package(self, pkg: Package, env: Environment, channel: str = "latest"):
-        worker = NpmActionWorker(
-            env,
-            "update",
-            pkg.name,
-            channel,
-            registry_url=resolve_npm_registry_url(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.update_done.emit(env.path, pkg.name, worker.success)])
+    def build_update_command(self, env: Environment, pkg_names: list[str]) -> list[str]:
+        npm_path = NpmBaseHelper.find_npm() or "npm"
+        is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(env)
+        cmd = [npm_path, "install"]
+        if is_global:
+            cmd.insert(2, "-g")
+        if prefix_override:
+            cmd.extend(["--prefix", prefix_override])
+        registry = resolve_npm_registry_url(self.config_mgr)
+        if registry:
+            cmd.extend(["--registry", registry])
+        cmd.extend(pkg_names)
+        return cmd
 
-    def batch_update_packages(self, env: Environment, pkg_specs: list):
-        """pkg_specs: list of (pkg_name, channel) tuples"""
-        worker = NpmBatchUpdateWorker(
-            env,
-            pkg_specs,
-            registry_url=resolve_npm_registry_url(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda specs=pkg_specs: [
-            self._active_workers.remove(worker) if worker in self._active_workers else None,
-            self.batch_update_done.emit(env.path, specs, worker.success),
-        ])
+    def build_remove_command(self, env: Environment, pkg_names: list[str]) -> list[str]:
+        npm_path = NpmBaseHelper.find_npm() or "npm"
+        is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(env)
+        cmd = [npm_path, "uninstall"]
+        if is_global:
+            cmd.insert(2, "-g")
+        if prefix_override:
+            cmd.extend(["--prefix", prefix_override])
+        cmd.extend(pkg_names)
+        return cmd
 
-    def remove_package(self, env: Environment, pkg_name: str):
-        worker = NpmActionWorker(
-            env,
-            "uninstall",
-            pkg_name,
-            None,
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.remove_done.emit(env.path, pkg_name, worker.success)])
+    def build_install_command(self, env: Environment, pkg_names: str, channel: str = "latest") -> list[str]:
+        npm_path = NpmBaseHelper.find_npm() or "npm"
+        is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(env)
+        
+        specs = []
+        for p in pkg_names.split():
+            if not has_explicit_tag(p):
+                specs.append(f"{p}@{channel}")
+            else:
+                specs.append(p)
 
-    def install_package(self, env: Environment, pkg_names: str, channel: str = "latest"):
-        worker = NpmActionWorker(
-            env,
-            "install",
-            pkg_names,
-            channel,
-            registry_url=resolve_npm_registry_url(self.config_mgr),
-            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {},
-        )
-        worker.log_msg.connect(self.log_msg)
-        worker.log_batch.connect(self.log_batch)
-        worker.start()
-        self._active_workers.append(worker)
-        worker.finished.connect(lambda: [self._active_workers.remove(worker) if worker in self._active_workers else None, self.install_done.emit(env.path, pkg_names, worker.success)])
+        cmd = [npm_path, "install"]
+        if is_global:
+            cmd.insert(2, "-g")
+        if prefix_override:
+            cmd.extend(["--prefix", prefix_override])
+        registry = resolve_npm_registry_url(self.config_mgr)
+        if registry:
+            cmd.extend(["--registry", registry])
+        cmd.extend(specs)
+        return cmd
 
     def update_runtime(self, env: Environment, use_nvm: bool = False):
         worker = NpmRuntimeUpdateWorker(env, use_nvm=use_nvm)

@@ -240,6 +240,7 @@ QPushButton#ActionBtnInstall,
 QPushButton#PkgUpdateBtn,
 QPushButton#PkgUpdateBtnWarning,
 QPushButton#PkgUpdateBtnVariant,
+QPushButton#EnvActivateBtn,
 QPushButton#EnvRefreshBtn,
 QPushButton#EnvUpdateAllBtn,
 QPushButton#EnvRuntimeUpdateBtn,
@@ -417,6 +418,7 @@ QLabel#EnvCount {
     color: #aaa;
 }
 
+QPushButton#EnvActivateBtn,
 QPushButton#EnvRefreshBtn {
     font-family: "Segoe UI Symbol", sans-serif;
     font-size: 18px;
@@ -786,4 +788,17 @@ QTextEdit#ConsoleText {
     qproperty-success_color: #6BCB77;
     qproperty-error_color: #FF6B6B;
     qproperty-divider_color: #555555;
+}
+
+/* ==========================================================
+   REAL TERMINAL PANEL
+   (RealTerminalPanel reuses ConsolePanel objectNames for the
+   header/title/clear-button — those QSS rules apply as-is.
+   The rules below are terminal-canvas-specific additions.)
+   ========================================================== */
+
+/* Terminal canvas: wider cursor, subtle selection highlight */
+QFrame#ConsolePanel QTextEdit#ConsoleText {
+    selection-background-color: rgba(255, 255, 255, 0.15);
+    selection-color: #ffffff;
 }

@@ -39,6 +39,7 @@ class BaseCmdWorker(QThread):
         capture_output: bool = False,
         stream_stdout: bool = True,
         stream_stderr: bool = True,
+        timeout: float = None,
     ) -> subprocess.CompletedProcess:
         """
         Runs a command, streaming stdout/stderr line-by-line via self._log().
@@ -53,7 +54,7 @@ class BaseCmdWorker(QThread):
             self._winget_lock.acquire()
             
         try:
-            return self._run_command_impl(cmd, cwd, capture_output, stream_stdout, stream_stderr)
+            return self._run_command_impl(cmd, cwd, capture_output, stream_stdout, stream_stderr, timeout=timeout)
         finally:
             if is_winget:
                 self._winget_lock.release()
@@ -65,6 +66,7 @@ class BaseCmdWorker(QThread):
         capture_output: bool = False,
         stream_stdout: bool = True,
         stream_stderr: bool = True,
+        timeout: float = None,
     ) -> subprocess.CompletedProcess:
         self._log(f"> {' '.join(cmd)}", "cmd")
 
@@ -105,6 +107,7 @@ class BaseCmdWorker(QThread):
             cmd,
             cwd=cwd,
             env=proc_env,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -208,8 +211,18 @@ class BaseCmdWorker(QThread):
                 break
 
             now = time.monotonic()
+            elapsed = now - start_time
+            if timeout is not None and elapsed > timeout:
+                self._log(f"Subprocess timed out after {timeout} seconds. Terminating...", "error")
+                process.terminate()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                returncode = -9
+                break
+
             if now - last_output_at[0] >= heartbeat_interval and now - last_heartbeat_at[0] >= heartbeat_interval:
-                elapsed = now - start_time
                 self._log(f"... {_heartbeat_label} ({elapsed:0.0f}s)", "system")
                 last_heartbeat_at[0] = now
                 if not silence_hint_logged[0] and elapsed >= 30.0:

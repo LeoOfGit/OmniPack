@@ -63,6 +63,7 @@ class SettingsDialog(QDialog):
         self._load_proxy_settings()
         self._load_pypi_cache_settings()
         self._load_winget_settings()
+        self._load_terminal_settings()
         self._set_initial_tab()
 
     def _create_ui(self):
@@ -74,6 +75,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_sources_tab(), "Sources")
         self.tabs.addTab(self._build_backend_tab(), "Backend")
         self.tabs.addTab(self._build_proxy_tab(), "Proxy")
+        self.tabs.addTab(self._build_terminal_tab(), "Terminal")
         layout.addWidget(self.tabs)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -133,7 +135,7 @@ class SettingsDialog(QDialog):
         return page
 
     def _set_initial_tab(self):
-        tab_map = {"pip": 0, "npm": 1, "sources": 2, "backend": 3, "proxy": 4}
+        tab_map = {"pip": 0, "npm": 1, "sources": 2, "backend": 3, "proxy": 4, "terminal": 5}
         tab_map["winget"] = 3
         self.tabs.setCurrentIndex(tab_map.get(self._initial_tab, 0))
 
@@ -621,6 +623,7 @@ class SettingsDialog(QDialog):
         self._save_proxy_settings()
         self._save_pypi_cache_settings()
         self._save_winget_settings()
+        self._save_terminal_settings()
         if self._changed:
             self.settings_changed.emit()
             self._changed = False
@@ -725,6 +728,116 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(test_group, 1) # Give stretch factor of 1 to the test group
         return scroll
+
+    # ---------- Terminal tab ----------
+
+    def _build_terminal_tab(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setSpacing(8)
+
+        hint = QLabel(
+            "Configure the integrated terminal shell and console display mode.\n"
+            "Changes take effect after restarting OmniPack."
+        )
+        hint.setObjectName("SettingsHint")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        # ── Console mode ────────────────────────────────────────────
+        mode_group = QGroupBox("Console Mode")
+        mode_layout = QVBoxLayout(mode_group)
+
+        self.console_mode_combo = QComboBox()
+        self.console_mode_combo.addItem("Simulated Console (log viewer)", "simulated")
+        self.console_mode_combo.addItem("Real Terminal (PTY interactive)", "real_terminal")
+        self.console_mode_combo.currentIndexChanged.connect(self._mark_changed)
+        mode_layout.addWidget(self.console_mode_combo)
+
+        mode_hint = QLabel(
+            "Simulated: read-only log output (current default).\n"
+            "Real Terminal: full interactive shell with keyboard input, "
+            "ANSI colours, tab-completion, etc."
+        )
+        mode_hint.setWordWrap(True)
+        mode_hint.setStyleSheet("color: gray; font-size: 11px;")
+        mode_layout.addWidget(mode_hint)
+        layout.addWidget(mode_group)
+
+        # ── Shell selection ──────────────────────────────────────────
+        shell_group = QGroupBox("Shell Program")
+        shell_layout = QVBoxLayout(shell_group)
+
+        shell_row = QHBoxLayout()
+        shell_row.addWidget(QLabel("Shell:"))
+        self.terminal_shell_combo = QComboBox()
+        self.terminal_shell_combo.addItem("cmd.exe", "cmd")
+        self.terminal_shell_combo.addItem("powershell.exe", "powershell")
+        self.terminal_shell_combo.addItem("pwsh.exe (PowerShell 7)", "pwsh")
+        self.terminal_shell_combo.addItem("Custom…", "custom")
+        self.terminal_shell_combo.currentIndexChanged.connect(self._on_terminal_shell_changed)
+        shell_row.addWidget(self.terminal_shell_combo, 1)
+        shell_layout.addLayout(shell_row)
+
+        custom_row = QHBoxLayout()
+        custom_row.addWidget(QLabel("Custom path:"))
+        self.terminal_custom_path = QLineEdit()
+        self.terminal_custom_path.setPlaceholderText("e.g. C:\\Program Files\\Git\\bin\\bash.exe")
+        self.terminal_custom_path.textChanged.connect(self._mark_changed)
+        custom_row.addWidget(self.terminal_custom_path, 1)
+        shell_layout.addLayout(custom_row)
+
+        layout.addWidget(shell_group)
+        layout.addStretch()
+        return scroll
+
+    def _on_terminal_shell_changed(self, _index):
+        is_custom = self.terminal_shell_combo.currentData() == "custom"
+        self.terminal_custom_path.setEnabled(is_custom)
+        self._changed = True
+
+    def _load_terminal_settings(self):
+        settings = getattr(self.config_mgr.config, "terminal_settings", {}) or {}
+        shell = str(settings.get("shell", "cmd")).strip()
+        custom_path = str(settings.get("custom_path", "")).strip()
+        mode = getattr(self.config_mgr.config, "console_mode", "real_terminal")
+
+        # Console mode
+        self.console_mode_combo.blockSignals(True)
+        idx = self.console_mode_combo.findData(mode)
+        self.console_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.console_mode_combo.blockSignals(False)
+
+        # Shell
+        self.terminal_shell_combo.blockSignals(True)
+        idx = self.terminal_shell_combo.findData(shell)
+        self.terminal_shell_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.terminal_shell_combo.blockSignals(False)
+
+        self.terminal_custom_path.setText(custom_path)
+        self.terminal_custom_path.setEnabled(shell == "custom")
+
+    def _save_terminal_settings(self):
+        # Terminal settings dict
+        existing_ts = getattr(self.config_mgr.config, "terminal_settings", {}) or {}
+        new_ts = {
+            "shell": str(self.terminal_shell_combo.currentData() or "cmd"),
+            "custom_path": self.terminal_custom_path.text().strip(),
+        }
+        # Console mode
+        existing_mode = getattr(self.config_mgr.config, "console_mode", "real_terminal")
+        new_mode = str(self.console_mode_combo.currentData() or "real_terminal")
+
+        if existing_ts != new_ts or existing_mode != new_mode:
+            self.config_mgr.config.terminal_settings = new_ts
+            self.config_mgr.config.console_mode = new_mode
+            self.config_mgr.save_config()
+            self._changed = True
 
     def _load_source_settings(self):
         pip_settings = getattr(self.config_mgr.config, "pip_settings", {}) or {}
@@ -881,7 +994,14 @@ class SettingsDialog(QDialog):
                 "winget": self.proxy_target_winget.isChecked(),
             },
         })
-        if normalize_proxy_settings(existing) != new_settings:
+        normalized_existing = normalize_proxy_settings(existing)
+        if normalized_existing != new_settings:
+            old_winget_proxy = normalized_existing.get("enabled", False) and normalized_existing.get("targets", {}).get("winget", False)
+            new_winget_proxy = new_settings.get("enabled", False) and new_settings.get("targets", {}).get("winget", False)
+            if old_winget_proxy != new_winget_proxy:
+                task = "enable-proxy" if new_winget_proxy else "disable-proxy"
+                self._start_winget_worker(task)
+
             self.config_mgr.config.proxy_settings = new_settings
             self.config_mgr.save_config()
             self._changed = True
@@ -919,6 +1039,23 @@ class SettingsDialog(QDialog):
         proxy_settings = normalize_proxy_settings(getattr(self.config_mgr.config, "proxy_settings", {}) or {})
         if "winget_path" not in kwargs:
             kwargs["winget_path"] = getattr(self, "_winget_custom_path", "")
+        
+        cmd_info = ""
+        if task_name == "enable-proxy":
+            cmd_info = "winget settings --enable ProxyCommandLineOptions"
+        elif task_name == "disable-proxy":
+            cmd_info = "winget settings --disable ProxyCommandLineOptions"
+        elif task_name == "source-update-url":
+            cmd_info = "winget source update/reset ..."
+
+        if cmd_info:
+            p = self.parent()
+            while p:
+                if hasattr(p, "_log"):
+                    p._log(f"Executing: {cmd_info}", "system")
+                    break
+                p = p.parent()
+
         worker = WingetTaskWorker(task_name, proxy_settings, **kwargs)
         worker.finished_task.connect(self._on_winget_worker_finished)
         worker.finished.connect(lambda w=worker: self._winget_workers.discard(w))
@@ -960,6 +1097,14 @@ class SettingsDialog(QDialog):
         self._refresh_winget_diagnostics()
         self._changed = True
 
+    def _log_to_parent(self, text: str, tag: str = "system"):
+        p = self.parent()
+        while p:
+            if hasattr(p, "_log"):
+                p._log(text, tag)
+                break
+            p = p.parent()
+
     def _on_winget_worker_finished(self, task_name: str, payload, error: str):
         if task_name == "diagnostics":
             if error:
@@ -982,18 +1127,27 @@ class SettingsDialog(QDialog):
             return
         elif task_name == "source-update-url":
             if error:
-                QMessageBox.warning(
-                    self,
-                    "WinGet 源更新失败",
-                    f"更新系统全局 WinGet 源地址失败：\n{error}\n\n"
-                    "提示：修改系统全局配置通常需要管理员权限。虽然 OmniPack 默认会申请管理员权限，但在部分限制环境中仍可能被拦截，请确认 OmniPack 是否已正常获得管理员权限。"
-                )
+                self.winget_diag_label.setText(f"WinGet 源更新失败：{error}\n(请确认是否拥有管理员权限)")
+                self._log_to_parent(f"WinGet source update failed: {error}", "error")
             else:
-                QMessageBox.information(
-                    self,
-                    "WinGet 源已更新",
-                    "系统全局 Windows WinGet 镜像源已成功更新！"
-                )
+                self.winget_diag_label.setText("系统全局 Windows WinGet 镜像源已成功更新！")
+                self._log_to_parent("WinGet source updated successfully.", "success")
+            return
+        elif task_name == "enable-proxy":
+            if error:
+                self.winget_diag_label.setText(f"启用 WinGet 命令行代理功能失败：{error}\n(可能需要管理员权限)")
+                self._log_to_parent(f"Failed to enable WinGet ProxyCommandLineOptions: {error}", "error")
+            else:
+                self.winget_diag_label.setText("WinGet 命令行代理选项（ProxyCommandLineOptions）已成功启用！")
+                self._log_to_parent("WinGet ProxyCommandLineOptions enabled successfully.", "success")
+            return
+        elif task_name == "disable-proxy":
+            if error:
+                self.winget_diag_label.setText(f"禁用 WinGet 命令行代理功能失败：{error}\n(可能需要管理员权限)")
+                self._log_to_parent(f"Failed to disable WinGet ProxyCommandLineOptions: {error}", "error")
+            else:
+                self.winget_diag_label.setText("WinGet 命令行代理选项（ProxyCommandLineOptions）已成功禁用！")
+                self._log_to_parent("WinGet ProxyCommandLineOptions disabled successfully.", "success")
             return
 
     def _on_proxy_fields_changed(self, _value=None):

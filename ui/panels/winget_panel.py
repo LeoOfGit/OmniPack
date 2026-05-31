@@ -3,11 +3,14 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
-    QMessageBox,
     QVBoxLayout,
     QCheckBox,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, QTimer
+import os
+import subprocess
+import uuid
 
 from managers.winget_manager import WingetManager
 from ui.panels.base_panel import BasePanel
@@ -20,9 +23,11 @@ class WingetPanel(BasePanel):
         self.winget_mgr = WingetManager(config_mgr)
         self._env_cards = {}
         self._outdated_filter_enabled = False
-        self._install_queue = []
-        self._remove_queue = []
+        self._interceptor_buffer = ""
+        self._active_operations = []
         self._pin_refresh_targets = set()
+        self._first_winget_settings_ensured = False
+        self._init_proxy_workers = set()
 
         self._build_winget_ui()
         self._connect_signals()
@@ -41,10 +46,10 @@ class WingetPanel(BasePanel):
         self.winget_mgr.log_msg.connect(self._log)
         self.winget_mgr.log_batch.connect(self._log_batch)
         self.winget_mgr.env_scanned.connect(self._on_env_scanned)
-        self.winget_mgr.update_done.connect(self._on_update_done)
-        self.winget_mgr.batch_update_done.connect(self._on_batch_update_done)
-        self.winget_mgr.remove_done.connect(self._on_remove_done)
-        self.winget_mgr.install_done.connect(self._on_install_done)
+        self.winget_mgr.pin_done.connect(self._on_pin_done)
+        self.winget_mgr.pin_state_ready.connect(self._on_pin_state_ready)
+        if hasattr(self.terminal, "pty_output_ready"):
+            self.terminal.pty_output_ready.connect(self._on_pty_output_intercepted)
         self.winget_mgr.pin_done.connect(self._on_pin_done)
         self.winget_mgr.pin_state_ready.connect(self._on_pin_state_ready)
 
@@ -59,33 +64,75 @@ class WingetPanel(BasePanel):
         self._log("Starting WinGet scan...", "system")
         self.refresh_btn.setEnabled(False)
 
-        self._clear_env_card_widgets()
-        self.winget_mgr.reload_envs()
-        envs = self.winget_mgr.list_environments()
-        if not envs:
-            self._log("WinGet is only available on Windows.", "error")
+        # 稳健的 WinGet 代理自愈和首次状态确保机制
+        if os.name == "nt" and not getattr(self, "_first_winget_settings_ensured", False):
+            self._first_winget_settings_ensured = True
+            proxy_cfg = getattr(self.config_mgr.config, "proxy_settings", {}) or {}
+            enabled = proxy_cfg.get("enabled", False)
+            targets = proxy_cfg.get("targets", {})
+            winget_proxy_checked = enabled and targets.get("winget", False)
+            
+            if winget_proxy_checked:
+                self._log("WinGet proxy is configured as ENABLED. Ensuring WinGet settings are active...", "system")
+                self._log("Executing: winget settings --enable ProxyCommandLineOptions", "system")
+                
+                from ui.panels.winget_settings_page import WingetTaskWorker
+                w_settings = getattr(self.config_mgr.config, "winget_settings", {}) or {}
+                w_path = w_settings.get("winget_path", "") if isinstance(w_settings, dict) else ""
+                
+                worker = WingetTaskWorker(
+                    "enable-proxy",
+                    proxy_cfg,
+                    winget_path=w_path
+                )
+                
+                def on_init_proxy_done(task_name, payload, error):
+                    if error:
+                        self._log(f"Failed to ensure WinGet ProxyCommandLineOptions enabled: {error}", "error")
+                    else:
+                        self._log("WinGet ProxyCommandLineOptions ensured and enabled successfully on panel start.", "success")
+                
+                worker.finished_task.connect(on_init_proxy_done)
+                worker.finished.connect(lambda w=worker: self._init_proxy_workers.discard(w))
+                worker.finished.connect(worker.deleteLater)
+                self._init_proxy_workers.add(worker)
+                worker.start()
+
+        try:
+            self.winget_mgr.invalidate_scan_cache()
+
+            self._clear_env_card_widgets()
+            self.winget_mgr.reload_envs()
+            envs = self.winget_mgr.list_environments()
+            if not envs:
+                self._log("WinGet is only available on Windows.", "error")
+                self.refresh_btn.setEnabled(True)
+                return
+
+            self._env_cards = {}
+            for env in envs:
+                from ui.widgets.winget_env_card import WingetEnvCard
+
+                card = WingetEnvCard(env)
+                self._apply_current_filters_to_card(card)
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+                self._env_cards[self._path_key(env.path)] = card
+
+                card.refresh_requested.connect(self._refresh_single_env)
+                card.update_all_requested.connect(self._update_all_in_env)
+                card.update_package_requested.connect(self._start_pkg_update)
+                card.remove_package_requested.connect(self._start_pkg_remove)
+                card.add_package_requested.connect(self._start_pkg_install)
+                card.config_package_requested.connect(self._config_package)
+                card.selection_state_changed.connect(self._on_selection_state_changed)
+                card.expand_toggled.connect(lambda *_args: self._sync_expand_checkbox())
+
+                self.winget_mgr.scan_environment(env)
+        except Exception as e:
+            import traceback
+            self._log(f"Scan failed with error: {str(e)}", "error")
+            self._log(traceback.format_exc(), "error")
             self.refresh_btn.setEnabled(True)
-            return
-
-        self._env_cards = {}
-        for env in envs:
-            from ui.widgets.winget_env_card import WingetEnvCard
-
-            card = WingetEnvCard(env)
-            self._apply_current_filters_to_card(card)
-            self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
-            self._env_cards[self._path_key(env.path)] = card
-
-            card.refresh_requested.connect(self._refresh_single_env)
-            card.update_all_requested.connect(self._update_all_in_env)
-            card.update_package_requested.connect(self._start_pkg_update)
-            card.remove_package_requested.connect(self._start_pkg_remove)
-            card.add_package_requested.connect(self._start_pkg_install)
-            card.config_package_requested.connect(self._config_package)
-            card.selection_state_changed.connect(self._on_selection_state_changed)
-            card.expand_toggled.connect(lambda *_args: self._sync_expand_checkbox())
-
-            self.winget_mgr.scan_environment(env)
 
     def _on_env_scanned(self, env):
         self._refresh_duplicate_markers()
@@ -102,8 +149,66 @@ class WingetPanel(BasePanel):
     def _check_all_tasks_done(self):
         if not self.winget_mgr._active_workers:
             self.refresh_btn.setEnabled(True)
-            self._log("All WinGet tasks completed.", "system")
+            self._log("All tasks completed.", "system")
             self._update_status_counts()
+
+    def _on_pty_output_intercepted(self, text: str):
+        self._interceptor_buffer += text
+        if len(self._interceptor_buffer) > 64000:
+            self._interceptor_buffer = self._interceptor_buffer[-64000:]
+
+        import re
+
+        while True:
+            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)", self._interceptor_buffer)
+            if not match:
+                break
+
+            marker = match.group(1)
+            op_index = next(
+                (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
+                None
+            )
+
+            if op_index is None:
+                self._interceptor_buffer = self._interceptor_buffer[match.end():]
+                continue
+
+            op = self._active_operations.pop(op_index)
+            env_path = op.get("env_path")
+            if env_path:
+                self._refresh_single_env(env_path)
+
+            self._interceptor_buffer = self._interceptor_buffer[match.end():]
+
+    def _build_terminal_command(self, cmd_list: list[str], marker: str) -> str:
+        cmd_str = subprocess.list2cmdline(cmd_list)
+        shell_name = (
+            os.path.basename(self.terminal._resolve_shell()).lower()
+            if hasattr(self.terminal, "_resolve_shell")
+            else "cmd.exe"
+        )
+        if "powershell" in shell_name or "pwsh" in shell_name:
+            return f"{cmd_str} ; echo {marker}"
+        return f"{cmd_str} & echo {marker}"
+
+    def _build_update_terminal_command(self, env, package_spec: dict, marker: str) -> str:
+        primary = subprocess.list2cmdline(self.winget_mgr.build_update_command(env, package_spec))
+        fallback = subprocess.list2cmdline(self.winget_mgr.build_update_fallback_install_command(env, package_spec))
+        shell_name = (
+            os.path.basename(self.terminal._resolve_shell()).lower()
+            if hasattr(self.terminal, "_resolve_shell")
+            else "cmd.exe"
+        )
+        if "powershell" in shell_name or "pwsh" in shell_name:
+            return (
+                f"$__omnipack_last_exit=0; "
+                f"{primary}; "
+                f"$__omnipack_last_exit=$LASTEXITCODE; "
+                f'if ($__omnipack_last_exit -ne 0) {{ {fallback} }}; '
+                f"echo {marker}"
+            )
+        return f"{primary} || {fallback} & echo {marker}"
 
     def _update_status_counts(self):
         self._emit_status_counts(self.winget_mgr.environments)
@@ -168,6 +273,7 @@ class WingetPanel(BasePanel):
             "target_id": str(metadata.get("target_id", "")).strip() or pkg.name,
             "package_id": str(metadata.get("package_id", "")).strip() or pkg.name,
             "scope": str(metadata.get("scope", "")).strip(),
+            "installed_scope": str(metadata.get("installed_scope", "")).strip(),
             "source": str(metadata.get("source", "")).strip(),
         }
 
@@ -176,6 +282,7 @@ class WingetPanel(BasePanel):
         if not env:
             return
         self._log(f"Refreshing {env.name}...", "system")
+        self.winget_mgr.invalidate_scan_cache()
         env.is_scanned = False
         key = self._path_key(env.path)
         if key in self._env_cards:
@@ -195,7 +302,13 @@ class WingetPanel(BasePanel):
             self._log(f"No updatable applications in {env.name}.", "system")
             return
         self.console.log_divider(f"UPDATE ALL in {env.name}")
-        self.winget_mgr.batch_update_packages(env, package_specs)
+        cmds = []
+        for spec in package_specs:
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "marker": marker})
+            cmds.append(self._build_update_terminal_command(env, spec, marker))
+        cmd_str = " ; ".join(cmds)
+        self.terminal.write(cmd_str + "\r")
 
     def _start_pkg_update(self, package_target: str, _channel: str, env_path: str):
         env = self._get_env(env_path)
@@ -206,74 +319,42 @@ class WingetPanel(BasePanel):
             self._config_package(package_target, env_path)
             return
         self.console.log_divider(f"UPDATE {pkg.name}")
-        self.winget_mgr.update_package(env, self._package_spec(pkg))
-
-    def _on_update_done(self, env_path: str, package_id: str, success: bool):
-        if success:
-            self._log(f"Updated {package_id}.", "success")
-        else:
-            self._log(f"Failed to update {package_id}.", "error")
-        self._refresh_single_env(env_path)
-
-    def _on_batch_update_done(self, env_path: str, _package_specs: list, success: bool):
-        if success:
-            self._log("Batch update completed.", "success")
-        else:
-            self._log("Batch update finished with failures.", "stderr")
-        self._refresh_single_env(env_path)
+        package_spec = self._package_spec(pkg)
+        marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+        self._active_operations.append({"env_path": env.path, "marker": marker})
+        cmd_str = self._build_update_terminal_command(env, package_spec, marker)
+        self.terminal.write(cmd_str + "\r")
 
     def _start_pkg_remove(self, package_target: str, env_path: str):
         env = self._get_env(env_path)
         pkg = self._find_package(env, package_target)
         if not env or not pkg:
             return
+        
         reply = QMessageBox.question(
             self,
             "Confirm Uninstall",
             f"Uninstall {pkg.name}?\n\nID: {(getattr(pkg, 'metadata', {}) or {}).get('package_id', pkg.name)}",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No
         )
-        if reply != QMessageBox.Yes:
-            return
-        self.console.log_divider(f"UNINSTALL {pkg.name}")
-        self._remove_queue.append((env, self._package_spec(pkg)))
-        if len(self._remove_queue) == 1:
-            self._process_remove_queue()
-
-    def _process_remove_queue(self):
-        if not self._remove_queue:
-            return
-        env, spec = self._remove_queue[0]
-        self.winget_mgr.remove_package(env, spec)
-
-    def _on_remove_done(self, env_path: str, package_id: str, success: bool):
-        if success:
-            self._log(f"Uninstalled {package_id}.", "success")
-        else:
-            self._log(f"Failed to uninstall {package_id}.", "error")
-            QMessageBox.warning(self, "Uninstall Failed", f"Failed to uninstall {package_id}. Check the console for details.")
-        if self._remove_queue:
-            self._remove_queue.pop(0)
-        if self._remove_queue:
-            self._process_remove_queue()
-        else:
-            self._refresh_single_env(env_path)
+        if reply == QMessageBox.Yes:
+            self.console.log_divider(f"UNINSTALL {pkg.name}")
+            cmd_list = self.winget_mgr.build_remove_command(env, self._package_spec(pkg))
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "marker": marker})
+            cmd_str = self._build_terminal_command(cmd_list, marker)
+            self.terminal.write(cmd_str + "\r")
 
     def _start_pkg_install(self, env_path: str, package_ref: str, _force: bool = False):
         env = self._get_env(env_path)
         if not env:
             return
         self.console.log_divider(f"INSTALL {package_ref}")
-        self.winget_mgr.install_package(env, package_ref)
-
-    def _on_install_done(self, env_path: str, package_ref: str, success: bool):
-        if success:
-            self._log(f"Installed {package_ref}.", "success")
-            QMessageBox.information(self, "Install Complete", f"Installed {package_ref}.")
-        else:
-            self._log(f"Failed to install {package_ref}.", "error")
-            QMessageBox.warning(self, "Install Failed", f"Failed to install {package_ref}. Check the console for details.")
-        self._refresh_single_env(env_path)
+        cmd_list = self.winget_mgr.build_install_command(env, package_ref)
+        marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+        self._active_operations.append({"env_path": env.path, "marker": marker})
+        cmd_str = self._build_terminal_command(cmd_list, marker)
+        self.terminal.write(cmd_str + "\r")
 
     def _config_package(self, package_target: str, env_path: str):
         env = self._get_env(env_path)
@@ -442,37 +523,52 @@ class WingetPanel(BasePanel):
         total = sum(len(specs) for specs in env_specs.values())
         self.console.log_divider(f"BATCH UPDATE ({total} applications)")
         for key, specs in env_specs.items():
-            self.winget_mgr.batch_update_packages(env_objects[key], specs)
+            env = env_objects[key]
+            cmds = []
+            for spec in specs:
+                marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+                self._active_operations.append({"env_path": env.path, "marker": marker})
+                cmds.append(self._build_update_terminal_command(env, spec, marker))
+            cmd_str = " ; ".join(cmds)
+            self.terminal.write(cmd_str + "\r")
 
     def _batch_remove(self):
-        remove_specs = []
-        env = None
+        env_specs = {}
+        env_objects = {}
         for _env_path, card in self._env_cards.items():
             env = card.env
             if not getattr(env, "is_scanned", False):
                 continue
+            specs = []
             for pkg in env.packages:
                 if getattr(pkg, "is_selected", False):
-                    remove_specs.append((env, self._package_spec(pkg)))
+                    specs.append(self._package_spec(pkg))
+            if specs:
+                env_specs[self._path_key(env.path)] = specs
+                env_objects[self._path_key(env.path)] = env
 
-        if not remove_specs:
+        if not env_specs:
             self._log("No applications selected for uninstall.", "system")
             return
 
+        total = sum(len(specs) for specs in env_specs.values())
         reply = QMessageBox.question(
-            self,
-            "Confirm Batch Uninstall",
-            f"Uninstall {len(remove_specs)} selected applications?",
-            QMessageBox.Yes | QMessageBox.No,
+            self, "Confirm Batch Uninstall",
+            f"Are you sure you want to uninstall {total} selected applications?",
+            QMessageBox.Yes | QMessageBox.No
         )
-        if reply != QMessageBox.Yes:
-            return
-
-        self.console.log_divider(f"BATCH UNINSTALL ({len(remove_specs)} applications)")
-        was_idle = not self._remove_queue
-        self._remove_queue.extend(remove_specs)
-        if was_idle and self._remove_queue:
-            self._process_remove_queue()
+        if reply == QMessageBox.Yes:
+            self.console.log_divider(f"BATCH UNINSTALL ({total} applications)")
+            for key, specs in env_specs.items():
+                env = env_objects[key]
+                cmds = []
+                for spec in specs:
+                    cmd_list = self.winget_mgr.build_remove_command(env, spec)
+                    marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+                    self._active_operations.append({"env_path": env.path, "marker": marker})
+                    cmds.append(self._build_terminal_command(cmd_list, marker))
+                cmd_str = " ; ".join(cmds)
+                self.terminal.write(cmd_str + "\r")
 
     def _open_settings(self):
         from ui.panels.settings_dialog import SettingsDialog

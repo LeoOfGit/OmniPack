@@ -30,6 +30,11 @@ class AppConfig:
     pip_splitter_state: str = ""
     current_tab: int = 0
     console_timestamp_enabled: bool = False
+
+    # Terminal
+    console_mode: str = "real_terminal"         # "simulated" | "real_terminal"
+    terminal_settings: dict = field(default_factory=dict)  # {shell, custom_path}
+    terminal_shell: str = ""                   # resolved shell path (derived at runtime)
     
     # First-run scanning flags
     pip_scanned_once: bool = False
@@ -66,6 +71,8 @@ class ConfigManager:
                 pip_scanned_once=data.get("pip_scanned_once", False),
                 npm_scanned_once=data.get("npm_scanned_once", False),
                 console_timestamp_enabled=data.get("console_timestamp_enabled", False),
+                console_mode=data.get("console_mode", "real_terminal"),
+                terminal_settings=data.get("terminal_settings", {}),
             )
         except Exception:
             return self._create_default_config()
@@ -78,6 +85,7 @@ class ConfigManager:
         config.winget_settings = self._default_winget_settings()
         config.proxy_settings = self._default_proxy_settings()
         config.pypi_cache_settings = self._default_pypi_cache_settings()
+        config.terminal_settings = self._default_terminal_settings()
         return config
 
     @staticmethod
@@ -135,6 +143,13 @@ class ConfigManager:
             "stale_after_hours": 24,
         }
 
+    @staticmethod
+    def _default_terminal_settings() -> Dict[str, str]:
+        return {
+            "shell": "cmd",        # cmd | powershell | pwsh | custom
+            "custom_path": "",
+        }
+
     def normalize_settings(self):
         pip_defaults = self._default_pip_settings()
         if not isinstance(self.config.pip_settings, dict):
@@ -189,6 +204,33 @@ class ConfigManager:
         except Exception:
             stale_hours = 24
         self.config.pypi_cache_settings["stale_after_hours"] = max(1, stale_hours)
+
+        # Terminal settings
+        term_defaults = self._default_terminal_settings()
+        if not isinstance(self.config.terminal_settings, dict):
+            self.config.terminal_settings = {}
+        for k, v in term_defaults.items():
+            self.config.terminal_settings.setdefault(k, v)
+        # Derive terminal_shell from terminal_settings
+        self.config.terminal_shell = self._resolve_terminal_shell(self.config.terminal_settings)
+        # Validate console_mode
+        if self.config.console_mode not in ("simulated", "real_terminal"):
+            self.config.console_mode = "real_terminal"
+
+    @staticmethod
+    def _resolve_terminal_shell(settings: dict) -> str:
+        """Convert terminal_settings dict to an executable shell path."""
+        shell_key = str(settings.get("shell", "cmd")).strip().lower()
+        _SHELL_MAP = {
+            "cmd":        "cmd.exe",
+            "powershell": "powershell.exe",
+            "pwsh":       "pwsh.exe",
+        }
+        if shell_key in _SHELL_MAP:
+            return _SHELL_MAP[shell_key]
+        if shell_key == "custom":
+            return str(settings.get("custom_path", "")).strip() or "cmd.exe"
+        return "cmd.exe"
 
     def save_config(self):
         try:

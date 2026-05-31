@@ -141,8 +141,10 @@ class NpmPanel(BasePanel):
         super().__init__(config_mgr, parent)
         self.npm_mgr = NpmManager(config_mgr)
         self._env_cards = {}
-        self._update_queue = []
-        self._active_update_envs = set()
+        from core.utils import StreamingAnsiStripper
+        self._ansi_stripper = StreamingAnsiStripper()
+        self._interceptor_buffer = ""
+        self._active_operations = []  # list of dicts: {"env_path": str, "type": str, "pkgs": list, "marker": str}
         self._outdated_filter_enabled = False
         self._dist_tags_workers = []
 
@@ -164,11 +166,10 @@ class NpmPanel(BasePanel):
         self.npm_mgr.log_batch.connect(self._log_batch)
         self.npm_mgr.env_scanned.connect(self._on_env_scanned)
         self.npm_mgr.updates_checked.connect(self._on_updates_checked)
-        self.npm_mgr.update_done.connect(self._on_update_done)
-        self.npm_mgr.batch_update_done.connect(self._on_batch_update_done)
-        self.npm_mgr.remove_done.connect(self._on_remove_done)
-        self.npm_mgr.install_done.connect(self._on_install_done)
+        self.npm_mgr.specific_packages_scanned.connect(self._on_specific_packages_scanned)
         self.npm_mgr.runtime_update_done.connect(self._on_runtime_update_done)
+        if hasattr(self.terminal, "pty_output_ready"):
+            self.terminal.pty_output_ready.connect(self._on_pty_output_intercepted)
 
     # ── Status bar helper ──
 
@@ -186,42 +187,49 @@ class NpmPanel(BasePanel):
         self._log("Starting NPM scan...", "system")
         self.refresh_btn.setEnabled(False)
 
-        self._clear_env_card_widgets()
+        try:
+            self._clear_env_card_widgets()
 
-        self.npm_mgr.reload_envs()
-        envs = self.npm_mgr.list_environments()
+            self.npm_mgr.reload_envs()
+            envs = self.npm_mgr.list_environments()
 
-        if not envs:
-            self._log("No NPM environments found. Please add one.", "error")
+            if not envs:
+                self._log("No NPM environments found. Please add one.", "error")
+                self.refresh_btn.setEnabled(True)
+                return
+
+            self._log(f"Loading {len(envs)} NPM environments...", "system")
+            self._env_cards = {}
+
+            for env in envs:
+                from ui.widgets.npm_env_card import NpmEnvCard
+                self._log(f"Initializing card for {env.name}...", "stdout")
+                card = NpmEnvCard(env)
+                self._apply_current_filters_to_card(card)
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+
+                norm_path = self._path_key(env.path)
+                self._env_cards[norm_path] = card
+
+                card.refresh_requested.connect(self._refresh_single_env)
+                card.runtime_update_requested.connect(self._update_runtime_in_env)
+                card.update_all_requested.connect(self._update_all_in_env)
+                card.update_package_requested.connect(lambda p, c, e: self._start_pkg_update(p, c, e))
+                card.remove_package_requested.connect(self._start_pkg_remove)
+                card.add_package_requested.connect(self._start_pkg_install)
+                card.config_package_requested.connect(self._config_package)
+                card.selection_state_changed.connect(self._on_selection_state_changed)
+                card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
+                card.activate_requested.connect(self._on_activate_requested)
+
+                self.npm_mgr.scan_environment(env)
+
+            self._log("All environments queued for scan.", "system")
+        except Exception as e:
+            import traceback
+            self._log(f"Scan failed with error: {str(e)}", "error")
+            self._log(traceback.format_exc(), "error")
             self.refresh_btn.setEnabled(True)
-            return
-
-        self._log(f"Loading {len(envs)} NPM environments...", "system")
-        self._env_cards = {}
-
-        for env in envs:
-            from ui.widgets.npm_env_card import NpmEnvCard
-            self._log(f"Initializing card for {env.name}...", "stdout")
-            card = NpmEnvCard(env)
-            self._apply_current_filters_to_card(card)
-            self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
-
-            norm_path = self._path_key(env.path)
-            self._env_cards[norm_path] = card
-
-            card.refresh_requested.connect(self._refresh_single_env)
-            card.runtime_update_requested.connect(self._update_runtime_in_env)
-            card.update_all_requested.connect(self._update_all_in_env)
-            card.update_package_requested.connect(lambda p, c, e: self._start_pkg_update(p, c, e))
-            card.remove_package_requested.connect(self._start_pkg_remove)
-            card.add_package_requested.connect(self._start_pkg_install)
-            card.config_package_requested.connect(self._config_package)
-            card.selection_state_changed.connect(self._on_selection_state_changed)
-            card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
-
-            self.npm_mgr.scan_environment(env)
-
-        self._log("All environments queued for scan.", "system")
 
     def _on_env_scanned(self, env: Environment):
         norm_key = self._path_key(env.path)
@@ -243,14 +251,106 @@ class NpmPanel(BasePanel):
             self._apply_outdated_state_to_card(card)
         QTimer.singleShot(200, self._check_all_tasks_done)
 
+    def _on_specific_packages_scanned(self, env_path: str, found_pkgs: list, requested_names: list):
+        norm_key = self._path_key(env_path)
+        manager_env = self._find_env_by_path(self.npm_mgr.environments, env_path)
+        if norm_key in self._env_cards and manager_env:
+            card = self._env_cards[norm_key]
+            env = manager_env
+            card.env = env
+            
+            existing_pkg_map = {p.name: p for p in env.packages}
+            found_names = set()
+            
+            for new_pkg in found_pkgs:
+                found_names.add(new_pkg.name)
+                if new_pkg.name in existing_pkg_map:
+                    # Update existing
+                    old_pkg = existing_pkg_map[new_pkg.name]
+                    old_pkg.version = new_pkg.version
+                    old_pkg.latest_version = new_pkg.latest_version
+                    old_pkg.has_update = new_pkg.has_update
+                    old_pkg.metadata = new_pkg.metadata
+                    old_pkg.requires = new_pkg.requires
+                    old_pkg.required_by = new_pkg.required_by
+                    old_pkg.is_top_level = new_pkg.is_top_level
+                    old_pkg.is_missing = new_pkg.is_missing
+                    old_pkg.version_constraint = new_pkg.version_constraint
+                    old_pkg.norm_name = new_pkg.norm_name
+                    old_pkg.breaks_constraint = getattr(new_pkg, "breaks_constraint", False)
+                    old_pkg.build_variant_mismatch = getattr(new_pkg, "build_variant_mismatch", False)
+                    card.update_package_in_ui(old_pkg)
+                else:
+                    # Add new
+                    env.packages.append(new_pkg)
+                    card.add_package_to_ui(new_pkg)
+            
+            # Remove packages that were requested but not found (uninstalled)
+            for req_name in requested_names:
+                if req_name not in found_names:
+                    if req_name in existing_pkg_map:
+                        env.packages.remove(existing_pkg_map[req_name])
+                        card.remove_package_from_ui(req_name)
+
+            env.dep_graph = {
+                getattr(pkg, "norm_name", ""): pkg
+                for pkg in env.packages
+                if getattr(pkg, "norm_name", "")
+            }
+            card.update_summary_label()
+            card.update_ui()
+            self._apply_outdated_state_to_card(card)
+            card._refresh_selection_states()
+            self._update_status_counts()
+        
+        QTimer.singleShot(200, self._check_all_tasks_done)
+
     def _check_all_tasks_done(self):
         if not self.npm_mgr._active_workers:
             self.refresh_btn.setEnabled(True)
             self._log("All tasks completed.", "system")
             self._update_status_counts()
 
+    def _on_pty_output_intercepted(self, text: str):
+        clean = self._ansi_stripper.feed(text)
+        clean = clean.replace("\r", "\n").replace("\x08", "")
+        self._interceptor_buffer += clean
+        
+        if len(self._interceptor_buffer) > 64000:
+            self._interceptor_buffer = self._interceptor_buffer[-64000:]
+            
+        import re
+        
+        while True:
+            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)", self._interceptor_buffer)
+            if not match:
+                break
+                
+            marker = match.group(1)
+            
+            op_index = next(
+                (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
+                None
+            )
+            
+            if op_index is None:
+                self._interceptor_buffer = self._interceptor_buffer[match.end():]
+                continue
+                
+            op = self._active_operations.pop(op_index)
+            
+            # Incremental UI refresh
+            env = self._find_env_by_path(self.npm_mgr.environments, op["env_path"])
+            if env:
+                self.npm_mgr.scan_specific_packages(env, op["pkgs"])
+                
+            self._interceptor_buffer = self._interceptor_buffer[match.end():]
+
     def _update_status_counts(self):
         self._emit_status_counts(self.npm_mgr.environments)
+
+    def _get_env(self, env_path: str):
+        return self._find_env_by_path(self.npm_mgr.environments, env_path)
 
     # ── Single Env ───────────────────────────────────────────────────────
 
@@ -413,58 +513,39 @@ class NpmPanel(BasePanel):
                 self._log(f"No updatable packages in {env.name}.", "system")
                 return
             self.console.log_divider(f"UPDATE ALL in {env.name}")
-            names = [p.name for p in outdated]
-            self._log(f"Updating: {', '.join(names)}", "system")
-            for pkg in outdated:
-                channel = pkg.metadata.get("channel", "latest") if getattr(pkg, "metadata", None) else "latest"
-                self._update_queue.append((pkg.name, channel, env))
-            self._drain_update_queue()
+            import uuid
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": outdated, "marker": marker})
+            specs = [f"{p.name}@{p.metadata.get('channel', 'latest')}" if getattr(p, "metadata", None) else p.name for p in outdated]
+            cmd_list = self.npm_mgr.build_update_command(env, specs)
+            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+            
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+            if "powershell" in shell_name or "pwsh" in shell_name:
+                cmd_str = f"{cmd_str} ; echo {marker}"
+            else:
+                cmd_str = f"{cmd_str} & echo {marker}"
+                
+            self.terminal.write(f'{cmd_str}\r')
 
     def _start_pkg_update(self, pkg_name: str, channel: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
         if env:
             self.console.log_divider(f"UPDATE {pkg_name}@{channel}")
-            self._update_queue.append((pkg_name, channel, env))
-            self._drain_update_queue()
-
-    def _drain_update_queue(self):
-        """Group pending updates by environment and launch parallel batch workers."""
-        if not self._update_queue:
-            return
-
-        if not hasattr(self, '_affected_envs_update'):
-            self._affected_envs_update = set()
-
-        # Group by environment path: key -> list of (name, channel)
-        env_specs = {}
-        env_objects = {}
-        for pkg_name, channel, env in self._update_queue:
-            key = self._path_key(env.path)
-            env_specs.setdefault(key, []).append((pkg_name, channel))
-            env_objects[key] = env
-        self._update_queue.clear()
-
-        for key, pkg_specs in env_specs.items():
-            env = env_objects[key]
-            if env.path in self._active_update_envs:
-                self._update_queue.extend((n, c, env) for n, c in pkg_specs)
-                continue
-            self._active_update_envs.add(env.path)
-            self._affected_envs_update.add(env.path)
-            self.npm_mgr.batch_update_packages(env, pkg_specs)
-
-    def _on_batch_update_done(self, env_path: str, pkg_specs: list, success: bool):
-        self._active_update_envs.discard(env_path)
-        if not self._update_queue and not self._active_update_envs:
-            for p in self._affected_envs_update:
-                self._refresh_single_env(p)
-            self._affected_envs_update.clear()
-        elif self._update_queue:
-            self._drain_update_queue()
-
-    def _on_update_done(self, env_path: str, pkg_name: str, success: bool):
-        """Legacy single-package update handler — delegates to batch path."""
-        self._on_batch_update_done(env_path, [(pkg_name, "latest")], success)
+            import uuid
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": [pkg_name], "marker": marker})
+            spec = f"{pkg_name}@{channel}"
+            cmd_list = self.npm_mgr.build_update_command(env, [spec])
+            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+            
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+            if "powershell" in shell_name or "pwsh" in shell_name:
+                cmd_str = f"{cmd_str} ; echo {marker}"
+            else:
+                cmd_str = f"{cmd_str} & echo {marker}"
+                
+            self.terminal.write(f'{cmd_str}\r')
 
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
@@ -476,67 +557,79 @@ class NpmPanel(BasePanel):
             )
             if reply == QMessageBox.Yes:
                 self.console.log_divider(f"UNINSTALL {pkg_name}")
-                self.npm_mgr.remove_package(env, pkg_name)
+                import uuid
+                marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+                self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": [pkg_name], "marker": marker})
+                cmd_list = self.npm_mgr.build_remove_command(env, [pkg_name])
+                cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+                
+                shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+                if "powershell" in shell_name or "pwsh" in shell_name:
+                    cmd_str = f"{cmd_str} ; echo {marker}"
+                else:
+                    cmd_str = f"{cmd_str} & echo {marker}"
+                    
+                self.terminal.write(f'{cmd_str}\r')
 
-    def _on_remove_done(self, env_path: str, pkg_name: str, success: bool):
-        if not hasattr(self, '_affected_envs_remove'):
-            self._affected_envs_remove = set()
-        self._affected_envs_remove.add(env_path)
-
-        if hasattr(self, '_remove_queue') and self._remove_queue:
-            self._process_remove_queue()
-        else:
-            self._remove_running = False
-            for p in self._affected_envs_remove:
-                self._refresh_single_env(p)
-            self._affected_envs_remove.clear()
-
-    def _start_pkg_install(self, env_path: str, pkg_names: str, _force_reinstall: bool = False):
-        env = self._find_env_by_path(self.npm_mgr.environments, env_path)
-        if env:
-            self.console.log_divider(f"INSTALL {pkg_names}")
-            
-            if not hasattr(self, '_install_queue'):
-                self._install_queue = []
-                self._install_running = False
-
-            name, channel = split_npm_spec(pkg_names)
-            if not name:
-                self._log("Invalid npm package spec.", "error")
-                return
-
-            self._install_queue.append((name, channel or "latest", env))
-            if not self._install_running:
-                self._process_install_queue()
-
-    def _process_install_queue(self):
-        if not hasattr(self, '_install_queue') or not self._install_queue:
-            self._install_running = False
+    def _start_pkg_install(self, env_path: str, pkg_names: list, is_dev: bool = False):
+        env = self._get_env(env_path)
+        if not env:
             return
-        self._install_running = True
-        pkg_names, channel, env = self._install_queue.pop(0)
-        self.npm_mgr.install_package(env, pkg_names, channel=channel)
-
-    def _on_install_done(self, env_path: str, pkg_names: str, success: bool):
-        if not hasattr(self, '_affected_envs_install'):
-            self._affected_envs_install = set()
-        self._affected_envs_install.add(env_path)
-
-        if success:
-            self._log(f"Successfully installed '{pkg_names}' in {env_path}", "success")
+        
+        self.console.log_divider(f"INSTALL {pkg_names}")
+        import uuid
+        marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+        self._active_operations.append({"env_path": env.path, "type": "install", "pkgs": pkg_names, "marker": marker})
+        cmd_list = self.npm_mgr.build_install_command(env, pkg_names, is_dev)
+        cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+        
+        shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+        if "powershell" in shell_name or "pwsh" in shell_name:
+            cmd_str = f"{cmd_str} ; echo {marker}"
         else:
-            self._log(f"Failed to install '{pkg_names}' in {env_path}", "error")
-            QMessageBox.warning(self, "Installation Failure", f"Failed to install {pkg_names}.\nCheck the console for details.")
+            cmd_str = f"{cmd_str} & echo {marker}"
+            
+        self.terminal.write(f'{cmd_str}\r')
 
-        if hasattr(self, '_install_queue') and self._install_queue:
-            self._process_install_queue()
+    def _on_activate_requested(self, env_path: str):
+        env = self._get_env(env_path)
+        if not env:
+            self._log("Failed to activate: environment not found.", "error")
+            return
+        
+        self._log(f"Opening {env.name} in terminal...", "cmd")
+
+        # Simulated mode: open external terminal since ConsolePanel can't execute commands
+        if self.terminal is self.console:
+            if getattr(env, "type", "") == "global" or env_path == "global":
+                target_path = os.path.expanduser("~")
+            else:
+                target_path = env.path
+            try:
+                subprocess.Popen(f'start cmd /k "cd /d {target_path}"', shell=True, cwd=target_path)
+            except Exception as e:
+                self._log(f"Failed to open terminal: {e}", "error")
+            return
+
+        shell_name = "cmd.exe"
+        if hasattr(self.terminal, "_resolve_shell"):
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower()
+            
+        is_powershell = "powershell" in shell_name or "pwsh" in shell_name
+        
+        # For Global Packages, the path is "global" which is not a physical path
+        if getattr(env, "type", "") == "global" or env_path == "global":
+            target_path = os.path.expanduser("~")
         else:
-            self._install_running = False
-            for p in self._affected_envs_install:
-                self._refresh_single_env(p)
-            self._affected_envs_install.clear()
-            if success:
-                QMessageBox.information(self, "Success", f"Installation of '{pkg_names}' completed.")
+            target_path = env.path
+            
+        if is_powershell:
+            cmd = f'Set-Location -LiteralPath "{target_path}"'
+        else:
+            cmd = f'pushd "{target_path}"'
+            
+        self.terminal.write(cmd + "\r")
+
 
     # ── Selection / Filter ───────────────────────────────────────────────
 
@@ -601,7 +694,7 @@ class NpmPanel(BasePanel):
                 for pkg in env.packages:
                     if getattr(pkg, "is_selected", False) and getattr(pkg, "has_update", False):
                         channel = pkg.metadata.get("channel", "latest") if getattr(pkg, "metadata", None) else "latest"
-                        specs.append((pkg.name, channel))
+                        specs.append(f"{pkg.name}@{channel}")
                 if specs:
                     key = self._path_key(env.path)
                     env_packages[key] = specs
@@ -615,50 +708,65 @@ class NpmPanel(BasePanel):
         self.console.log_divider(f"BATCH UPDATE ({total} packages across {len(env_packages)} environments)")
         for key, specs in env_packages.items():
             env = env_objects[key]
-            self._update_queue.extend([(name, ch, env) for name, ch in specs])
-        self._drain_update_queue()
+            self.console.log_divider(f"UPDATE ALL in {env.name}")
+            import uuid
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            pkg_names = [s.split("@")[0] for s in specs]
+            self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": pkg_names, "marker": marker})
+            cmd_list = self.npm_mgr.build_update_command(env, specs)
+            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+            
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+            if "powershell" in shell_name or "pwsh" in shell_name:
+                cmd_str = f"{cmd_str} ; echo {marker}"
+            else:
+                cmd_str = f"{cmd_str} & echo {marker}"
+                
+            self.terminal.write(f'{cmd_str}\r')
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 
     def _batch_remove(self):
-        remove_list = []
-        for env_path, card in self._env_cards.items():
+        env_packages = {}
+        env_objects = {}
+        for _env_path, card in self._env_cards.items():
             env = card.env
             if getattr(env, "is_scanned", False):
-                for pkg in env.packages:
-                    if getattr(pkg, "is_selected", False):
-                        remove_list.append((pkg.name, env))
+                pkgs = [pkg.name for pkg in env.packages if getattr(pkg, "is_selected", False)]
+                if pkgs:
+                    key = self._path_key(env.path)
+                    env_packages[key] = pkgs
+                    env_objects[key] = env
 
-        if not remove_list:
+        if not env_packages:
             self._log("No packages selected for batch remove.", "system")
             return
 
+        total = sum(len(v) for v in env_packages.values())
         reply = QMessageBox.question(
             self, "Confirm Batch Uninstall",
-            f"Are you sure you want to uninstall {len(remove_list)} packages?",
+            f"Are you sure you want to uninstall {total} packages?",
             QMessageBox.Yes | QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.console.log_divider(f"BATCH UNINSTALL ({len(remove_list)} packages)")
-        self._log(f"Batch uninstalling: {', '.join(n for n, _ in remove_list)}", "system")
-
-        if not hasattr(self, '_remove_queue'):
-            self._remove_queue = []
-            self._remove_running = False
-
-        self._remove_queue.extend(remove_list)
-        if not self._remove_running:
-            self._process_remove_queue()
-
-    def _process_remove_queue(self):
-        if not hasattr(self, '_remove_queue') or not self._remove_queue:
-            self._remove_running = False
-            return
-        self._remove_running = True
-        pkg_name, env = self._remove_queue.pop(0)
-        self.npm_mgr.remove_package(env, pkg_name)
+        self.console.log_divider(f"BATCH UNINSTALL ({total} packages across {len(env_packages)} environments)")
+        for key, pkg_names in env_packages.items():
+            env = env_objects[key]
+            import uuid
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": pkg_names, "marker": marker})
+            cmd_list = self.npm_mgr.build_remove_command(env, pkg_names)
+            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
+            
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+            if "powershell" in shell_name or "pwsh" in shell_name:
+                cmd_str = f"{cmd_str} ; echo {marker}"
+            else:
+                cmd_str = f"{cmd_str} & echo {marker}"
+                
+            self.terminal.write(f'{cmd_str}\r')
 
     # ── Settings ─────────────────────────────────────────────────────────
 

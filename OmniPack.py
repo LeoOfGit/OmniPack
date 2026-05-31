@@ -42,6 +42,15 @@ def _show_startup_error(title: str, message: str):
 
 def run_main():
     """Application entry point with global exception catching."""
+    if os.name == "nt":
+        try:
+            # SEM_FAILCRITICALERRORS = 0x0001
+            # SEM_NOGPFAULTERRORBOX = 0x0002
+            # SEM_NOOPENFILEERRORBOX = 0x8000
+            ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)
+        except Exception:
+            pass
+
     hide_console()
     if getattr(sys, "frozen", False) or _is_truthy_env("OMNIPACK_REQUIRE_ADMIN", False):
         os.environ["QT_LOGGING_RULES"] = "*.warning=false"
@@ -70,8 +79,17 @@ if __name__ == "__main__":
     default_require = (os.name == "nt") and not getattr(sys, "frozen", False)
     require_admin = _is_truthy_env("OMNIPACK_REQUIRE_ADMIN", default_require)
     if os.name == "nt" and require_admin and not is_admin():
+        # In Nuitka onefile builds, sys.executable points to the temp directory's unpacked payload exe.
+        # Elevating that directly can cause issues due to temporary directory redirection under Admin context.
+        # We should elevate the ORIGINAL executable (found in sys.argv[0]) when possible.
+        exe_path = sys.executable
+        if sys.argv and sys.argv[0]:
+            candidate = os.path.abspath(sys.argv[0])
+            if os.path.isfile(candidate) and candidate.lower().endswith(".exe"):
+                exe_path = candidate
+
         params = " ".join([f'"{arg}"' for arg in sys.argv])
-        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 0)
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe_path, params, None, 0)
         if ret <= 32:
             _show_startup_error(
                 "OmniPack UAC",
