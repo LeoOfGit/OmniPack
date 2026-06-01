@@ -101,7 +101,7 @@ OmniPack 能智能评估每个更新的安全性。
    ```
 3. 运行程序：
    ```bash
-   python OmniPack.pyw
+   python OmniPack.py
    ```
 
 ---

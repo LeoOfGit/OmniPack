@@ -102,7 +102,7 @@ Go to the GitHub Releases area to get the latest pre-built single-file package (
    ```
 3. Run:
    ```bash
-   python OmniPack.pyw
+   python OmniPack.py
    ```
 
 ---

@@ -699,6 +699,43 @@ def download_runtime_installer(
             if total and downloaded < total:
                 os.remove(dest)
                 return "", f"Incomplete download: {downloaded}/{total} bytes"
+
+        # Verify Authenticode Signature on Windows
+        if os.name == "nt":
+            import subprocess
+            import hashlib
+
+            # Show hash
+            with open(dest, "rb") as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+            print(f"Downloaded {dest} (SHA256: {file_hash})")
+
+            from core.terminal.command_renderer import ShellCommandRenderer
+            quoted_dest = ShellCommandRenderer._pwsh_quote(dest)
+
+            # Fetch the signature subject
+            pwsh_script = f"$sig = Get-AuthenticodeSignature -LiteralPath {quoted_dest}; if ($sig.Status -eq 'Valid') {{ Write-Output $sig.SignerCertificate.Subject }}"
+            res = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", pwsh_script],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            subject = res.stdout.strip()
+            if not subject:
+                os.remove(dest)
+                return "", f"Security Error: Downloaded installer has an invalid or missing Authenticode signature (SHA256: {file_hash})."
+
+            # Check publisher constraints
+            if runtime_kind == "python":
+                if "Python Software Foundation" not in subject:
+                    os.remove(dest)
+                    return "", f"Security Error: Installer signed by unknown publisher. Expected Python Software Foundation, got: {subject}"
+            elif runtime_kind == "node":
+                if "Node.js Foundation" not in subject and "OpenJS Foundation" not in subject:
+                    os.remove(dest)
+                    return "", f"Security Error: Installer signed by unknown publisher. Expected Node.js Foundation or OpenJS Foundation, got: {subject}"
+
         return dest, ""
     except Exception as exc:
         if os.path.exists(dest):

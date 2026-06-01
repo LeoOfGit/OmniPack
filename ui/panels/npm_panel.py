@@ -322,11 +322,13 @@ class NpmPanel(BasePanel):
         import re
         
         while True:
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)", self._interceptor_buffer)
+            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
             if not match:
                 break
                 
             marker = match.group(1)
+            exit_code_str = match.group(2)
+            exit_code = int(exit_code_str) if exit_code_str else 0
             
             op_index = next(
                 (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
@@ -342,7 +344,11 @@ class NpmPanel(BasePanel):
             # Incremental UI refresh
             env = self._find_env_by_path(self.npm_mgr.environments, op["env_path"])
             if env:
-                self.npm_mgr.scan_specific_packages(env, op["pkgs"])
+                if exit_code != 0:
+                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
+                    self._refresh_single_env(env.path)
+                else:
+                    self.npm_mgr.scan_specific_packages(env, op["pkgs"])
                 
             self._interceptor_buffer = self._interceptor_buffer[match.end():]
 
@@ -518,15 +524,11 @@ class NpmPanel(BasePanel):
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": outdated, "marker": marker})
             specs = [f"{p.name}@{p.metadata.get('channel', 'latest')}" if getattr(p, "metadata", None) else p.name for p in outdated]
             cmd_list = self.npm_mgr.build_update_command(env, specs)
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_update(self, pkg_name: str, channel: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
@@ -537,15 +539,11 @@ class NpmPanel(BasePanel):
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": [pkg_name], "marker": marker})
             spec = f"{pkg_name}@{channel}"
             cmd_list = self.npm_mgr.build_update_command(env, [spec])
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.npm_mgr.environments, env_path)
@@ -561,17 +559,13 @@ class NpmPanel(BasePanel):
                 marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
                 self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": [pkg_name], "marker": marker})
                 cmd_list = self.npm_mgr.build_remove_command(env, [pkg_name])
-                cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-                
+                from core.terminal.command_renderer import ShellCommandRenderer
                 shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-                if "powershell" in shell_name or "pwsh" in shell_name:
-                    cmd_str = f"{cmd_str} ; echo {marker}"
-                else:
-                    cmd_str = f"{cmd_str} & echo {marker}"
-                    
-                self.terminal.write(f'{cmd_str}\r')
+                cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+                cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+                ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
-    def _start_pkg_install(self, env_path: str, pkg_names: list, is_dev: bool = False):
+    def _start_pkg_install(self, env_path: str, pkg_names: str, force_reinstall: bool = False):
         env = self._get_env(env_path)
         if not env:
             return
@@ -579,17 +573,13 @@ class NpmPanel(BasePanel):
         self.console.log_divider(f"INSTALL {pkg_names}")
         import uuid
         marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
-        self._active_operations.append({"env_path": env.path, "type": "install", "pkgs": pkg_names, "marker": marker})
-        cmd_list = self.npm_mgr.build_install_command(env, pkg_names, is_dev)
-        cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-        
+        self._active_operations.append({"env_path": env.path, "type": "install", "pkgs": pkg_names.split(), "marker": marker})
+        cmd_list = self.npm_mgr.build_install_command(env, pkg_names, channel="latest")
+        from core.terminal.command_renderer import ShellCommandRenderer
         shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-        if "powershell" in shell_name or "pwsh" in shell_name:
-            cmd_str = f"{cmd_str} ; echo {marker}"
-        else:
-            cmd_str = f"{cmd_str} & echo {marker}"
-            
-        self.terminal.write(f'{cmd_str}\r')
+        cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+        cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+        ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _on_activate_requested(self, env_path: str):
         env = self._get_env(env_path)
@@ -711,18 +701,14 @@ class NpmPanel(BasePanel):
             self.console.log_divider(f"UPDATE ALL in {env.name}")
             import uuid
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
-            pkg_names = [s.split("@")[0] for s in specs]
+            pkg_names = [split_npm_spec(s)[0] for s in specs]
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": pkg_names, "marker": marker})
             cmd_list = self.npm_mgr.build_update_command(env, specs)
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 
@@ -758,15 +744,11 @@ class NpmPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": pkg_names, "marker": marker})
             cmd_list = self.npm_mgr.build_remove_command(env, pkg_names)
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     # ── Settings ─────────────────────────────────────────────────────────
 
@@ -977,8 +959,7 @@ class NpmPanel(BasePanel):
             
             if new_ch != current_ch:
                 # Need to update because channel changed
-                if not any(q[0] == pkg_name for q in self._update_queue):
-                    self._start_pkg_update(pkg_name, new_ch, env.path)
+                self._start_pkg_update(pkg_name, new_ch, env.path)
             else:
                 self._refresh_single_env(env.path)
 

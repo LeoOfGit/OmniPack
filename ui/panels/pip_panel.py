@@ -224,11 +224,13 @@ class PipPanel(BasePanel):
         
         while True:
             # Match only the evaluated output, not the echoed command which is preceded by 'echo '
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)", self._interceptor_buffer)
+            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
             if not match:
                 break
                 
             marker = match.group(1)
+            exit_code_str = match.group(2)
+            exit_code = int(exit_code_str) if exit_code_str else 0
             
             # Find the corresponding operation
             op_index = next(
@@ -245,7 +247,11 @@ class PipPanel(BasePanel):
             env = self._find_env_by_path(self.pip_mgr.environments, op["env_path"])
                 
             if env:
-                self.pip_mgr.scan_specific_packages(env, op["pkgs"])
+                if exit_code != 0:
+                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
+                    self._refresh_single_env(env.path)
+                else:
+                    self.pip_mgr.scan_specific_packages(env, op["pkgs"])
                 
             self._interceptor_buffer = self._interceptor_buffer[match.end():]
 
@@ -366,7 +372,7 @@ class PipPanel(BasePanel):
 
         reply = QMessageBox.question(
             self,
-            title,
+            "Confirm Runtime Update",
             msg,
             QMessageBox.Yes | QMessageBox.No,
         )
@@ -453,15 +459,11 @@ class PipPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": outdated, "marker": marker})
             cmd_list = self.pip_mgr.build_update_command(env, outdated)
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_update(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -471,15 +473,11 @@ class PipPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": [pkg_name], "marker": marker})
             cmd_list = self.pip_mgr.build_update_command(env, [pkg_name])
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -496,15 +494,11 @@ class PipPanel(BasePanel):
                 self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": [pkg_name], "marker": marker})
                 
                 cmd_list = self.pip_mgr.build_remove_command(env, [pkg_name])
-                cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-                
+                from core.terminal.command_renderer import ShellCommandRenderer
                 shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-                if "powershell" in shell_name or "pwsh" in shell_name:
-                    cmd_str = f"{cmd_str} ; echo {marker}"
-                else:
-                    cmd_str = f"{cmd_str} & echo {marker}"
-                    
-                self.terminal.write(f'{cmd_str}\r')
+                cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+                cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+                ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_install(self, env_path: str, pkg_names: str, force_reinstall: bool = False):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
@@ -514,15 +508,11 @@ class PipPanel(BasePanel):
             self._active_operations.append({"env_path": env.path, "type": "install", "pkgs": pkg_names.split(), "marker": marker})
             
             cmd_list = self.pip_mgr.build_install_command(env, pkg_names, force_reinstall)
-            cmd_str = __import__("subprocess").list2cmdline(cmd_list)
-            
+            from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
-            if "powershell" in shell_name or "pwsh" in shell_name:
-                cmd_str = f"{cmd_str} ; echo {marker}"
-            else:
-                cmd_str = f"{cmd_str} & echo {marker}"
-                
-            self.terminal.write(f'{cmd_str}\r')
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _on_activate_requested(self, env_path: str):
         env = self._get_env(env_path)
@@ -673,9 +663,11 @@ class PipPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": pkg_names, "marker": marker})
             cmd_list = self.pip_mgr.build_update_command(env, pkg_names)
-            cmd_str = subprocess.list2cmdline(cmd_list)
-            self.terminal.write(f'{cmd_str}\r')
-            self.terminal.write(f'echo {marker}\r')
+            from core.terminal.command_renderer import ShellCommandRenderer
+            shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+            cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+            cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 
@@ -709,9 +701,11 @@ class PipPanel(BasePanel):
                 marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
                 self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": pkg_names, "marker": marker})
                 cmd_list = self.pip_mgr.build_remove_command(env, pkg_names)
-                cmd_str = subprocess.list2cmdline(cmd_list)
-                self.terminal.write(f'{cmd_str}\r')
-                self.terminal.write(f'echo {marker}\r')
+                from core.terminal.command_renderer import ShellCommandRenderer
+                shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
+                cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+                cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
+                ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     # ── Settings ─────────────────────────────────────────────────────────
 

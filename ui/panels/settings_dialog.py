@@ -1771,16 +1771,18 @@ class SettingsDialog(QDialog):
 
                 # 3. Find the download URL from release assets
                 download_url = ""
+                sha256_url = ""
                 for asset in data.get("assets", []):
                     name = str(asset.get("name", ""))
-                    if name.endswith(asset_suffix):
+                    if name == asset_suffix:
                         download_url = str(asset.get("browser_download_url", ""))
-                        break
+                    elif name == asset_suffix + ".sha256":
+                        sha256_url = str(asset.get("browser_download_url", ""))
                 if not download_url:
                     self.result_ready.emit(False, "Not Found", f"No matching asset found for: {asset_suffix}")
                     return
 
-                # 4. Download the archive
+                # 4. Download the archive and hash
                 try:
                     with proxy_urlopen(
                         download_url,
@@ -1790,6 +1792,22 @@ class SettingsDialog(QDialog):
                         force_proxy=True,
                     ) as response:
                         archive_data = response.read()
+
+                    if sha256_url:
+                        with proxy_urlopen(
+                            sha256_url,
+                            timeout=30,
+                            headers={"User-Agent": f"OmniPack/{__version__}"},
+                            proxy_settings=self.proxy_settings,
+                            force_proxy=True,
+                        ) as res_hash:
+                            expected_hash = res_hash.read().decode().split()[0].strip().lower()
+
+                        import hashlib
+                        actual_hash = hashlib.sha256(archive_data).hexdigest()
+                        if expected_hash and actual_hash != expected_hash:
+                            self.result_ready.emit(False, "Security Error", f"Checksum mismatch for {asset_suffix}.\nExpected: {expected_hash}\nActual:   {actual_hash}")
+                            return
                 except Exception as e:
                     self.result_ready.emit(False, "Download Failed", f"Could not download uv release:\n{e}")
                     return

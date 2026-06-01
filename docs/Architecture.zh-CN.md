@@ -8,7 +8,8 @@
 2. **环境中心化 (Environment-Centric)**：所有的包管理逻辑均围绕“环境”展开。
    - **Python (Pip)**：管理系统 Python 环境和用户定义的虚拟环境 (venv)。
    - **NPM (Node)**：管理全局环境 (Global) 和用户定义的项目环境 (Local Projects)。
-3. **架构对称性与环境大一统 (Symmetry & Unification)**：Pip 模块与 NPM 模块在代码结构、逻辑流、数据模型和 UI 表现上必须保持高度对称。
+   - **WinGet (Windows)**：管理 Windows 操作系统的全局应用 (Machine) 和用户应用 (User)。
+3. **架构对称性与环境大一统 (Symmetry & Unification)**：Pip、NPM 与 WinGet 模块在代码结构、逻辑流、数据模型和 UI 表现上必须保持高度对称。
    - **命名规范**: 遵循 `Subsystem -> Manager -> Panel -> Card` 的命名链路。
     - **环境同权**: 所有自动发现或手动添加的环境在配置文件中均作为等价项处理。程序仅在首次启动时推荐环境。用户拥有对所有环境（包括自动扫描出的）进行重命名、排序和永久删除的绝对权力。
     - **内核自管 (Engine Self-Management)**: 为了实现“零依赖”运行，程序采用级联式的 `uv` 引擎寻找策略（用户指定 > bin/uv > 系统 PATH），并通过异步 Worker 实现 Github API 版本比对，输出支持 HTML 富文本状态展示。
@@ -47,27 +48,32 @@
 - `core/dep_resolver.py` - **依赖拓扑解析引擎**。通过子进程运行 `importlib.metadata` 脚本，构建完整依赖图（requires/required_by），并合并到 `Package` 对象中；同时自动创建缺失依赖的”幽灵”包条目。
 - `core/network_proxy.py` - **代理路由与注入层**。提供 `urlopen()` 自定义 opener（按目标域名启用代理）、`merge_env_for_command()` 将代理环境变量注入子进程、以及代理连通性测试。
 - `core/npm_spec.py` - **NPM 规范解析器**。解析 `@scope/name@tag` 格式的包规范字符串，提取包名与 dist-tag。
+- `core/winget_helpers.py` - **WinGet 本地化解析器与辅助工具**。通过极度坚固的流式 ANSI 剥离、退格回车仿真、动态列头偏移计算以及 Ultimate Fallback 兜底机制，实现针对 WinGet 命令行等宽输出表格的精准分割，完全免疫控制字符与进度条动画的干扰。
 - `core/source_profiles.py` - **源配置文件**。定义 PyPI/NPM 官方源及常用镜像列表，提供 `detect_system_pip_index_url()` / `detect_system_npm_registry_url()` 系统源探测函数。
+- `core/terminal/` - **真实 PTY 交互终端引擎**。支持跨平台（Windows `pywinpty` 与 Unix `pty`）的后端接入，底层集成 `pyte` 虚拟屏幕解析极复杂的 ANSI 颜色渲染与光标跳跃控制码，为界面提供可真实输入、双向交互的流式命令行后端。
 - `core/trace_logger.py` - **调试轨迹记录器**。当 `OMNIPACK_TRACE_SELECTION=1` 时启用，以 JSONL 格式记录 UI 选择/过滤事件，用于调试。
 - `core/pypi_cache.py` - **PyPI 缓存层**。负责 `pypi_search_cache.json` 的读写、种子引导、词条索引与排序，还封装了后台刷新线程、进度状态、取消/续传流以及 `resolve_refresh_source` 的镜像策略，确保 `AddPackageDialog` 100% 只从本地查询数据而不再解析 PyPI 网页。
 
 ### /managers - 业务逻辑执行引擎
-- `managers/pip_manager.py` & `managers/npm_manager.py` - 子系统特定的逻辑实现。均需提供异步扫描和命令生成；同时包含运行时检测与 `RuntimeUpdateWorker`，通过 `runtime_update_done` 信号回传解释器/Node 更新结果。
+- `managers/pip_manager.py`、`managers/npm_manager.py` & `managers/winget_manager.py` - 子系统特定的逻辑实现。均需提供异步扫描和命令生成；同时包含运行时检测或专门更新逻辑，通过统一 Worker 发送命令与接收执行状态。
 - `managers/base_worker.py` - **共享 Worker 核心**。封装 QThread 的通用逻辑，处理 stdout/stderr 流拦截、ANSI 染色解析和进度状态上报。
 
 ### /ui - 图形界面组件
 
 #### /ui/panels - 宏观面板
 - `ui/panels/base_panel.py` - **极其神圣的界面基类**。负责渲染双栏布局，并提供**标准工具栏集**（含 Search 框、Outdated Only 勾选框、Manage Envs 按钮）。
-- `ui/panels/pip_panel.py` & `ui/panels/npm_panel.py` - 镜像化的业务面板。负责将 Manager 的信号连接至对应的 EnvCard 容器。
+- `ui/panels/pip_panel.py`、`ui/panels/npm_panel.py` & `ui/panels/winget_panel.py` - 镜像化的业务面板。负责将 Manager 的信号连接至对应的 EnvCard 容器。
 - `ui/panels/settings_dialog.py` - 统一设置页；新增 `Backend` 标签聚焦 `uv` 与 PyPI 缓存控制，提供进度轮询/取消按钮；`Proxy` 页压缩布局、默认收起连接测试输出、并提供 `Start/Cancel` 双态按钮以控制后台刷新。
+- `ui/panels/winget_settings_page.py` - 专属的 WinGet 设置页模块，用于管理和自愈系统代理等底层选项。
 
 #### /ui/widgets - 颗粒化卡片
 - `ui/widgets/env_card_base.py` - **通用环境容器基类**。处理折叠动画、标题与刷新按钮。
 - `ui/widgets/pip_env_card.py` - **Python 环境卡片**。渲染 `pip/uv` 环境信息与标签，显示 `Python current -> latest`，并提供独立运行时更新按钮（`Py`）。
 - `ui/widgets/npm_env_card.py` - **NPM 环境卡片**。渲染项目/全局环境信息与标签，显示 `Node current -> latest`，并提供独立运行时更新按钮（`Nd`）。
+- `ui/widgets/winget_env_card.py` - **WinGet 环境卡片**。渲染 System/Machine 与 User 级别的环境扫描结果。
 - `ui/widgets/package_card.py` - **通用包条目**。显示版本、更新状态、多通道选择。
-- `ui/widgets/console_panel.py` - 控制台输出面板。
+- `ui/widgets/console_panel.py` - **模拟只读控制台面板**。接收并追加 Worker 提交的增量纯文本日志。
+- `ui/widgets/terminal_panel.py` - **真实 PTY 交互终端组件 (`RealTerminalPanel`)**。作为 `ConsolePanel` 的进阶替代品，支持全按键劫持（Tab 补全、历史上下翻页、Ctrl+C 中断），可由主程序根据设置进行热切换。
 - `ui/widgets/add_package_dialog.py` - 添加包对话框；Python 搜索完全依赖 `core/pypi_cache.py` 的离线索引，Node 搜索在第二页使用与 `npm_panel` 等价的 `NpmTagCard` 展示 dist-tags，保持与主面板一致的视觉与交互状态。
 
 ---

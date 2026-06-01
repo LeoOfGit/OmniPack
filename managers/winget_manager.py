@@ -552,21 +552,21 @@ class WingetManager(PackageManager):
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        worker.start()
 
     def _start_action_worker(self, worker, on_finished):
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
-        worker.finished.connect(
-            lambda: [
-                self._active_workers.remove(worker) if worker in self._active_workers else None,
-                on_finished(),
-            ]
-        )
+        def _on_finished():
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+            on_finished()
+
+        worker.finished.connect(_on_finished)
+        worker.start()
 
     def build_update_fallback_install_command(self, env: Environment, package_spec: dict) -> list[str]:
         pkg_id = str(package_spec.get("package_id", "") or package_spec.get("target_id", "") or package_spec.get("name", "")).strip()
@@ -650,6 +650,6 @@ class WingetManager(PackageManager):
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
         worker.pin_state_ready.connect(lambda pkg_id, is_pinned: self.pin_state_ready.emit(env.path, pkg_id, is_pinned))
-        worker.start()
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        worker.start()

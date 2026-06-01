@@ -1,6 +1,7 @@
 import os
 import urllib.parse
 import urllib.request
+import contextlib
 from typing import Dict, Optional
 
 
@@ -34,6 +35,7 @@ def normalize_proxy_settings(proxy_settings: Optional[dict]) -> dict:
         targets = {}
     return {
         "enabled": bool(raw.get("enabled", False)),
+        "insecure": bool(raw.get("insecure", False)),
         "http_proxy": _normalize_proxy_url(raw.get("http_proxy", "")),
         "https_proxy": _normalize_proxy_url(raw.get("https_proxy", "")),
         "targets": {
@@ -75,8 +77,8 @@ def _build_proxy_mapping(proxy_settings: Optional[dict]) -> Dict[str, str]:
         proxies["https"] = settings["https_proxy"]
     return proxies
 
-
-def urlopen(
+@contextlib.contextmanager
+def proxy_urlopen(
     url: str,
     *,
     timeout: Optional[int] = 10,
@@ -86,7 +88,11 @@ def urlopen(
 ):
     import ssl
     try:
-        ctx = ssl._create_unverified_context()
+        settings = normalize_proxy_settings(proxy_settings)
+        if settings.get("insecure", False):
+            ctx = ssl._create_unverified_context()
+        else:
+            ctx = ssl.create_default_context()
     except Exception:
         ctx = None
 
@@ -112,8 +118,10 @@ def urlopen(
     if ctx:
         opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
         return opener.open(req, timeout=timeout)
-        
+
     return urllib.request.urlopen(req, timeout=timeout)
+
+urlopen = proxy_urlopen
 
 
 def _is_pip_command(cmd: list[str]) -> bool:
@@ -162,24 +170,27 @@ def proxy_env_for_command(cmd: list[str], proxy_settings: Optional[dict]) -> Dic
         return {}
 
     env = {}
+    is_insecure = settings.get("insecure", False)
     if "http" in proxies:
         p_val = proxies["http"]
         env["HTTP_PROXY"] = p_val
         env["http_proxy"] = p_val
         if _is_npm_command(cmd):
             env["NPM_CONFIG_PROXY"] = p_val
-            env["NPM_CONFIG_STRICT_SSL"] = "false"
-            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-            env["NODE_NO_WARNINGS"] = "1"
+            if is_insecure:
+                env["NPM_CONFIG_STRICT_SSL"] = "false"
+                env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+                env["NODE_NO_WARNINGS"] = "1"
     if "https" in proxies:
         p_val = proxies["https"]
         env["HTTPS_PROXY"] = p_val
         env["https_proxy"] = p_val
         if _is_npm_command(cmd):
             env["NPM_CONFIG_HTTPS_PROXY"] = p_val
-            env["NPM_CONFIG_STRICT_SSL"] = "false"
-            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-            env["NODE_NO_WARNINGS"] = "1"
+            if is_insecure:
+                env["NPM_CONFIG_STRICT_SSL"] = "false"
+                env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+                env["NODE_NO_WARNINGS"] = "1"
     return env
 
 

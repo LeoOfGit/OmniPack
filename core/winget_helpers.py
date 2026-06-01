@@ -129,6 +129,38 @@ def _restore_display_string(text: str) -> str:
     return text.replace('\x00', '').strip()
 
 
+def _sanitize_terminal_output(text: str) -> str:
+    """Remove ANSI escapes and simulate terminal processing of \r and \b."""
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    text = ansi_escape.sub('', text)
+    
+    lines = []
+    for line in text.split('\n'):
+        buf = []
+        cursor = 0
+        for char in line:
+            if char == '\r':
+                cursor = 0
+            elif char == '\b':
+                cursor = max(0, cursor - 1)
+            elif char == '\t':
+                spaces = 4 - (cursor % 4)
+                buf.extend([' '] * spaces)
+                cursor += spaces
+            elif ord(char) < 32:
+                # ignore other control characters
+                pass
+            else:
+                if cursor >= len(buf):
+                    buf.extend([' '] * (cursor - len(buf)))
+                    buf.append(char)
+                else:
+                    buf[cursor] = char
+                cursor += 1
+        lines.append("".join(buf).rstrip())
+    return "\n".join(lines)
+
+
 def parse_winget_table(output: str, mode: str = "") -> list[dict]:
     """Parse winget's tabular output.
 
@@ -137,15 +169,25 @@ def parse_winget_table(output: str, mode: str = "") -> list[dict]:
     variable column widths perfectly, correctly accounting for East-Asian characters.
     """
     text = str(output or "").replace("\ufeff", "")
+    text = _sanitize_terminal_output(text)
     lines = [line.rstrip("\r") for line in text.splitlines() if line.strip()]
     if not lines:
         return []
 
     header_idx = -1
     for idx, line in enumerate(lines):
-        if re.match(r"^\s*-{3,}\s*$", line):
+        clean_line = line.strip()
+        if clean_line.count('-') >= 5 and len(re.sub(r'[-\s]', '', clean_line)) < 5:
             header_idx = idx - 1
             break
+            
+    if header_idx < 0:
+        # Ultimate fallback: Find the line with Name and Id
+        for idx, line in enumerate(lines):
+            if re.search(r'\b(Name|名称)\b', line, re.IGNORECASE) and re.search(r'\b(Id|ID)\b', line):
+                header_idx = idx
+                break
+
     if header_idx < 0 or header_idx >= len(lines):
         return []
 
@@ -156,20 +198,33 @@ def parse_winget_table(output: str, mode: str = "") -> list[dict]:
     # If the column content is exactly the same width as the header, Winget may pad with only 1 space.
     # Therefore, we simply split by any whitespace for these modes to avoid merging columns like "Available Source".
     if mode in ("installed", "search"):
-        col_matches = list(re.finditer(r"[^\s\x00]+", norm_header))
+        raw_matches = list(re.finditer(r"[^\s\x00]+", norm_header))
     else:
         # Fallback for modes like "pin" where headers (e.g. "Pin type") contain spaces.
-        col_matches = list(re.finditer(r"(?!\s)[^\s\x00].*?(?=\s{2,}|\Z)", norm_header))
+        raw_matches = list(re.finditer(r"(?!\s)[^\s\x00].*?(?=\s{2,}|\Z)", norm_header))
         
+    # Filter out spinner artifacts (e.g., `-`, `\`, `|`, `/`) by requiring at least one word character.
+    col_matches = [m for m in raw_matches if re.search(r'\w', m.group(0))]
+
     if not col_matches:
         return []
     
-    col_starts = [m.start() for m in col_matches]
+    # If there was a garbage prefix (e.g., "   -    -    \ Name"), the true start of the first column
+    # is shifted. We subtract this shift from all column starts so that the first column is mapped to index 0,
+    # which accurately aligns with the data rows below the separator line.
+    first_col_start = col_matches[0].start()
+    col_starts = [max(0, m.start() - first_col_start) for m in col_matches]
     col_count = len(col_starts)
 
     rows = []
-    for line in lines[header_idx + 2:]:
-        if re.match(r"^\s*-{3,}\s*$", line):
+    # If we used the ultimate fallback, the data might start immediately after the header
+    data_start_idx = header_idx + 2
+    if data_start_idx < len(lines) and re.search(r'\b(Name|名称)\b', lines[data_start_idx - 1], re.IGNORECASE):
+        # The line after header is data, not a separator
+        data_start_idx = header_idx + 1
+
+    for line in lines[data_start_idx:]:
+        if re.match(r"^\s*(?:-+\s*)+$", line):
             continue
         if _SUMMARY_LINE_RE.match(line.strip()):
             continue
@@ -293,7 +348,7 @@ def parse_field_value_table(output: str) -> dict:
 
     header_idx = -1
     for idx, line in enumerate(lines):
-        if re.match(r"^\s*-{3,}\s*$", line):
+        if re.match(r"^\s*(?:-+\s*)+$", line):
             header_idx = idx - 1
             break
     if header_idx < 0:

@@ -182,9 +182,9 @@ class PipManager(PackageManager):
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start() # Start QThread
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        worker.start() # Start QThread
 
     def build_install_command(self, env: Environment, pkg_names: str, force_reinstall: bool = False) -> list[str]:
         uv_path = get_uv_path(self.config_mgr)
@@ -219,17 +219,17 @@ class PipManager(PackageManager):
         worker = RuntimeUpdateWorker(env)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
-        worker.finished.connect(
-            lambda: [
-                self._active_workers.remove(worker) if worker in self._active_workers else None,
-                self.runtime_update_done.emit(
-                    env.path, worker.success, worker.result_message,
-                    worker.winget_failed, worker.target_version,
-                ),
-            ]
-        )
+        def on_finished():
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+            self.runtime_update_done.emit(
+                env.path, worker.success, worker.result_message,
+                worker.winget_failed, worker.target_version,
+            )
+
+        worker.finished.connect(on_finished)
+        worker.start()
 
     update_done = Signal(str, str, bool) # env_path, pkg_name, success
     batch_update_done = Signal(str, list, bool) # env_path, pkg_names, success

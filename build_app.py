@@ -80,7 +80,7 @@ def get_data_files():
                 data_files.append(f"--include-data-file={file_path}={file_path}")
     
     # 手动添加根目录重要文件
-    root_files = ["LICENSE", "README.md", "pypi_search_cache.json"]
+    root_files = ["LICENSE", "README.md"]
     for f in root_files:
         if os.path.exists(f) and not should_ignore(f, patterns):
             data_files.append(f"--include-data-file={f}={f}")

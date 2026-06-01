@@ -1,5 +1,34 @@
 # Changelog - OmniPack
 
+## [v11] - 安全防御升级、配置原子化写入与 WinGet 解析防弹重构 (Security Upgrades, Atomic Config & Bulletproof WinGet Parser)
+
+本次更新不仅解决了 WinGet 复杂输出场景下的表格解析崩溃问题，还大幅增强了底层的运行稳定性和网络安全性。涵盖配置文件的断电保护、下载件的安全签名校验以及 HTTP 代理的忽略证书特性。
+
+### 🛡️ 网络安全与下载防御 (Network Security & Verification)
+
+- **下载校验与数字签名防御 (Authenticode Signature Verification)**：
+  - 在 `core/runtime_update.py` 中引入了 Windows 平台原生的 `Get-AuthenticodeSignature` 强校验机制。自动验证下载的解释器/运行时安装包的 SHA256 指纹。
+  - 实施严格的**发行商白名单防御**：强制要求签名归属于 “Python Software Foundation”、“Node.js Foundation” 或 “OpenJS Foundation”，一旦签名无效或发行商不匹配，将立即销毁文件并阻断安装，杜绝了由于网络劫持造成的投毒攻击。
+- **代理证书忽略特性 (Insecure SSL/TLS Bypass)**：
+  - 在 `core/network_proxy.py` 中新增了 `insecure`（忽略证书校验）设置项支持。开启后，不仅 urllib 请求会降级使用非受信任上下文，向下游 NPM 子进程注入环境变量时也会同步附加 `NPM_CONFIG_STRICT_SSL=false` 及 `NODE_TLS_REJECT_UNAUTHORIZED=0`，大幅提升了对企业内网或中间人抓包代理（如 Fiddler/Charles）环境的连通兼容性。
+
+### ⚙️ 核心稳定性改进 (Core Stability & Reliability)
+
+- **原子化配置写盘与损坏自愈 (Atomic Config Writes & Auto-Recovery)**：
+  - 彻底重构了 `core/config.py` 中的存盘策略，采用 `tmp` 文件双缓冲机制配合 `os.fsync` 强制刷盘后安全原子替换（`os.replace`），彻底终结了因为系统断电、蓝屏或强杀进程导致的 `omnipack_config.json` 内容变为空白进而丢失所有状态的致命 Bug。
+  - 增加了防崩溃自愈机制：在解析 JSON 配置失败时，会自动将损坏文件备份为 `.corrupt.<timestamp>.json` 并回退至默认配置以确保软件正常启动。
+- **精简发布包体积 (Packaging Optimization)**：
+  - 修正了 `build_app.py`，移除了将 `pypi_search_cache.json` 强行打包进应用根目录的行为，确保了发版程序的纯净与轻量化。
+- **严格测试覆盖 (Strict Test Coverage)**：
+  - 编写了 `test_winget_sanitize_output` 流水线测试，并且修复了旧代码里因不合规的 Python `invalid escape sequence` 产生的运行告警。
+
+### 🧩 WinGet 解析引擎终极重构 (Bulletproof WinGet Parser)
+
+- **控制字符与 ANSI 无伤过滤 (Zero-Damage Control Character Filtering)**：
+  - 在 `core/winget_helpers.py` 的 `_sanitize_terminal_output` 中实现了严苛的流接管，一比一高仿终端退格符 (`\b`) 与回车符 (`\r`) 逻辑，直接无视乱码和隐形控制符，确保表格列头不被进度条动画吃掉。
+- **动态列头坐标纠偏与 Ultimate Fallback (Dynamic Offset & Ultimate Fallback)**：
+  - 引入表头坐标偏移探测算法应对加载条占位符，且增加了极限回退机制：当标准的 `------` 分隔线被完全截断抹除时，底层算法会退化为扫描 `Name` 与 `Id` 关键字强行锚定列坐标，实现真正的乱码免疫。
+
 ## [v10] - 真实 PTY 交互终端集成、WinGet 代理自愈保障与安全机制升级 (Real PTY Terminal, WinGet Proxy Auto-Heal & Security Upgrades)
 
 本次更新新加入了真正的 **PTY (Pseudo-Terminal) 交互终端** 集成，彻底摒弃了此前纯文本模拟控制台的局限性。支持完整的 ANSI 渲染、键盘捕获、命令同步注入以及增量刷新；同时，重构了 WinGet 命令行代理切换机制，引入了稳健的“启动即自愈代理”及系统级崩溃弹窗屏蔽锁；此外，将高风险的环境卸载与冲突警告模态确认（QMessageBox）重新安全归位，全面实现了全防灾与高流畅度运行。

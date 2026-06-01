@@ -912,9 +912,9 @@ class NpmManager(PackageManager):
         worker.env_scanned.connect(self._on_env_scanned)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        worker.start()
         
     def check_updates(self, env: Environment):
         worker = NpmUpdateCheckWorker(
@@ -925,9 +925,9 @@ class NpmManager(PackageManager):
         worker.updates_checked.connect(self._on_updates_checked)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
         worker.finished.connect(lambda: self._active_workers.remove(worker) if worker in self._active_workers else None)
+        worker.start()
 
     def _on_updates_checked(self, env: Environment):
         for i, e in enumerate(self.environments):
@@ -965,8 +965,19 @@ class NpmManager(PackageManager):
         npm_path = NpmBaseHelper.find_npm() or "npm"
         is_global, cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(env)
         
+        if not isinstance(channel, str):
+            import logging
+            logging.getLogger(__name__).warning(f"build_install_command received non-string channel: {channel}. Defaulting to 'latest'.")
+            channel = "latest"
+
         specs = []
-        for p in pkg_names.split():
+        # Support both string (space separated) and list of strings
+        if isinstance(pkg_names, list):
+            names_to_process = pkg_names
+        else:
+            names_to_process = pkg_names.split()
+
+        for p in names_to_process:
             if not has_explicit_tag(p):
                 specs.append(f"{p}@{channel}")
             else:
@@ -987,14 +998,14 @@ class NpmManager(PackageManager):
         worker = NpmRuntimeUpdateWorker(env, use_nvm=use_nvm)
         worker.log_msg.connect(self.log_msg)
         worker.log_batch.connect(self.log_batch)
-        worker.start()
         self._active_workers.append(worker)
-        worker.finished.connect(
-            lambda: [
-                self._active_workers.remove(worker) if worker in self._active_workers else None,
-                self.runtime_update_done.emit(
-                    env.path, worker.success, worker.result_message,
-                    worker.winget_failed, worker.target_version,
-                ),
-            ]
-        )
+        def on_finished():
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+            self.runtime_update_done.emit(
+                env.path, worker.success, worker.result_message,
+                worker.winget_failed, worker.target_version,
+            )
+
+        worker.finished.connect(on_finished)
+        worker.start()

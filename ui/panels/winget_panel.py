@@ -13,6 +13,7 @@ import subprocess
 import uuid
 
 from managers.winget_manager import WingetManager
+from core.terminal.command_renderer import ShellCommandRenderer
 from ui.panels.base_panel import BasePanel
 from core.winget_helpers import find_uninstall_location
 
@@ -160,11 +161,14 @@ class WingetPanel(BasePanel):
         import re
 
         while True:
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)", self._interceptor_buffer)
+            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
             if not match:
                 break
 
             marker = match.group(1)
+            exit_code_str = match.group(2)
+            exit_code = int(exit_code_str) if exit_code_str else 0
+
             op_index = next(
                 (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
                 None
@@ -177,38 +181,42 @@ class WingetPanel(BasePanel):
             op = self._active_operations.pop(op_index)
             env_path = op.get("env_path")
             if env_path:
+                if exit_code != 0:
+                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh.", "error")
                 self._refresh_single_env(env_path)
 
             self._interceptor_buffer = self._interceptor_buffer[match.end():]
 
     def _build_terminal_command(self, cmd_list: list[str], marker: str) -> str:
-        cmd_str = subprocess.list2cmdline(cmd_list)
+        from core.terminal.command_renderer import ShellCommandRenderer
         shell_name = (
             os.path.basename(self.terminal._resolve_shell()).lower()
             if hasattr(self.terminal, "_resolve_shell")
             else "cmd.exe"
         )
-        if "powershell" in shell_name or "pwsh" in shell_name:
-            return f"{cmd_str} ; echo {marker}"
-        return f"{cmd_str} & echo {marker}"
+        cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
+        return ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
 
     def _build_update_terminal_command(self, env, package_spec: dict, marker: str) -> str:
-        primary = subprocess.list2cmdline(self.winget_mgr.build_update_command(env, package_spec))
-        fallback = subprocess.list2cmdline(self.winget_mgr.build_update_fallback_install_command(env, package_spec))
+        from core.terminal.command_renderer import ShellCommandRenderer
         shell_name = (
             os.path.basename(self.terminal._resolve_shell()).lower()
             if hasattr(self.terminal, "_resolve_shell")
             else "cmd.exe"
         )
-        if "powershell" in shell_name or "pwsh" in shell_name:
-            return (
-                f"$__omnipack_last_exit=0; "
-                f"{primary}; "
-                f"$__omnipack_last_exit=$LASTEXITCODE; "
-                f'if ($__omnipack_last_exit -ne 0) {{ {fallback} }}; '
-                f"echo {marker}"
-            )
-        return f"{primary} || {fallback} & echo {marker}"
+        primary = ShellCommandRenderer.render(self.winget_mgr.build_update_command(env, package_spec), shell_name)
+        fallback = ShellCommandRenderer.render(self.winget_mgr.build_update_fallback_install_command(env, package_spec), shell_name)
+
+        is_pwsh = "powershell" in shell_name or "pwsh" in shell_name
+        is_posix = shell_name in {"sh", "bash", "zsh", "fish", "dash"}
+
+        if is_pwsh:
+            cmd = f"{primary}; if ($LASTEXITCODE -ne 0) {{ {fallback} }}"
+        elif is_posix:
+            cmd = f"{primary} || {fallback}"
+        else:
+            cmd = f"{primary} || {fallback}"
+        return ShellCommandRenderer.append_marker(cmd, marker, shell_name, include_exit_code=True)
 
     def _update_status_counts(self):
         self._emit_status_counts(self.winget_mgr.environments)
@@ -307,8 +315,8 @@ class WingetPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "marker": marker})
             cmds.append(self._build_update_terminal_command(env, spec, marker))
-        cmd_str = " ; ".join(cmds)
-        self.terminal.write(cmd_str + "\r")
+        cmd_str = "\n".join(cmds)
+        ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_update(self, package_target: str, _channel: str, env_path: str):
         env = self._get_env(env_path)
@@ -323,7 +331,7 @@ class WingetPanel(BasePanel):
         marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
         self._active_operations.append({"env_path": env.path, "marker": marker})
         cmd_str = self._build_update_terminal_command(env, package_spec, marker)
-        self.terminal.write(cmd_str + "\r")
+        ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_remove(self, package_target: str, env_path: str):
         env = self._get_env(env_path)
@@ -343,7 +351,7 @@ class WingetPanel(BasePanel):
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
             self._active_operations.append({"env_path": env.path, "marker": marker})
             cmd_str = self._build_terminal_command(cmd_list, marker)
-            self.terminal.write(cmd_str + "\r")
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _start_pkg_install(self, env_path: str, package_ref: str, _force: bool = False):
         env = self._get_env(env_path)
@@ -354,7 +362,7 @@ class WingetPanel(BasePanel):
         marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
         self._active_operations.append({"env_path": env.path, "marker": marker})
         cmd_str = self._build_terminal_command(cmd_list, marker)
-        self.terminal.write(cmd_str + "\r")
+        ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _config_package(self, package_target: str, env_path: str):
         env = self._get_env(env_path)
@@ -529,8 +537,8 @@ class WingetPanel(BasePanel):
                 marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
                 self._active_operations.append({"env_path": env.path, "marker": marker})
                 cmds.append(self._build_update_terminal_command(env, spec, marker))
-            cmd_str = " ; ".join(cmds)
-            self.terminal.write(cmd_str + "\r")
+            cmd_str = "\n".join(cmds)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _batch_remove(self):
         env_specs = {}
@@ -567,8 +575,8 @@ class WingetPanel(BasePanel):
                     marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
                     self._active_operations.append({"env_path": env.path, "marker": marker})
                     cmds.append(self._build_terminal_command(cmd_list, marker))
-                cmd_str = " ; ".join(cmds)
-                self.terminal.write(cmd_str + "\r")
+                cmd_str = "\n".join(cmds)
+                ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
     def _open_settings(self):
         from ui.panels.settings_dialog import SettingsDialog

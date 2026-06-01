@@ -74,7 +74,16 @@ class ConfigManager:
                 console_mode=data.get("console_mode", "real_terminal"),
                 terminal_settings=data.get("terminal_settings", {}),
             )
-        except Exception:
+        except Exception as e:
+            import time
+            import shutil
+            ts = int(time.time())
+            corrupt_path = self.config_path.with_name(f"omnipack_config.corrupt.{ts}.json")
+            try:
+                shutil.copy2(self.config_path, corrupt_path)
+                print(f"ERROR: Config file corrupted. Backup saved to {corrupt_path}")
+            except Exception:
+                pass
             return self._create_default_config()
 
     def _create_default_config(self) -> AppConfig:
@@ -235,13 +244,15 @@ class ConfigManager:
     def save_config(self):
         try:
             data = asdict(self.config)
-            # Ensure the directory exists
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             
-            with open(self.config_path, "w", encoding="utf-8") as f:
+            tmp_path = self.config_path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.config_path)
         except Exception as e:
-            # Fallback logging to temp directory if main config fails
             import tempfile
             log_path = Path(tempfile.gettempdir()) / "omnipack_config_error.log"
             with open(log_path, "a", encoding="utf-8") as f:
