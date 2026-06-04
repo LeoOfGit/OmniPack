@@ -239,7 +239,12 @@ class RealTerminalPanel(QFrame):
         shell = self._resolve_shell()
 
         self._backend = create_pty_backend()
-        self._backend.spawn(cmd=shell, cwd=os.path.expanduser("~"))
+        
+        from core.network_proxy import proxy_env_for_terminal
+        proxy_settings = getattr(self.config_mgr.config, "proxy_settings", {}) if self.config_mgr else {}
+        pty_env = proxy_env_for_terminal(proxy_settings)
+        
+        self._backend.spawn(cmd=shell, cwd=os.path.expanduser("~"), env=pty_env)
         self._backend.resize(self._cols, self._rows)
 
         self._output_thread = PtyOutputThread(self._backend, parent=self)
@@ -354,7 +359,7 @@ class RealTerminalPanel(QFrame):
         # 2. pyte history (scrolled-off lines)
         history = list(self._screen.history.top)
         for line_data in history:
-            self._render_pyte_line(cursor, line_data)
+            self._render_pyte_line(cursor, line_data, None)
             cursor.insertText("\n", QTextCharFormat())
 
         # 3. pyte current screen
@@ -376,7 +381,8 @@ class RealTerminalPanel(QFrame):
                     break
 
         for row in range(last_row + 1):
-            self._render_pyte_line(cursor, self._screen.buffer[row])
+            cursor_x = self._screen.cursor.x if row == self._screen.cursor.y else None
+            self._render_pyte_line(cursor, self._screen.buffer[row], cursor_x)
             if row < last_row:
                 cursor.insertText("\n", QTextCharFormat())
 
@@ -398,7 +404,7 @@ class RealTerminalPanel(QFrame):
 
     # ── pyte line → QTextEdit ───────────────────────────────────────────
 
-    def _render_pyte_line(self, cursor: QTextCursor, line_data):
+    def _render_pyte_line(self, cursor: QTextCursor, line_data, cursor_x=None):
         """Render one pyte buffer row, grouping same-styled chars."""
         default_char = self._screen.default_char
         cols = self._screen.columns
@@ -424,7 +430,13 @@ class RealTerminalPanel(QFrame):
         # Strip trailing whitespace from the last segment
         if segments:
             t, f = segments[-1]
-            segments[-1] = (t.rstrip(), f)
+            t_stripped = t.rstrip()
+            if cursor_x is not None:
+                len_before = sum(len(text) for text, _ in segments[:-1])
+                keep_len = max(0, cursor_x - len_before)
+                if len(t_stripped) < keep_len:
+                    t_stripped = t[:keep_len]
+            segments[-1] = (t_stripped, f)
 
         for t, f in segments:
             if t:

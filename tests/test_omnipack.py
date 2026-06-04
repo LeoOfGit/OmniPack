@@ -33,12 +33,20 @@ def test_command_renderer_posix():
     assert res == "/usr/local/bin/npm install react"
 
 def test_append_marker_cmd():
+    import tempfile
+    import os
+    tmp = tempfile.gettempdir()
+    marker_file = os.path.join(tmp, "MARKER.done").replace('/', '\\')
     res = ShellCommandRenderer.append_marker("echo foo", "MARKER", "cmd.exe", True)
-    assert res == "echo foo\necho MARKER:%ERRORLEVEL%"
+    assert res == f"echo foo\necho %ERRORLEVEL% > \"{marker_file}\""
 
 def test_append_marker_pwsh():
+    import tempfile
+    import os
+    tmp = tempfile.gettempdir()
+    marker_file = os.path.join(tmp, "MARKER.done").replace('/', '\\')
     res = ShellCommandRenderer.append_marker("echo foo", "MARKER", "powershell", True)
-    assert res == "echo foo ; echo MARKER:$LASTEXITCODE"
+    assert res == f"echo foo ; $LASTEXITCODE | Out-File -FilePath '{marker_file}' -Encoding ascii"
 
 def test_config_manager_corrupt_json(tmp_path, monkeypatch):
     import core.config
@@ -92,13 +100,24 @@ def test_marker_parser():
 
 def test_pwsh_marker_execution():
     import subprocess
+    import tempfile
+    import os
     if os.name != "nt":
         return
     cmd = ["cmd.exe", "/c", "exit 42"]
     res = ShellCommandRenderer.render(cmd, "powershell")
     marker_cmd = ShellCommandRenderer.append_marker(res, "MARKER", "powershell", True)
+    
+    marker_file = os.path.join(tempfile.gettempdir(), "MARKER.done")
+    if os.path.exists(marker_file):
+        os.remove(marker_file)
+        
     p = subprocess.run(["powershell.exe", "-NoProfile", "-Command", marker_cmd], capture_output=True, text=True)
-    assert "MARKER:42" in p.stdout
+    
+    assert os.path.exists(marker_file)
+    with open(marker_file, "r") as f:
+        assert f.read().strip() == "42"
+    os.remove(marker_file)
 
 def test_import_all_core_modules():
     import ui.panels.pip_panel
@@ -142,13 +161,24 @@ def test_terminal_write_ends_with_newline():
 
 def test_cmd_marker_execution():
     import subprocess
+    import tempfile
+    import os
     if os.name != "nt":
         return
     cmd = ["cmd.exe", "/c", "exit 42"]
     res = ShellCommandRenderer.render(cmd, "cmd.exe")
     marker_cmd = ShellCommandRenderer.append_marker(res, "MARKER", "cmd.exe", True)
+    
+    marker_file = os.path.join(tempfile.gettempdir(), "MARKER.done")
+    if os.path.exists(marker_file):
+        os.remove(marker_file)
+        
     p = subprocess.run(["cmd.exe", "/Q"], input=marker_cmd + "\nexit\n", capture_output=True, text=True)
-    assert "MARKER:42" in p.stdout
+    
+    assert os.path.exists(marker_file)
+    with open(marker_file, "r") as f:
+        assert f.read().strip() == "42"
+    os.remove(marker_file)
 
 def test_winget_fallback_commands():
     from ui.panels.winget_panel import WingetPanel
@@ -172,8 +202,14 @@ def test_winget_fallback_commands():
     # Test cmd
     panel.terminal._resolve_shell = MagicMock(return_value="cmd.exe")
     cmd_cmd = panel._build_update_terminal_command(env_mock, {}, "MARKER")
+    
+    import tempfile
+    import os
+    tmp = tempfile.gettempdir()
+    marker_file = os.path.join(tmp, "MARKER.done").replace('/', '\\')
+    
     assert 'winget upgrade foo || winget install foo' in cmd_cmd
-    assert '\necho MARKER:%ERRORLEVEL%' in cmd_cmd
+    assert f'\necho %ERRORLEVEL% > "{marker_file}"' in cmd_cmd
 
 def test_npm_install_channel_parsing():
     from unittest.mock import MagicMock
@@ -219,6 +255,169 @@ def test_npm_install_channel_parsing():
     cmd = npm_mgr.build_install_command(env_mock, "vue @types/node@18", channel="latest")
     assert "vue@latest" in cmd
     assert "@types/node@18" in cmd
+
+def test_winget_batch_write_path():
+    from ui.panels.winget_panel import WingetPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    panel = WingetPanel(MagicMock(), None)
+    panel.winget_mgr = MagicMock()
+    panel.terminal = MagicMock()
+
+    panel._batch_update()
+    assert panel.terminal.write.called
+
+def test_pip_panel_fs_watcher_sync():
+    from ui.panels.pip_panel import PipPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    import os
+    
+    app = QApplication.instance() or QApplication([])
+    config_mgr = MagicMock()
+    panel = PipPanel(config_mgr, None)
+    
+    env_mock = MagicMock()
+    env_mock.path = "/mock/venv"
+    panel.pip_mgr.environments = [env_mock]
+    
+    panel._get_site_packages_path = MagicMock(return_value="/mock/venv/Lib/site-packages")
+    panel._refresh_single_env = MagicMock()
+    
+    changed_path = os.path.normpath("/mock/venv/Lib/site-packages")
+    panel._on_directory_changed(changed_path)
+    
+    norm_key = panel._path_key(env_mock.path)
+    assert norm_key in panel._fs_debounce_timers
+    
+    panel._on_fs_debounce_timeout(env_mock)
+    panel._refresh_single_env.assert_called_once_with(env_mock.path)
+
+
+def test_pip_panel_update_all_uses_safe_version():
+    from ui.panels.pip_panel import PipPanel
+    from core.manager_base import Package
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    panel = PipPanel(MagicMock(), None)
+    panel.terminal = MagicMock()
+    panel.terminal._resolve_shell = MagicMock(return_value="powershell.exe")
+    panel.pip_mgr.build_update_command = MagicMock(return_value=["uv", "pip", "install", "-U"])
+
+    constrained = Package(
+        name="A",
+        version="1.6",
+        latest_version="2.1",
+        has_update=True,
+        breaks_constraint=True,
+        safe_update_version="1.9",
+    )
+    unconstrained = Package(
+        name="B",
+        version="1.0",
+        latest_version="1.1",
+        has_update=True,
+    )
+    blocked = Package(
+        name="C",
+        version="1.0",
+        latest_version="2.0",
+        has_update=True,
+        breaks_constraint=True,
+        safe_update_version="",
+    )
+
+    env_mock = MagicMock()
+    env_mock.path = "test_env"
+    env_mock.name = "Test Env"
+    env_mock.is_scanned = True
+    env_mock.packages = [constrained, unconstrained, blocked]
+    panel._find_env_by_path = MagicMock(return_value=env_mock)
+
+    panel._update_all_in_env(env_mock.path)
+
+    panel.pip_mgr.build_update_command.assert_called_once_with(env_mock, ["A==1.9", "B"])
+
+
+def test_pip_panel_batch_update_uses_safe_version():
+    from ui.panels.pip_panel import PipPanel
+    from core.manager_base import Package
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    panel = PipPanel(MagicMock(), None)
+    panel.terminal = MagicMock()
+    panel.terminal._resolve_shell = MagicMock(return_value="powershell.exe")
+    panel.pip_mgr.build_update_command = MagicMock(return_value=["uv", "pip", "install", "-U"])
+
+    constrained = Package(
+        name="A",
+        version="1.6",
+        latest_version="2.1",
+        has_update=True,
+        is_selected=True,
+        breaks_constraint=True,
+        safe_update_version="1.9",
+    )
+    unconstrained = Package(
+        name="B",
+        version="1.0",
+        latest_version="1.1",
+        has_update=True,
+        is_selected=True,
+    )
+    blocked = Package(
+        name="C",
+        version="1.0",
+        latest_version="2.0",
+        has_update=True,
+        is_selected=True,
+        breaks_constraint=True,
+        safe_update_version="",
+    )
+
+    env_mock = MagicMock()
+    env_mock.path = "test_env"
+    env_mock.is_scanned = True
+    env_mock.packages = [constrained, unconstrained, blocked]
+
+    card_mock = MagicMock()
+    card_mock.env = env_mock
+    panel._env_cards = {"test_env": card_mock}
+
+    panel._batch_update()
+
+    panel.pip_mgr.build_update_command.assert_called_once_with(env_mock, ["A==1.9", "B"])
+
+def test_npm_panel_fs_watcher_sync():
+    from ui.panels.npm_panel import NpmPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    import os
+    
+    app = QApplication.instance() or QApplication([])
+    config_mgr = MagicMock()
+    panel = NpmPanel(config_mgr, None)
+    
+    env_mock = MagicMock()
+    env_mock.path = "/mock/project"
+    panel.npm_mgr.environments = [env_mock]
+    
+    panel._refresh_single_env = MagicMock()
+    
+    changed_path = os.path.normpath(os.path.join(env_mock.path, "node_modules"))
+    panel._on_directory_changed(changed_path)
+    
+    norm_key = panel._path_key(env_mock.path)
+    assert norm_key in panel._fs_debounce_timers
+    
+    panel._on_fs_debounce_timeout(env_mock)
+    panel._refresh_single_env.assert_called_once_with(env_mock.path)
 
 def test_winget_real_write_path():
     from ui.panels.winget_panel import WingetPanel
@@ -267,19 +466,27 @@ def test_cmd_marker_pywinpty():
             
     ShellCommandRenderer.write_rendered_command(MockTerminal(), marker_cmd)
     
-    # Wait for the marker to appear
+    # Wait for the marker file to appear
+    import tempfile
+    marker_file = os.path.join(tempfile.gettempdir(), "MARKER.done")
+    if os.path.exists(marker_file):
+        os.remove(marker_file)
+
     output = ""
     for _ in range(20):
         try:
             output += pty.read(1024)
         except Exception:
             pass
-        if "MARKER:42" in output:
+        if os.path.exists(marker_file):
             break
         time.sleep(0.1)
     
     pty.terminate()
-    assert "MARKER:42" in output
+    assert os.path.exists(marker_file)
+    with open(marker_file, "r") as f:
+        assert f.read().strip() == "42"
+    os.remove(marker_file)
 
 def test_winget_batch_write_path():
     from ui.panels.winget_panel import WingetPanel

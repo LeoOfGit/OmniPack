@@ -99,6 +99,16 @@ def has_build_variant_mismatch(installed_version: str, latest_version: str) -> b
     return inst_local != latest_local
 
 
+def is_prerelease_version(version: str) -> bool:
+    """Return True when version looks like a pre-release candidate."""
+    base = str(version or "").split("+", 1)[0].strip().lower()
+    if not base:
+        return False
+    return bool(
+        re.search(r"(?:^|[.\-_]|\d)(a|b|rc|alpha|beta|pre|preview|dev)\d*(?:$|[.\-_])", base)
+    )
+
+
 def _widen_version_for_tilde(version: str) -> str:
     """~=1.4.0 → >=1.4.0, <1.5.0; ~=1.4 → >=1.4, <2.0"""
     parts = [int(x) for x in re.findall(r"\d+", str(version or ""))]
@@ -773,3 +783,41 @@ def build_installer_run_command(
             "/norestart",
         ], ""
     return [], f"Unsupported runtime kind: {runtime_kind}"
+
+
+def find_safe_update_version(
+    pkg,
+    dep_graph: dict,
+    all_versions: list[str],
+) -> str:
+    """
+    Find the highest version in all_versions that satisfies all constraints
+    and is newer than pkg.version.
+    
+    Returns: version string, or "" if none found.
+    """
+    constraints = []
+    for parent_norm in pkg.required_by:
+        parent = dep_graph.get(parent_norm)
+        if not parent:
+            continue
+        for dep_req in parent.requires:
+            if dep_req.norm_name == pkg.norm_name and dep_req.constraint:
+                constraints.append((parent.name, dep_req.constraint))
+
+    if not constraints:
+        return ""
+
+    for version in all_versions:
+        if is_prerelease_version(version):
+            continue
+        if compare_versions(version, pkg.version) <= 0:
+            break
+        
+        if all(
+            check_version_satisfies_constraint(version, constraint)
+            for _, constraint in constraints
+        ):
+            return version
+
+    return ""

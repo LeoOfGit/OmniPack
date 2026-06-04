@@ -1,17 +1,23 @@
 import os
 import json
+import re
+import shutil
 from PySide6.QtCore import Signal
 
 from core.manager_base import PackageManager, Environment, Package
 from core.dep_resolver import resolve_dependencies_subprocess, merge_dependency_info
+from core.network_proxy import proxy_urlopen
+from core.pip_spec import extract_pip_requirement_name
 from core.runtime_update import (
     build_python_runtime_update_command,
     check_runtime_patch_update,
     check_version_satisfies_constraint,
     compare_versions,
     has_build_variant_mismatch,
+    is_prerelease_version,
     parse_cycle,
     parse_python_version,
+    find_safe_update_version,
 )
 from core.source_profiles import PYPI_OFFICIAL_INDEX
 from core.utils import find_system_pythons, get_uv_path
@@ -240,8 +246,10 @@ class PipManager(PackageManager):
 
 
 
-def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
+def _compute_breaks_constraint(pkgs: list, dep_graph: dict, version_fetcher=None):
     for pkg in pkgs:
+        pkg.breaks_constraint = False
+        pkg.safe_update_version = ""
         if not pkg.has_update or not pkg.latest_version or pkg.is_missing:
             continue
         for parent_norm in pkg.required_by:
@@ -256,6 +264,13 @@ def _compute_breaks_constraint(pkgs: list, dep_graph: dict):
                     break
             if pkg.breaks_constraint:
                 break
+        
+        if pkg.breaks_constraint and version_fetcher:
+            all_versions = version_fetcher(pkg.name)
+            if all_versions:
+                safe_ver = find_safe_update_version(pkg, dep_graph, all_versions)
+                if safe_ver:
+                    pkg.safe_update_version = safe_ver
 
 class PipPartialScanWorker(BaseCmdWorker):
     packages_scanned = Signal(str, list, list)
@@ -272,14 +287,15 @@ class PipPartialScanWorker(BaseCmdWorker):
             uv_path = self.uv_path
             py_exe = resolve_python_executable(self.env)
             args = ["--system", "--python", self.env.path] if self.env.type == "system" else ["--python", py_exe]
-            
-            # List installed
+
+            requested_names = [extract_pip_requirement_name(name) for name in self.pkg_names]
+            requested_names = [name for name in requested_names if name]
+            target_names = set(requested_names)
+
             cmd = [uv_path, "pip", "list", "--format", "json"] + args
             res = self._run_command(cmd, capture_output=True, stream_stdout=False)
-            
+
             pkgs = []
-            target_names = {n.lower() for n in self.pkg_names}
-            
             if res.returncode == 0 and res.stdout:
                 json_stdout = res.stdout[res.stdout.find('['):] if '[' in res.stdout else res.stdout
                 if json_stdout.strip():
@@ -290,36 +306,126 @@ class PipPartialScanWorker(BaseCmdWorker):
                         data = json.loads(json_stdout)
                         for item in data:
                             name = item.get("name", "")
-                            if name.lower() in target_names:
+                            if extract_pip_requirement_name(name) in target_names:
                                 pkgs.append(Package(name=name, version=item.get("version")))
                     except Exception:
                         pass
-            
-            # Check outdated
-            cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
-            res_outdated = self._run_command(cmd_outdated, capture_output=True, stream_stdout=False)
-            if res_outdated.returncode == 0 and res_outdated.stdout:
-                json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
-                if json_stdout.strip():
-                    try:
-                        end_idx = json_stdout.rfind(']')
-                        if end_idx != -1:
-                            json_stdout = json_stdout[:end_idx+1]
-                        data = json.loads(json_stdout)
-                        outdated_map = {item.get("name", "").lower(): item for item in data}
-                        for pkg in pkgs:
-                            info = outdated_map.get(pkg.name.lower())
-                            if info:
-                                pkg.latest_version = info.get("latest_version")
-                                pkg.has_update = True
-                    except Exception:
-                        pass
-            
-            self.packages_scanned.emit(self.env.path, pkgs, self.pkg_names)
+
+            self.packages_scanned.emit(self.env.path, pkgs, requested_names)
         except Exception as e:
             self._log(f"Partial Scan Error: {e}", "error")
         finally:
             self._flush_logs()
+
+
+def _fetch_available_versions(worker, uv_path: str, env: Environment, py_exe: str, source_args: list[str], proxy_settings: dict, pkg_name: str) -> list[str]:
+    import functools
+
+    pip_cmd = shutil.which("pip") or "pip"
+    cmd = [pip_cmd, "--python", py_exe, "index", "versions", pkg_name, "--json"] + list(source_args or [])
+    res = worker._run_command(cmd, capture_output=True, stream_stdout=False)
+    versions = []
+
+    if res.returncode == 0 and res.stdout:
+        try:
+            payload = json.loads(res.stdout.strip())
+            if isinstance(payload, dict):
+                v_list = payload.get("versions", []) or []
+                versions.extend([str(v).strip() for v in v_list if str(v).strip()])
+        except json.JSONDecodeError:
+            if "Available versions:" in res.stdout:
+                m2 = re.search(r"Available versions:\s*(.*)", res.stdout)
+                if m2:
+                    v_list = m2.group(1).split(",")
+                    versions.extend([v.strip() for v in v_list if v.strip()])
+            else:
+                m = re.search(r"\((.*?)\)", res.stdout)
+                if m:
+                    v_list = m.group(1).split(",")
+                    versions.extend([v.strip() for v in v_list if v.strip()])
+
+    if not versions:
+        from core.source_profiles import PYPI_OFFICIAL_INDEX
+        import urllib.request
+
+        index_url = PYPI_OFFICIAL_INDEX
+        if source_args:
+            for i, arg in enumerate(source_args):
+                if arg == "--index-url" and i + 1 < len(source_args):
+                    index_url = source_args[i + 1]
+                    break
+        index_url = index_url.rstrip("/")
+        is_official = "pypi.org" in index_url.lower()
+
+        try:
+            if is_official:
+                with proxy_urlopen(
+                    f"https://pypi.org/pypi/{pkg_name}/json",
+                    timeout=3,
+                    proxy_settings=proxy_settings,
+                ) as response:
+                    data = json.loads(response.read())
+                versions = [
+                    version
+                    for version in data.get("releases", {}).keys()
+                    if not is_prerelease_version(version)
+                ]
+            else:
+                req = urllib.request.Request(
+                    f"{index_url}/{pkg_name}/",
+                    headers={"Accept": "application/vnd.pypi.simple.v1+json, text/html;q=0.1"}
+                )
+                with proxy_urlopen(
+                    req,
+                    timeout=3,
+                    proxy_settings=proxy_settings,
+                ) as response:
+                    content_type = response.getheader("Content-Type", "")
+                    body = response.read()
+
+                if "application/vnd.pypi.simple.v1+json" in content_type:
+                    data = json.loads(body)
+                    versions = [v for v in data.get("versions", []) if not is_prerelease_version(v)]
+                else:
+                    html = body.decode("utf-8", errors="ignore")
+                    pkg_prefix_dash = pkg_name.replace('-', '_').lower() + '-'
+                    pkg_prefix_norm = pkg_name.lower() + '-'
+                    
+                    found_versions = set()
+                    for match in re.finditer(r'<a[^>]*>([^<]+)</a>', html, re.IGNORECASE):
+                        filename = match.group(1).strip()
+                        if filename.endswith(".whl"):
+                            parts = filename.split('-')
+                            if len(parts) >= 2:
+                                found_versions.add(parts[1])
+                        elif filename.endswith(".tar.gz") or filename.endswith(".zip"):
+                            base = filename.rsplit('.', 2)[0] if filename.endswith(".tar.gz") else filename.rsplit('.', 1)[0]
+                            base_lower = base.lower()
+                            if base_lower.startswith(pkg_prefix_dash):
+                                found_versions.add(base[len(pkg_prefix_dash):])
+                            elif base_lower.startswith(pkg_prefix_norm):
+                                found_versions.add(base[len(pkg_prefix_norm):])
+                    
+                    versions = [v for v in found_versions if not is_prerelease_version(v)]
+        except Exception as e:
+            import sys
+            print(f"[OmniPack] Fallback API error for {pkg_name}: {e}", file=sys.stderr)
+
+
+    if versions:
+        unique_versions = list(set(versions))
+        unique_versions.sort(key=functools.cmp_to_key(compare_versions), reverse=True)
+        versions = sorted(
+            unique_versions,
+            key=lambda version: (
+                [int(x) for x in re.findall(r"\d+", str(version or ""))][:4],
+                1 if "+" not in str(version or "") else 0,
+                str(version or "").lower(),
+            ),
+            reverse=True,
+        )
+
+    return versions
 
 
 def _restore_package_state(current_pkgs: list[Package], previous_pkgs: list[Package], include_tree: bool = False, restore_update_state: bool = True):
@@ -344,6 +450,7 @@ def _restore_package_state(current_pkgs: list[Package], previous_pkgs: list[Pack
             pkg.has_update = getattr(previous, "has_update", False)
             pkg.breaks_constraint = getattr(previous, "breaks_constraint", False)
             pkg.build_variant_mismatch = getattr(previous, "build_variant_mismatch", False)
+            pkg.safe_update_version = getattr(previous, "safe_update_version", "")
 
         if include_tree:
             pkg.requires = list(getattr(previous, "requires", []) or [])
@@ -502,7 +609,24 @@ class ScanWorker(BaseCmdWorker):
                     self.env.dep_graph = dep_graph
 
                     # Compute breaks_constraint for packages with updates
-                    _compute_breaks_constraint(pkgs, dep_graph)
+                    version_cache = {}
+                    
+                    def fetch_versions(pkg_name: str) -> list[str]:
+                        if pkg_name in version_cache:
+                            return version_cache[pkg_name]
+                        versions = _fetch_available_versions(
+                            self,
+                            uv_path,
+                            self.env,
+                            py_exe,
+                            self.source_args,
+                            self.proxy_settings,
+                            pkg_name,
+                        )
+                        version_cache[pkg_name] = versions
+                        return versions
+
+                    _compute_breaks_constraint(pkgs, dep_graph, version_fetcher=fetch_versions)
                     _restore_package_state(
                         pkgs,
                         previous_pkgs,

@@ -108,6 +108,17 @@ class PipPanel(BasePanel):
         self._ansi_stripper = StreamingAnsiStripper()
         self._interceptor_buffer = ""
         self._active_operations = []  # list of dicts: {"env_path": str, "type": str, "pkgs": list, "marker": str}
+        
+        from PySide6.QtCore import QTimer
+        self._marker_timer = QTimer(self)
+        self._marker_timer.timeout.connect(self._check_marker_files)
+        self._marker_timer.start(1000)
+        
+        from PySide6.QtCore import QFileSystemWatcher
+        self._fs_watcher = QFileSystemWatcher(self)
+        self._fs_watcher.directoryChanged.connect(self._on_directory_changed)
+        
+        self._fs_debounce_timers = {}
 
         self._build_pip_ui()
         self._connect_signals()
@@ -128,8 +139,6 @@ class PipPanel(BasePanel):
         self.pip_mgr.env_scanned.connect(self._on_env_scanned)
         self.pip_mgr.specific_packages_scanned.connect(self._on_specific_packages_scanned)
         self.pip_mgr.runtime_update_done.connect(self._on_runtime_update_done)
-        if hasattr(self.terminal, "pty_output_ready"):
-            self.terminal.pty_output_ready.connect(self._on_pty_output_intercepted)
 
     # ── Status bar helper (delegated to parent window) ──
 
@@ -149,6 +158,10 @@ class PipPanel(BasePanel):
 
         try:
             self._clear_env_card_widgets()
+            
+            # Clear existing file watchers
+            if self._fs_watcher.directories():
+                self._fs_watcher.removePaths(self._fs_watcher.directories())
 
             self.pip_mgr.reload_envs()
             envs = self.pip_mgr.list_environments()
@@ -182,6 +195,14 @@ class PipPanel(BasePanel):
                 card.activate_requested.connect(self._on_activate_requested)
 
                 self.pip_mgr.scan_environment(env)
+                
+                # Watch site-packages for manual terminal command changes
+                import os
+                site_packages = self._get_site_packages_path(env)
+                if site_packages and os.path.exists(site_packages):
+                    self._fs_watcher.addPath(site_packages)
+                elif os.path.exists(env.path):
+                    self._fs_watcher.addPath(env.path)
 
             self._log("All environments queued for scan.", "system")
         except Exception as e:
@@ -211,49 +232,103 @@ class PipPanel(BasePanel):
             self._update_status_counts()
 
     def _on_pty_output_intercepted(self, text: str):
-        clean = self._ansi_stripper.feed(text)
+        pass  # Kept for backward compatibility with tests
         
-        # Normalize carriage returns that might break regex matching
-        clean = clean.replace("\r", "\n").replace("\x08", "")
-        self._interceptor_buffer += clean
-            
-        if len(self._interceptor_buffer) > 64000:
-            self._interceptor_buffer = self._interceptor_buffer[-64000:]
-            
-        import re
+    def _check_marker_files(self):
+        import os
+        import tempfile
+        temp_dir = tempfile.gettempdir()
         
-        while True:
-            # Match only the evaluated output, not the echoed command which is preceded by 'echo '
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
-            if not match:
-                break
-                
-            marker = match.group(1)
-            exit_code_str = match.group(2)
-            exit_code = int(exit_code_str) if exit_code_str else 0
-            
-            # Find the corresponding operation
-            op_index = next(
-                (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
-                None
-            )
-            
-            if op_index is None:
-                # Marker from history or unknown, just discard up to this match
-                self._interceptor_buffer = self._interceptor_buffer[match.end():]
+        remaining_ops = []
+        for op in self._active_operations:
+            marker = op.get("marker")
+            if not marker:
                 continue
                 
-            op = self._active_operations.pop(op_index)
-            env = self._find_env_by_path(self.pip_mgr.environments, op["env_path"])
+            marker_file = os.path.join(temp_dir, f"{marker}.done")
+            if os.path.exists(marker_file):
+                try:
+                    with open(marker_file, "r") as f:
+                        exit_code_str = f.read().strip()
+                    exit_code = int(exit_code_str) if exit_code_str.isdigit() or (exit_code_str.startswith("-") and exit_code_str[1:].isdigit()) else 0
+                    
+                    try:
+                        os.remove(marker_file)
+                    except OSError:
+                        pass
+                        
+                    env = self._find_env_by_path(self.pip_mgr.environments, op["env_path"])
+                    if env:
+                        if exit_code != 0:
+                            self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
+                            self._refresh_single_env(env.path)
+                        else:
+                            refresh_names = list(op.get("refresh_names") or [])
+                            if op.get("force_full_refresh") or not refresh_names:
+                                self._refresh_single_env(env.path)
+                            else:
+                                self.pip_mgr.scan_specific_packages(env, refresh_names)
+                except Exception as e:
+                    self._log(f"Error reading marker file: {e}", "error")
+                    env = self._find_env_by_path(self.pip_mgr.environments, op["env_path"])
+                    if env:
+                        self._refresh_single_env(env.path)
+            else:
+                remaining_ops.append(op)
                 
-            if env:
-                if exit_code != 0:
-                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
-                    self._refresh_single_env(env.path)
+        self._active_operations = remaining_ops
+        
+    def _get_site_packages_path(self, env):
+        import os
+        path = env.path
+        if os.path.isfile(path):
+            py_dir = os.path.dirname(path)
+            if os.name == "nt":
+                if os.path.basename(py_dir).lower() == "scripts":
+                    base_dir = os.path.dirname(py_dir)
                 else:
-                    self.pip_mgr.scan_specific_packages(env, op["pkgs"])
-                
-            self._interceptor_buffer = self._interceptor_buffer[match.end():]
+                    base_dir = py_dir
+                return os.path.normpath(os.path.join(base_dir, "Lib", "site-packages"))
+            else:
+                if os.path.basename(py_dir).lower() == "bin":
+                    base_dir = os.path.dirname(py_dir)
+                else:
+                    base_dir = py_dir
+                lib_dir = os.path.join(base_dir, "lib")
+                if os.path.exists(lib_dir):
+                    for child in os.listdir(lib_dir):
+                        if child.startswith("python"):
+                            return os.path.normpath(os.path.join(lib_dir, child, "site-packages"))
+                return None
+        else:
+            if os.name == "nt":
+                return os.path.normpath(os.path.join(path, "Lib", "site-packages"))
+            else:
+                return os.path.normpath(os.path.join(path, "lib", f"python{env.version}", "site-packages"))
+
+    def _on_directory_changed(self, path: str):
+        import os
+        path = os.path.normpath(path)
+        # Find which env this belongs to
+        for env in self.pip_mgr.environments:
+            site_packages = self._get_site_packages_path(env)
+            if site_packages:
+                site_packages = os.path.normpath(site_packages)
+            norm_env_path = os.path.normpath(env.path)
+            if path == site_packages or path == norm_env_path:
+                norm_key = self._path_key(env.path)
+                if norm_key not in self._fs_debounce_timers:
+                    from PySide6.QtCore import QTimer
+                    t = QTimer(self)
+                    t.setSingleShot(True)
+                    t.setInterval(2000) # 2 seconds debounce
+                    t.timeout.connect(lambda e=env: self._on_fs_debounce_timeout(e))
+                    self._fs_debounce_timers[norm_key] = t
+                self._fs_debounce_timers[norm_key].start()
+
+    def _on_fs_debounce_timeout(self, env):
+        self._log(f"Detected file system changes in environment {env.name}. Auto-refreshing...", "system")
+        self._refresh_single_env(env.path)
 
     def _on_specific_packages_scanned(self, env_path: str, found_pkgs: list, requested_names: list):
         norm_key = self._path_key(env_path)
@@ -283,6 +358,7 @@ class PipPanel(BasePanel):
                     old_pkg.norm_name = new_pkg.norm_name
                     old_pkg.breaks_constraint = getattr(new_pkg, "breaks_constraint", False)
                     old_pkg.build_variant_mismatch = getattr(new_pkg, "build_variant_mismatch", False)
+                    old_pkg.safe_update_version = getattr(new_pkg, "safe_update_version", "")
                     card.update_package_in_ui(old_pkg)
                 else:
                     # Add new
@@ -450,7 +526,9 @@ class PipPanel(BasePanel):
     def _update_all_in_env(self, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
         if env and env.is_scanned:
-            outdated = [p.name for p in env.packages if p.has_update]
+            outdated = self._build_update_targets(
+                pkg for pkg in env.packages if getattr(pkg, "has_update", False)
+            )
             if not outdated:
                 self._log(f"No updatable packages in {env.name}.", "system")
                 return
@@ -645,7 +723,11 @@ class PipPanel(BasePanel):
         for _env_path, card in self._env_cards.items():
             env = card.env
             if getattr(env, "is_scanned", False):
-                pkgs = [pkg.name for pkg in env.packages if getattr(pkg, "is_selected", False) and getattr(pkg, "has_update", False)]
+                pkgs = self._build_update_targets(
+                    pkg
+                    for pkg in env.packages
+                    if getattr(pkg, "is_selected", False) and getattr(pkg, "has_update", False)
+                )
                 if pkgs:
                     key = self._path_key(env.path)
                     env_packages[key] = pkgs
@@ -668,6 +750,18 @@ class PipPanel(BasePanel):
             cmd_str = ShellCommandRenderer.render(cmd_list, shell_name)
             cmd_str = ShellCommandRenderer.append_marker(cmd_str, marker, shell_name, include_exit_code=True)
             ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
+
+    def _build_update_targets(self, packages):
+        targets = []
+        for pkg in packages:
+            if getattr(pkg, "breaks_constraint", False):
+                safe_ver = str(getattr(pkg, "safe_update_version", "") or "").strip()
+                if not safe_ver:
+                    continue
+                targets.append(f"{pkg.name}=={safe_ver}")
+            else:
+                targets.append(pkg.name)
+        return targets
 
     # ── Batch Remove ─────────────────────────────────────────────────────
 

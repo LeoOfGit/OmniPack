@@ -72,11 +72,12 @@ OmniPack distinguishes **package updates** from **runtime updates**:
 - **Patch update detection**: for Python (`3.14.x`) and Node (`25.x`), OmniPack checks the latest patch in the same cycle and shows `current -> latest` directly on cards.
 - **Dedicated runtime update action**: runtime update uses a separate card action (`Py` / `Nd`), while `⇧` remains **package update only**.
 
-### ⛑️ Safe Update Intelligence: Constraint-Aware & Variant-Aware
-OmniPack knows which updates are **safe** and which need a **second look**.
-- **Constraint-Aware Auto-Selection**: When "Outdated" is checked, packages whose latest version violates dependent version constraints (e.g., mpmath `1.4.1` breaks sympy's `<1.4` rule) are **not auto-selected**. A visual `⚠` indicator explains why.
+### ⛑️ Safe Update Intelligence: Constraint-Aware & Safe Intermediates (Enhanced in v12)
+OmniPack knows which updates are **safe** and guides you through risk-free upgrades.
+- **Safe Intermediate Recommendation**: When a package's latest version violates a version constraint, OmniPack automatically searches the version history to find the highest available version that *does* satisfy the constraint. Such packages are highlighted with a **blue** indicator and can be safely updated in one click.
+- **Constraint-Aware Auto-Selection**: When "Outdated" is checked, packages that have *no* safe update path are **not auto-selected**. A visual `⚠` indicator explains why. Hovering over it details which upstream packages are imposing which specific version limits.
+- **Real-time File System Sync**: Built-in directory watcher. Whether you run install commands in a system terminal or the embedded PTY, the UI auto-detects the changes and refreshes itself, keeping state perfectly in sync with the physical disk.
 - **Build Variant Detection**: Automatically recognizes PEP 440 local version suffixes (`+cu132`, `+cpu`, `+rocm5.6`). If updating would switch your package between different hardware builds (CUDA → CPU), a `🔀` indicator warns you.
-- **Confirmation dialogs**: Clicking update on a flagged package triggers a detailed risk dialog. You can still proceed — but only after being fully informed.
 
 ![OmniPack Version Limits](./resources/VersionLimits.png)
 

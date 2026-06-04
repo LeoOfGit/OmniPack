@@ -6,13 +6,45 @@ from core.manager_base import Package
 from core.trace_logger import trace_event, is_trace_enabled
 
 
-def _build_constraint_warning(pkg: Package) -> str:
+def _collect_constraint_details(pkg: Package, env=None) -> list[tuple[str, str]]:
+    details = []
+    seen = set()
+    dep_graph = getattr(env, "dep_graph", {}) if env is not None else {}
+    for parent_norm in sorted(set(getattr(pkg, "required_by", []) or [])):
+        parent = dep_graph.get(parent_norm) if isinstance(dep_graph, dict) else None
+        parent_name = getattr(parent, "name", "") or parent_norm
+        parent_requires = getattr(parent, "requires", []) or []
+        matched = False
+        for dep_req in parent_requires:
+            if getattr(dep_req, "norm_name", "") != getattr(pkg, "norm_name", ""):
+                continue
+            constraint = str(getattr(dep_req, "constraint", "") or "").strip()
+            entry = (parent_name, constraint)
+            if entry not in seen:
+                details.append(entry)
+                seen.add(entry)
+            matched = True
+        if not matched:
+            entry = (parent_name, "")
+            if entry not in seen:
+                details.append(entry)
+                seen.add(entry)
+    return details
+
+
+def _build_constraint_warning(pkg: Package, env=None) -> str:
     if not pkg.latest_version:
         return ""
-    constraint_parts = sorted(set(getattr(pkg, "required_by", []) or []))
-    if constraint_parts:
-        return f"Latest version {pkg.latest_version} may break version constraints from:\n  " + "\n  ".join(constraint_parts)
-    return f"Latest version {pkg.latest_version} may break version constraints."
+    constraint_details = _collect_constraint_details(pkg, env)
+    if constraint_details:
+        lines = [f"latest {pkg.latest_version} may violate the following dependencies:"]
+        for parent_name, constraint in constraint_details:
+            if constraint:
+                lines.append(f"  • {parent_name} requires {pkg.name}{constraint}")
+            else:
+                lines.append(f"  • {parent_name} requires {pkg.name}")
+        return "\n".join(lines)
+    return f"latest {pkg.latest_version} may violate dependencies."
 
 
 def _build_variant_tooltip(pkg: Package) -> str:
@@ -127,12 +159,20 @@ class PackageCard(QFrame):
             row_layout.addWidget(status_lbl)
         elif pkg.latest_version and pkg.has_update:
             if getattr(pkg, "breaks_constraint", False):
-                ver_text = f"{pkg.version} ➜ {pkg.latest_version} ⚠"
-                ver_lbl = QLabel(ver_text)
-                ver_lbl.setObjectName("PkgVersionUpdateWarning")
-                constraint_info = _build_constraint_warning(pkg)
-                if constraint_info:
-                    ver_lbl.setToolTip(constraint_info)
+                if getattr(pkg, "safe_update_version", ""):
+                    ver_text = f"{pkg.version} ➜ {pkg.safe_update_version} 🔒 (latest {pkg.latest_version})"
+                    ver_lbl = QLabel(ver_text)
+                    ver_lbl.setObjectName("PkgVersionUpdateConstrained")
+                    constraint_info = _build_constraint_warning(pkg, self.env)
+                    if constraint_info:
+                        ver_lbl.setToolTip(constraint_info + f"\n\nCan safely update to {pkg.safe_update_version}")
+                else:
+                    ver_text = f"{pkg.version} ➜ {pkg.latest_version} ⚠"
+                    ver_lbl = QLabel(ver_text)
+                    ver_lbl.setObjectName("PkgVersionUpdateWarning")
+                    constraint_info = _build_constraint_warning(pkg, self.env)
+                    if constraint_info:
+                        ver_lbl.setToolTip(constraint_info + "\n\nNo safe intermediate version available within constraints")
             elif getattr(pkg, "build_variant_mismatch", False):
                 ver_text = f"{pkg.version} ➜ {pkg.latest_version} 🔀"
                 ver_lbl = QLabel(ver_text)
@@ -201,14 +241,24 @@ class PackageCard(QFrame):
                 can_update = bool((pkg.metadata or {}).get("can_update", True))
                 blocked_reason = str((pkg.metadata or {}).get("update_blocked_reason", "")).strip()
                 if getattr(pkg, "breaks_constraint", False):
-                    up_btn = QPushButton("⇧")
-                    up_btn.setObjectName("PkgUpdateBtnWarning")
-                    constraint_info = _build_constraint_warning(pkg)
-                    up_btn.setToolTip(f"Update {pkg.name} (⚠ may break version constraints)")
-                    up_btn.setCursor(Qt.PointingHandCursor)
-                    target_channel = channel or "latest"
-                    up_btn.clicked.connect(lambda: self._confirm_constraint_update(pkg, target_channel))
-                    row_layout.addWidget(up_btn)
+                    if getattr(pkg, "safe_update_version", ""):
+                        up_btn = QPushButton("⇧")
+                        up_btn.setObjectName("PkgUpdateBtnConstrained")
+                        up_btn.setToolTip(f"Update {pkg.name} to {pkg.safe_update_version} (Safe)")
+                        up_btn.setCursor(Qt.PointingHandCursor)
+                        target_channel = channel or "latest"
+                        target = f"{self._action_target()}=={pkg.safe_update_version}"
+                        up_btn.clicked.connect(lambda checked=False, t=target, c=target_channel: self.update_requested.emit(t, c))
+                        row_layout.addWidget(up_btn)
+                    else:
+                        up_btn = QPushButton("⇧")
+                        up_btn.setObjectName("PkgUpdateBtnWarning")
+                        constraint_info = _build_constraint_warning(pkg, self.env)
+                        up_btn.setToolTip(f"Update {pkg.name} (⚠ may break version constraints)")
+                        up_btn.setCursor(Qt.PointingHandCursor)
+                        target_channel = channel or "latest"
+                        up_btn.clicked.connect(lambda checked=False: self._confirm_constraint_update(pkg, target_channel))
+                        row_layout.addWidget(up_btn)
                 elif getattr(pkg, "build_variant_mismatch", False):
                     up_btn = QPushButton("⇧")
                     up_btn.setObjectName("PkgUpdateBtnVariant")
@@ -279,7 +329,7 @@ class PackageCard(QFrame):
         self.set_checked(state == checked_val)
 
     def _confirm_constraint_update(self, pkg, target_channel):
-        warning_text = _build_constraint_warning(pkg)
+        warning_text = _build_constraint_warning(pkg, self.env)
         reply = QMessageBox.warning(
             self,
             "Constraint Warning",
@@ -381,6 +431,7 @@ class PackageCard(QFrame):
                     metadata=child_pkg.metadata,
                     breaks_constraint=getattr(child_pkg, "breaks_constraint", False),
                     build_variant_mismatch=getattr(child_pkg, "build_variant_mismatch", False),
+                    safe_update_version=getattr(child_pkg, "safe_update_version", ""),
                 )
 
             card = PackageCard(child_pkg, depth=self.depth + 1, env=self.env)

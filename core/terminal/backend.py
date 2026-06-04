@@ -58,7 +58,12 @@ if os.name == "nt":
         def spawn(self, cmd=None, cwd=None, env=None):
             cmd = cmd or "cmd.exe"
             cwd = cwd or os.path.expanduser("~")
-            self._process = PtyProcess.spawn(cmd, cwd=cwd)
+            if env:
+                run_env = os.environ.copy()
+                run_env.update(env)
+            else:
+                run_env = None
+            self._process = PtyProcess.spawn(cmd, cwd=cwd, env=run_env)
 
         def write(self, data: str):
             if self._process:

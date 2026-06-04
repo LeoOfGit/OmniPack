@@ -44,3 +44,39 @@ def has_explicit_tag(spec: str) -> bool:
     _, tag = split_npm_spec(spec)
     return bool(tag)
 
+
+def extract_npm_package_name(spec: str) -> str:
+    """
+    Extract the installed package name from an npm spec.
+
+    Returns an empty string for local paths, workspace/file/git installs, or
+    any spec that cannot be safely mapped back to a single package entry.
+    """
+    raw = (spec or "").strip()
+    if not raw:
+        return ""
+
+    lowered = raw.lower()
+    if lowered in {".", ".."}:
+        return ""
+
+    if raw.startswith(("./", "../", ".\\", "..\\", "/", "\\")):
+        return ""
+
+    if lowered.startswith(("file:", "git+", "git://", "http://", "https://", "github:", "workspace:", "link:")):
+        return ""
+
+    if "@npm:" in lowered:
+        raw = raw[:lowered.find("@npm:")]
+
+    name, _tag = split_npm_spec(raw)
+    name = (name or "").strip()
+    if not name or any(ch.isspace() for ch in name):
+        return ""
+
+    if name.startswith("@"):
+        slash_idx = name.find("/")
+        if slash_idx <= 1 or slash_idx == len(name) - 1:
+            return ""
+
+    return name.lower()

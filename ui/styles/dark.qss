@@ -1,243 +1,336 @@
 /* 
-    OmniPack Dark Theme
+    OmniPack Dark Theme (HSV Edition)
     ======================
     This file centralizes all styling (colors, sizes, fonts, margins)
     for the entire application.
+    
+    [QSS HSV 模式重构说明 / Restructure Note]
+    所有颜色已全部重构为 Qt 规范的 hsv(h, s, v) 表达模式，其中：
+    - h (色相 Hue): 0 - 359
+    - s (饱和度 Saturation): 0 - 255
+    - v (明度 Value): 0 - 255
+    这能让您极其直观地从数值上对比不同状态色的色相分化、明暗高低与饱和对比。
 */
 
-/* ==========================================================
-   GLOBAL SETTINGS
-   ========================================================== */
+/* ==========================================================================
+   0. COLOR REFERENCE DICTIONARY / 颜色变量与参考字典 (HSV 数值版)
+   ==========================================================================
+   在此全局速查表中，您可以极其直观地对比 6 类状态在 HSV 色彩空间上的数值正交性：
+
+   1. 🟢 常规升级 (Regular Upgrade Group) - 纯正翠绿 (色相 142~162)
+      - 文字色 / Text Color:        hsv(142, 170, 222)  (Selector: QLabel#PkgVersionUpdate)
+      - 按钮色 / Button BG:         hsv(162, 166, 77)   (Selector: QPushButton#PkgUpdateBtn)
+      - 按钮悬停 / Hover BG:        hsv(161, 162, 110)
+
+   2. ❄️ 受限升级 (Constrained Upgrade Group) - 冷静钢蓝 (色相 212~214)
+      - 文字色 / Text Color:        hsv(212, 107, 253)  (Selector: QLabel#PkgVersionUpdateConstrained)
+      - 按钮色 / Button BG:         hsv(213, 122, 69)   (Selector: QPushButton#PkgUpdateBtnConstrained)
+      - 按钮悬停 / Hover BG:        hsv(214, 112, 93)
+
+   3. 💠 变体通道 (Variant/Channel Switch Group) - 科技天青 (色相 190~198)
+      - 文字色 / Text Color:        hsv(198, 197, 248)  (Selector: QLabel#PkgVersionUpdateVariant)
+      - 按钮色 / Button BG:         hsv(190, 202, 92)   (Selector: QPushButton#PkgUpdateBtnVariant)
+      - 按钮悬停 / Hover BG:        hsv(190, 201, 127)
+
+   4. 🟡 冲突警告 / 已满足最新 (Warning/Conflict Group) - 警戒黄橙 (色相 35~38)
+      - 文字色 / Text Color:        hsv(38, 244, 245)   (Selector: QLabel#PkgVersionUpdateWarning)
+      - 按钮色 / Button BG:         hsv(35, 249, 124)   (Selector: QPushButton#PkgUpdateBtnWarning)
+      - 按钮悬停 / Hover BG:        hsv(35, 248, 156)
+
+   5. 🟣 安装/添加软件包 (Package Installation Group) - 神秘星海紫 (色相 262~263)
+      - 按钮色 / Button BG:         hsv(263, 149, 120)  (Selector: QPushButton#ActionBtnInstall)
+      - 按钮悬停 / Hover BG:        hsv(262, 146, 150)
+
+   6. 🔴 删除/卸载软件包 (Package Removal Group) - 危险宝石红 (色相 0)
+      - 按钮色 / Button BG:         hsv(0, 201, 122)    (Selector: QPushButton#ActionBtnRemove 等)
+      - 按钮悬停 / Hover BG:        hsv(0, 198, 158)
+
+   7. ⚙️ 全局其它常用底色 (Global Miscellaneous BG)
+      - 窗口主背景 / MainWindow:    hsv(0, 0, 5)
+      - 卡片默认背景 / Card BG:      hsv(240, 16, 48)   (Hover: hsv(240, 15, 66))
+      - 编辑框默认底色 / Input BG:   hsv(0, 0, 30)      / hsv(240, 16, 48)
+      - 控制台大背景 / Console BG:   hsv(0, 0, 0)
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. GLOBAL & WINDOW STYLES / 全局与窗口基础样式
+   ========================================================================== */
+
 QMainWindow {
-    background-color: #020202;
-    color: #ffffff;
+    background-color: hsv(0, 0, 5);
+    color: hsv(0, 0, 255);
 }
 
 QWidget {
-    color: #ffffff;
+    color: hsv(0, 0, 255);
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
-/* ==========================================================
-   STATUS BAR & TABS
-   ========================================================== */
-QStatusBar {
-    background-color: #161616;
-    color: #ffffff;
-}
-
-QStatusBar QLabel {
-    color: #ffffff;
-    margin-left: 5px;
-}
-
-QStatusBar QLabel#CountLabel {
-    color: #88ff88;
-    margin-left: 5px;
-    margin-right: 5px;
-}
-
-QStatusBar QPushButton {
-    background-color: transparent;
-    color: #666666;
-    border: none;
-    padding: 2px 8px;
-    margin: 0px;
-    border-radius: 2px;
-}
-
-QStatusBar QPushButton#AppTabButton {
-    /* Auto width based on content */
-}
-
-QStatusBar QPushButton:hover {
-    background-color: rgba(0, 255, 255, 0.2);
-}
-
-QStatusBar QPushButton:checked {
-    background-color: rgba(0, 255, 255, 0.4);
-    font-weight: bold;
-    color: #ffffff;
-}
-
-/* Specific: Guide Button */
-QStatusBar QPushButton#HelpButton {
-    font-weight: bold;
-    background-color: rgba(255, 255, 255, 0.1);
-    color: #E0E0E0;
-    border: none;
-    border-radius: 3px;
-    padding: 0px 8px;
-}
-
-QStatusBar QPushButton#HelpButton:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: white;
-}
-
-QStatusBar QPushButton#HelpButton:pressed {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-/* ==========================================================
-   SPLITTER (Left/Right Divider)
-   ========================================================== */
+/* Splitter (Left/Right Divider) / 左右分栏分割线 */
 QSplitter::handle {
-    background-color: #eeeeee;
+    background-color: hsv(0, 0, 238);
 }
 
-/* ==========================================================
-   BASE PANEL (Left Side)
-   ========================================================== */
-QWidget#LeftToolbar {
-    background-color: #0f0f0f;
-    border-bottom: 1px solid #333;
-    min-height: 36px;
-    max-height: 36px;
-}
-
-QScrollArea#BaseScrollArea {
-    background-color: transparent;
-    border: none;
-}
-
-QWidget#BaseScrollContent {
-    background-color: #020202;
-}
-
-/* Base Panel Search Box */
-QLineEdit#ToolbarSearch {
-    background-color: #1e1e1e;
-    border: 1px solid #444;
-    padding: 4px;
-    border-radius: 4px;
-}
-
-QLineEdit#ToolbarSearch:focus {
-    border: 1px solid #007acc;
-}
-
-/* ==========================================================
-   BUTTONS (General & Shared Themes)
-   ========================================================== */
+/* Global Button Base Styles / 全局按钮基础样式 */
 QPushButton {
-    background-color: #333;
-    color: #ffffff;
-    border: 1px solid #555;
+    background-color: hsv(0, 0, 50);
+    color: hsv(0, 0, 255);
+    border: 1px solid hsv(0, 0, 85);
     padding: 2px 10px;
     border-radius: 4px;
     font-size: 15px;
 }
 
 QPushButton:hover {
-    background-color: #444;
+    background-color: hsv(0, 0, 68);
 }
 
 QPushButton:pressed {
-    background-color: #222;
+    background-color: hsv(0, 0, 34);
 }
 
-/* 1. Theme: Success / Update (Green) */
+/* Global Text Inputs / 全局单行/多行输入框 */
+QLineEdit,
+QTextEdit {
+    background-color: hsv(240, 16, 48);
+    border: 1px solid hsv(240, 26, 70);
+    color: hsv(0, 0, 255);
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QLineEdit:focus,
+QTextEdit:focus {
+    border: 1px solid hsv(204, 255, 204);
+}
+
+QLineEdit[readonly="true"] {
+    color: hsv(216, 27, 190);
+    background-color: hsv(218, 60, 34);
+    border: 1px solid hsv(218, 59, 82);
+}
+
+/* Checkboxes / 复选框样式 */
+QCheckBox {
+    spacing: 8px;
+    color: hsv(0, 0, 255);
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid hsv(0, 0, 255);
+    border-radius: 4px;
+    background-color: hsv(0, 0, 26);
+}
+
+QCheckBox::indicator:unchecked:hover {
+    border-color: hsv(204, 255, 204);
+}
+
+QCheckBox::indicator:checked {
+    background-color: hsv(204, 255, 204);
+    border: 1px solid hsv(0, 0, 255);
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: hsv(204, 255, 255);
+    border-color: hsv(0, 0, 255);
+}
+
+QCheckBox::indicator:indeterminate {
+    background-color: hsv(36, 255, 255);
+    border: 1px solid hsv(0, 0, 255);
+}
+
+QCheckBox::indicator:indeterminate:hover {
+    background-color: hsv(36, 204, 255);
+    border-color: hsv(0, 0, 255);
+}
+
+
+/* ==========================================================================
+   2. STATE-BASED LABELS / 核心状态文字颜色
+   ========================================================================== */
+
+/* 🟢 正常升级文本标签 / Regular Upgrade Text Label */
+QLabel#PkgVersionUpdate {
+    color: hsv(120, 155, 230);
+}
+
+/* ❄️ 受限升级文本标签 / Constrained Upgrade Text Label */
+QLabel#PkgVersionUpdateConstrained {
+    color: hsv(230, 150, 255);
+    font-weight: bold;
+}
+
+/* 🟡 冲突警告文本标签 / Conflict Warning Text Label */
+QLabel#PkgVersionUpdateWarning {
+    color: hsv(36, 255, 255);
+    font-weight: bold;
+}
+
+/* 💠 变体/通道升级文本标签 / Variant & Channel Switch Text Label */
+QLabel#PkgVersionUpdateVariant {
+    color: hsv(310, 200, 255);
+    font-weight: bold;
+}
+
+/* ⚪ 正常已安装基础版本标签 / Regular Installed Base Version Label */
+QLabel#PkgVersionBase {
+    color: hsv(0, 0, 250);
+}
+
+/* 🔴 依赖包缺失提示标签 / Package Missing/Not Installed Label */
+QLabel#PkgMissingLabel {
+    color: hsv(0, 148, 255);
+    font-weight: bold;
+    font-size: 9pt;
+    padding: 1px 6px;
+    border: 1px solid hsv(0, 148, 255);
+    border-radius: 3px;
+}
+
+/* 🔴 缺失包的名称标签 / Missing Package Name Label */
+QLabel#PkgNameMissing {
+    color: hsv(0, 0, 120);
+    font-family: Consolas, monospace;
+    font-size: 10pt;
+    font-style: italic;
+}
+
+/* 🟣 树节点内依赖约束标签 / Tree Node Version Constraint Label */
+QLabel#PkgConstraint {
+    color: hsv(240, 70, 255);
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    padding: 0px 4px;
+}
+
+
+/* ==========================================================================
+   3. STATE-BASED BUTTONS / 核心操作动作按钮
+   ========================================================================== */
+
+/* 🟢 常规升级按钮 (包括批量、一键和单包更新) / Regular Upgrade Buttons */
 QPushButton#ActionBtnBatchUpdate,
 QPushButton#EnvUpdateAllBtn,
 QPushButton#ActionBtnUpdate,
 QPushButton#PkgUpdateBtn {
-    background-color: #2d6a4f;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
+    background-color: hsv(120, 155, 120);
 }
 
 QPushButton#ActionBtnBatchUpdate:hover,
 QPushButton#EnvUpdateAllBtn:hover,
 QPushButton#ActionBtnUpdate:hover,
 QPushButton#PkgUpdateBtn:hover {
-    background-color: #388060;
+    background-color: hsv(120, 154, 160);
 }
 
+/* ❄️ 受限安全更新按钮 / Constrained Safe Update Button */
+QPushButton#PkgUpdateBtnConstrained {
+    color: hsv(0, 0, 255);
+    background-color: hsv(230, 150, 200);
+}
+
+QPushButton#PkgUpdateBtnConstrained:hover {
+    background-color: hsv(230, 150, 230);
+}
+
+/* 🟡 冲突警告更新按钮 / Conflict Warning Update Button */
 QPushButton#PkgUpdateBtnWarning {
-    background-color: #8a6d20;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
+    background-color: hsv(30, 255, 180);
 }
 
 QPushButton#PkgUpdateBtnWarning:hover {
-    background-color: #a6842a;
+    background-color: hsv(30, 255, 210);
 }
 
+/* 💠 变体升级按钮 (变体变化提示) / Variant Switch Update Button */
 QPushButton#PkgUpdateBtnVariant {
-    background-color: #1a5a7a;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
+    background-color: hsv(310, 201, 150);
 }
 
 QPushButton#PkgUpdateBtnVariant:hover {
-    background-color: #2a7a9a;
+    background-color: hsv(310, 200, 180);
 }
 
-/* 2. Theme: Danger / Remove (Red) */
+/* 🔴 删除/卸载按钮 (单包及批量移除) / Package Removal Buttons */
 QPushButton#ActionBtnBatchRemove,
 QPushButton#DialogActionBtnRemove,
 QPushButton#ActionBtnRemove {
-    background-color: #6c1d1d;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
+    background-color: hsv(0, 230, 130);
 }
 
 QPushButton#ActionBtnBatchRemove:hover,
 QPushButton#DialogActionBtnRemove:hover,
 QPushButton#ActionBtnRemove:hover {
-    background-color: #8c2626;
+    background-color: hsv(0, 230, 160);
 }
 
-/* 3. Theme: Install (Blue) */
+/* 🟣 安装加号按钮 (缺失依赖包的快速安装) / Missing Package Install Button */
 QPushButton#ActionBtnInstall {
-    background-color: #1a5276;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
+    background-color: hsv(180, 255, 200);
 }
 
 QPushButton#ActionBtnInstall:hover {
-    background-color: #2471a3;
+    background-color: hsv(180, 255, 230);
 }
 
-/* 3b. Theme: Runtime Update (Amber) */
+/* ⚙️ 包配置按钮 / Package Configure Button */
+QPushButton#ActionBtnConfig {
+    /* Auto styles inherit from global QPushButton */
+}
+
+/* 3b. 🟠 Runtime 运行环境更新按钮 / Runtime Environment Update Button */
 QPushButton#EnvRuntimeUpdateBtn {
-    background-color: #7a5a00;
-    color: #ffffff;
-    border-color: #9b7708;
+    color: hsv(0, 0, 255);
+    border-color: hsv(44, 255, 155);
+    background-color: hsv(44, 255, 122);
 }
 
 QPushButton#EnvRuntimeUpdateBtn:hover {
-    background-color: #8f6a02;
+    background-color: hsv(44, 255, 143);
 }
 
-/* 4. Theme: Outline / Ghost */
-QPushButton#ActionBtnOutline {
-    background-color: transparent;
-    color: #ccc;
-    font-size: 16px;
-}
-
-QPushButton#ActionBtnOutline:hover {
-    border-color: #888;
-}
-
-/* 5. Theme: Neutral Toolbar Button (Grey) */
+/* ⚪ 通用清空/刷新工具栏按钮 / Neutral Toolbar Buttons */
 QPushButton#ActionBtnRefresh {
-    background-color: #3e3e42;
-    color: #ffffff;
-    border: 1px solid #555;
+    color: hsv(0, 0, 255);
+    border: 1px solid hsv(0, 0, 85);
+    background-color: hsv(240, 6, 66);
 }
 
 QPushButton#ActionBtnRefresh:hover {
-    background-color: #4e4e52;
+    background-color: hsv(240, 12, 82);
 }
 
-/* ==========================================================
-   BUTTONS (Layout Variations)
-   ========================================================== */
+QPushButton#ActionBtnOutline {
+    color: hsv(0, 0, 204);
+    font-size: 16px;
+    background-color: transparent;
+}
 
-/* Variant: Fixed Icon Button (30x30 square) */
+QPushButton#ActionBtnOutline:hover {
+    border-color: hsv(0, 0, 136);
+}
+
+/* ==========================================================================
+   BUTTONS (Layout Variations & Geometry Override) / 按钮几何与布局变体
+   ========================================================================== */
+
+/* Variant: Fixed Icon Button (30x30 square) / 固定大小的 30x30 方形图标按钮 */
 QPushButton#ActionBtnOutline,
 QPushButton#ActionBtnUpdate,
 QPushButton#ActionBtnRemove,
 QPushButton#ActionBtnInstall,
 QPushButton#PkgUpdateBtn,
+QPushButton#PkgUpdateBtnConstrained,
 QPushButton#PkgUpdateBtnWarning,
 QPushButton#PkgUpdateBtnVariant,
 QPushButton#EnvActivateBtn,
@@ -252,9 +345,10 @@ QWidget#ActionBtnSpacer {
     padding: 0px;
 }
 
-/* Special font sizes for Icon Buttons (symbols) */
+/* Special font sizes for Icon Buttons (symbols) / 符号型图标按钮的字号微调 */
 QPushButton#ActionBtnUpdate,
 QPushButton#PkgUpdateBtn,
+QPushButton#PkgUpdateBtnConstrained,
 QPushButton#PkgUpdateBtnWarning,
 QPushButton#PkgUpdateBtnVariant,
 QPushButton#ActionBtnInstall {
@@ -272,7 +366,7 @@ QPushButton#ActionBtnRemove {
     font-weight: bold;
 }
 
-/* Variant: Batch / Toolbar Text Buttons */
+/* Variant: Batch / Toolbar Text Buttons / 批量文本操作按钮的 padding */
 QPushButton#ActionBtnBatchUpdate,
 QPushButton#ActionBtnBatchRemove,
 QPushButton#DialogActionBtnRemove,
@@ -281,20 +375,13 @@ QPushButton#ActionBtnRefresh {
     font-size: 16px;
 }
 
-/* ==========================================================
-   CONTEXTUAL OVERRIDES (Specific Layout Areas)
-   ========================================================== */
-
-/* 1. Left Toolbar Buttons Alignment */
-/* Unify heights for all buttons inside the toolbar to ensure a clean line */
+/* Contextual Override: Left Toolbar Buttons Alignment / 左侧工具栏对齐微调 */
 QWidget#LeftToolbar QPushButton {
     min-height: 26px;
     max-height: 26px;
     font-size: 14px;
-    /* Slightly smaller for tight toolbar space */
 }
 
-/* Force Icon and Text Buttons inside toolbar to be exactly the same Height */
 QWidget#LeftToolbar QPushButton#ActionBtnOutline,
 QWidget#LeftToolbar QPushButton#ActionBtnBatchUpdate,
 QWidget#LeftToolbar QPushButton#ActionBtnBatchRemove,
@@ -304,80 +391,41 @@ QWidget#LeftToolbar QPushButton#ActionBtnRefresh {
     padding-top: 0px;
     padding-bottom: 0px;
     font-size: 13px;
-    /* Smaller font to fit symbols without expanding */
 }
 
-/* Force square shape for icons in toolbar */
 QWidget#LeftToolbar QPushButton#ActionBtnOutline {
     min-width: 26px;
     max-width: 26px;
 }
 
-/* ==========================================================
-   CHECKBOXES
-   ========================================================== */
-QCheckBox {
-    spacing: 8px;
-    color: #ffffff;
-}
 
-QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border: 1px solid #fff;
-    border-radius: 4px;
-    background-color: #1a1a1a;
-}
+/* ==========================================================================
+   4. CARDS & CONTAINER LAYOUTS / 核心卡片容器与表单样式
+   ========================================================================== */
 
-QCheckBox::indicator:unchecked:hover {
-    border-color: #007acc;
-}
-
-QCheckBox::indicator:checked {
-    background-color: #007acc;
-    border: 1px solid #fff;
-}
-
-QCheckBox::indicator:checked:hover {
-    background-color: #0098ff;
-    border-color: #fff;
-}
-
-QCheckBox::indicator:indeterminate {
-    background-color: #ff9800;
-    border: 1px solid #fff;
-}
-
-QCheckBox::indicator:indeterminate:hover {
-    background-color: #ffad33;
-    border-color: #fff;
-}
-
-/* ==========================================================
-   CARDS (EnvCard, NpmAppCard, PackageCard)
-   ========================================================== */
+/* EnvCard & AppCard Container / 运行环境与主应用卡片容器 */
 QFrame#EnvHeaderFrame,
 QFrame#AppCard {
-    background-color: #2d2d30;
+    background-color: hsv(240, 16, 48);
     border-radius: 6px;
-    border: 1px solid #3f3f46;
+    border: 1px solid hsv(240, 26, 70);
 }
 
 QFrame#EnvHeaderFrame:hover,
 QFrame#AppCard:hover {
-    background-color: #3e3e42;
-    border-color: #52525b;
+    background-color: hsv(240, 15, 66);
+    border-color: hsv(240, 25, 91);
 }
 
-/* Typography on Cards */
+/* Typography on Cards / 卡片上的文本样式 */
 QLabel#CardTitle {
     font-weight: bold;
     font-size: 11pt;
-    color: #e0e0e0;
+    color: hsv(0, 0, 224);
 }
 
 QLabel#CardVersion {
-    color: #bbb;
+    color: hsv(0, 0, 187);
     font-family: Consolas, monospace;
     font-size: 10pt;
 }
@@ -387,9 +435,9 @@ QLabel#CardChannel {
     font-size: 10pt;
 }
 
-/* Environment Header Specific */
+/* Environment Header Specific / 运行环境专属标签 */
 QLabel#ToggleArrow {
-    color: #4cc9f0;
+    color: hsv(194, 174, 240);
     font-weight: bold;
     font-family: 'Segoe UI Symbol', sans-serif;
     font-size: 14px;
@@ -400,22 +448,22 @@ QLabel#ToggleArrow {
     margin-right: 5px;
 }
 
-QLabel#EnvVersion {
-    color: #ada;
+#EnvVersion {
+    color: hsv(120, 59, 221);
     font-family: Consolas, monospace;
 }
 
 QLabel#EnvBadge {
-    color: #FF9800;
+    color: hsv(36, 255, 255);
     font-weight: bold;
     padding: 2px 6px;
-    border: 1px solid #FF9800;
+    border: 1px solid hsv(36, 255, 255);
     border-radius: 3px;
     min-width: 40px;
 }
 
 QLabel#EnvCount {
-    color: #aaa;
+    color: hsv(0, 0, 170);
 }
 
 QPushButton#EnvActivateBtn,
@@ -425,51 +473,198 @@ QPushButton#EnvRefreshBtn {
 }
 
 QLabel#EnvLoadingLbl {
-    color: #888888;
+    color: hsv(0, 0, 136);
     font-style: italic;
 }
 
 QLabel#EnvEmptyLbl {
-    color: #666666;
+    color: hsv(0, 0, 102);
     font-style: italic;
     padding-left: 10px;
 }
 
-/* Package Card Form Elements */
+/* Left Toolbar Search Box / 左侧栏搜索框 */
+QLineEdit#ToolbarSearch {
+    background-color: hsv(0, 0, 30);
+    border: 1px solid hsv(0, 0, 68);
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QLineEdit#ToolbarSearch:focus {
+    border: 1px solid hsv(204, 255, 204);
+}
+
+/* Package Card Form Elements / 包版本输入框 */
 QLineEdit#PkgVersionInput {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    border: 1px solid #555;
+    background-color: hsv(0, 0, 30);
+    color: hsv(0, 0, 224);
+    border: 1px solid hsv(0, 0, 85);
     padding: 2px 4px;
     border-radius: 3px;
 }
 
 QLineEdit#PkgVersionInput:focus {
-    border: 1px solid #4cc9f0;
+    border: 1px solid hsv(194, 174, 240);
 }
 
-/* ==========================================================
-   CONSOLE PANEL (Right Side)
-   ========================================================== */
+/* Left Sidebar Base Scroll Container / 左侧基础滚动区容器 */
+QScrollArea#BaseScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#BaseScrollContent {
+    background-color: hsv(0, 0, 5);
+}
+
+QWidget#LeftToolbar {
+    background-color: hsv(0, 0, 15);
+    border-bottom: 1px solid hsv(0, 0, 51);
+    min-height: 36px;
+    max-height: 36px;
+}
+
+/* Package List Cards / 单个依赖包卡片容器 */
+QFrame#PackageCard {
+    background-color: hsv(240, 7, 38);
+    border-radius: 4px;
+    border: 1px solid hsv(0, 0, 51);
+}
+
+QFrame#PackageCard:hover {
+    border-color: hsv(0, 0, 68);
+    background-color: hsv(240, 16, 48);
+}
+
+QFrame#PackageCard QLabel {
+    font-family: 'Consolas', monospace;
+    font-size: 10pt;
+}
+
+QLabel#PkgName {
+    font-weight: bold;
+    color: hsv(0, 0, 224);
+}
+
+/* Dependency Tree Node Styles / 树形节点图标与折叠箭头 */
+QLabel#PkgToggleArrow {
+    color: hsv(194, 174, 240);
+    font-weight: bold;
+    font-family: 'Segoe UI Symbol', sans-serif;
+    font-size: 11px;
+}
+
+QLabel#PkgLeafDot {
+    color: hsv(0, 0, 85);
+    font-size: 8px;
+}
+
+/* Ghost / Missing Package Card / 幽灵包与缺失包的容器外观 */
+QFrame#MissingPackageCard {
+    background-color: rgba(40, 30, 30, 0.6);
+    border-radius: 4px;
+    border: 1px dashed hsv(0, 60, 85);
+}
+
+QFrame#MissingPackageCard:hover {
+    border-color: hsv(0, 148, 255);
+    background-color: rgba(50, 35, 35, 0.8);
+}
+
+/* Tree Summary Label / 树节点统计文本与徽章 */
+QLabel#EnvTreeSummary {
+    color: hsv(0, 0, 119);
+    font-size: 9pt;
+    font-style: italic;
+    padding: 2px 0px;
+}
+
+QLabel#TreeBadge {
+    font-size: 12px;
+    padding: 0px 2px;
+}
+
+
+/* ==========================================================================
+   5. WORKSPACE PANELS & DIALOGS / 工作面板、控制台与对话框
+   ========================================================================== */
+
+/* Status Bar / 全局状态栏 */
+QStatusBar {
+    background-color: hsv(0, 0, 22);
+    color: hsv(0, 0, 255);
+}
+
+QStatusBar QLabel {
+    color: hsv(0, 0, 255);
+    margin-left: 5px;
+}
+
+QStatusBar QLabel#CountLabel {
+    color: hsv(120, 119, 255);
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+QStatusBar QPushButton {
+    background-color: transparent;
+    color: hsv(0, 0, 102);
+    border: none;
+    padding: 2px 8px;
+    margin: 0px;
+    border-radius: 2px;
+}
+
+QStatusBar QPushButton:hover {
+    background-color: rgba(0, 255, 255, 0.2);
+}
+
+QStatusBar QPushButton:checked {
+    background-color: rgba(0, 255, 255, 0.4);
+    font-weight: bold;
+    color: hsv(0, 0, 255);
+}
+
+/* Specific: Guide Button in Status Bar / 状态栏新手向导按钮 */
+QStatusBar QPushButton#HelpButton {
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: hsv(0, 0, 224);
+    border: none;
+    border-radius: 3px;
+    padding: 0px 8px;
+}
+
+QStatusBar QPushButton#HelpButton:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+QStatusBar QPushButton#HelpButton:pressed {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Console Panel (Right Side) / 右侧控制台面板 */
 QFrame#ConsolePanel {
-    background-color: #000000;
+    background-color: hsv(0, 0, 0);
 }
 
 QFrame#ConsoleHeader {
-    background-color: #0f0f0f;
-    border-bottom: 1px solid #333;
+    background-color: hsv(0, 0, 15);
+    border-bottom: 1px solid hsv(0, 0, 51);
     min-height: 36px;
     max-height: 36px;
 }
 
 QLabel#ConsoleTitle {
-    color: #efefef;
+    color: hsv(0, 0, 239);
     font-weight: bold;
     font-family: Consolas, monospace;
 }
 
 QTextEdit#ConsoleText {
-    background-color: #000000;
+    background-color: hsv(0, 0, 0);
     border: none;
     padding: 6px;
     font-family: Consolas, monospace;
@@ -478,8 +673,8 @@ QTextEdit#ConsoleText {
 
 QPushButton#ConsoleClearBtn {
     background-color: transparent;
-    color: #eeeeee;
-    border: 1px solid #444;
+    color: hsv(0, 0, 238);
+    border: 1px solid hsv(0, 0, 68);
     border-radius: 3px;
     font-size: 12px;
     padding: 2px;
@@ -490,162 +685,40 @@ QPushButton#ConsoleClearBtn {
 }
 
 QPushButton#ConsoleClearBtn:hover {
-    background-color: #333;
+    background-color: hsv(0, 0, 51);
     color: #fff;
 }
 
-/* ==========================================================
-   PACKAGE LIST CARDS
-   ========================================================== */
-QFrame#PackageCard {
-    background-color: #252526;
-    border-radius: 4px;
-    border: 1px solid #333;
-}
-
-QFrame#PackageCard:hover {
-    border-color: #444;
-    background-color: #2d2d30;
-}
-
-QFrame#PackageCard QLabel {
-    font-family: 'Consolas', monospace;
-    font-size: 10pt;
-}
-
-QLabel#PkgName {
-    font-weight: bold;
-    color: #e0e0e0;
-}
-
-QLabel#PkgVersionUpdate {
-    color: #4dd4ac;
-}
-
-QLabel#PkgVersionUpdateWarning {
-    color: #f0a040;
-    font-weight: bold;
-}
-
-QLabel#PkgVersionUpdateVariant {
-    color: #4cc9f0;
-    font-weight: bold;
-}
-
-QLabel#PkgVersionBase {
-    color: #888;
-}
-
-/* Dependency Tree Node Styles */
-QLabel#PkgToggleArrow {
-    color: #4cc9f0;
-    font-weight: bold;
-    font-family: 'Segoe UI Symbol', sans-serif;
-    font-size: 11px;
-}
-
-QLabel#PkgLeafDot {
-    color: #555;
-    font-size: 8px;
-}
-
-QLabel#PkgConstraint {
-    color: #8888cc;
-    font-family: Consolas, monospace;
-    font-size: 9pt;
-    padding: 0px 4px;
-}
-
-QLabel#PkgMissingLabel {
-    color: #FF6B6B;
-    font-weight: bold;
-    font-size: 9pt;
-    padding: 1px 6px;
-    border: 1px solid #FF6B6B;
-    border-radius: 3px;
-}
-
-QLabel#PkgNameMissing {
-    color: #888;
-    font-family: Consolas, monospace;
-    font-size: 10pt;
-    font-style: italic;
-}
-
-/* Ghost / Missing Package Card */
-QFrame#MissingPackageCard {
-    background-color: rgba(40, 30, 30, 0.6);
-    border-radius: 4px;
-    border: 1px dashed #553333;
-}
-
-QFrame#MissingPackageCard:hover {
-    border-color: #FF6B6B;
-    background-color: rgba(50, 35, 35, 0.8);
-}
-
-/* Tree Summary Label */
-QLabel#EnvTreeSummary {
-    color: #777;
-    font-size: 9pt;
-    font-style: italic;
-    padding: 2px 0px;
-}
-
-/* Tree Badge */
-QLabel#TreeBadge {
-    font-size: 12px;
-    padding: 0px 2px;
-}
-
-/* ==========================================================
-   DIALOGS (NpmAppEditDialog, etc)
-   ========================================================== */
+/* General Dialogs / 通用弹窗配置 */
 QDialog {
-    background-color: #1e1e1e;
-    color: #ffffff;
+    background-color: hsv(0, 0, 30);
+    color: hsv(0, 0, 255);
 }
 
 QFrame#PreviewFrame {
-    background-color: #252526;
+    background-color: hsv(240, 7, 38);
     border-radius: 6px;
     padding: 8px;
 }
 
 QLabel#DialogLabelBold {
     font-weight: bold;
-    color: #ffffff;
+    color: hsv(0, 0, 255);
 }
 
 QLabel#DialogLabelMuted {
-    color: #888;
+    color: hsv(0, 0, 136);
 }
 
 QLabel#DialogLabelSuccess {
-    color: #6BCB77;
+    color: hsv(128, 121, 203);
 }
 
-QLineEdit,
-QTextEdit {
-    background-color: #2d2d30;
-    border: 1px solid #3f3f46;
-    color: #ffffff;
-    padding: 4px;
-    border-radius: 4px;
-}
-
-QLineEdit:focus,
-QTextEdit:focus {
-    border: 1px solid #007acc;
-}
-
-/* ==========================================================
-   NPM CHANNEL TAGS (NpmAppEditDialog)
-   ========================================================== */
+/* NPM Channel Tags (NpmAppEditDialog) / NPM 专属多渠道切换卡片与标签 */
 QPushButton#ChannelTag {
     background-color: transparent;
-    border: 2px solid #555;
-    color: #ffffff;
+    border: 2px solid hsv(0, 0, 85);
+    color: hsv(0, 0, 255);
     font-family: Consolas, monospace;
     font-size: 10pt;
     border-radius: 4px;
@@ -653,46 +726,41 @@ QPushButton#ChannelTag {
 }
 
 QPushButton#ChannelTag:hover {
-    background-color: #333;
+    background-color: hsv(0, 0, 51);
 }
 
-/* State: Target Only (Filled Grey) */
 QPushButton#ChannelTag[state="target"] {
-    background-color: #666;
-    border-color: #555;
+    background-color: hsv(0, 0, 102);
+    border-color: hsv(0, 0, 85);
     font-weight: bold;
 }
 
 QPushButton#ChannelTag[state="target"]:hover {
-    background-color: #777;
+    background-color: hsv(0, 0, 119);
 }
 
-/* State: Installed Only (Outline Blue) */
 QPushButton#ChannelTag[state="installed"] {
     background-color: transparent;
-    border-color: #4cc9f0;
+    border-color: hsv(194, 174, 240);
     font-weight: bold;
 }
 
-/* State: Both Installed & Target (Filled Blue) */
 QPushButton#ChannelTag[state="both"] {
-    background-color: #4cc9f0;
-    border-color: #4cc9f0;
+    background-color: hsv(194, 174, 240);
+    border-color: hsv(194, 174, 240);
     color: #000;
     font-weight: bold;
 }
 
 QPushButton#ChannelTag[state="both"]:hover {
-    background-color: #4cc9f0;
+    background-color: hsv(194, 174, 240);
 }
 
-/* ==========================================================
-   SETTINGS SOURCE MODE CARDS
-   ========================================================== */
+/* Settings Source Mode Cards / 设置面板源模式配置卡片 */
 QPushButton#SourceModeCard {
-    background-color: #1f1f23;
-    border: 1px solid #494a52;
-    color: #e8e8e8;
+    background-color: hsv(240, 9, 35);
+    border: 1px solid hsv(235, 6, 82);
+    color: hsv(0, 0, 232);
     border-radius: 6px;
     padding: 6px 8px;
     min-height: 32px;
@@ -702,21 +770,21 @@ QPushButton#SourceModeCard {
 }
 
 QPushButton#SourceModeCard:hover {
-    border-color: #6f7080;
-    background-color: #25262b;
+    border-color: hsv(235, 7, 128);
+    background-color: hsv(227, 12, 43);
 }
 
 QPushButton#SourceModeCard:checked {
-    border: 2px solid #4cc9f0;
-    background-color: #193848;
-    color: #ffffff;
+    border: 2px solid hsv(194, 174, 240);
+    background-color: hsv(200, 165, 72);
+    color: hsv(0, 0, 255);
     font-weight: bold;
 }
 
 QPushButton#SourcePresetBtn {
-    background-color: #2a2b31;
-    border: 1px solid #4f5060;
-    color: #f0f0f0;
+    background-color: hsv(230, 14, 49);
+    border: 1px solid hsv(235, 10, 96);
+    color: hsv(0, 0, 240);
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 12px;
@@ -724,23 +792,15 @@ QPushButton#SourcePresetBtn {
 }
 
 QPushButton#SourcePresetBtn:hover {
-    background-color: #343642;
-    border-color: #73758a;
+    background-color: hsv(231, 21, 66);
+    border-color: hsv(233, 16, 138);
 }
 
-QLineEdit[readonly="true"] {
-    color: #aab2be;
-    background-color: #1a1d22;
-    border: 1px solid #3f4652;
-}
-
-/* ==========================================================
-   NPM TAG CARDS (Configure Package)
-   ========================================================== */
+/* Npm Tag Cards (Configure Package) / Npm 配置标签卡片外观 */
 QPushButton#NpmTagCard {
-    background-color: #1f1f23;
-    border: 1px solid #4b4b55;
-    color: #e7e7e7;
+    background-color: hsv(240, 9, 35);
+    border: 1px solid hsv(240, 12, 85);
+    color: hsv(0, 0, 231);
     border-radius: 6px;
     padding: 8px;
     text-align: left;
@@ -749,56 +809,43 @@ QPushButton#NpmTagCard {
 }
 
 QPushButton#NpmTagCard:hover {
-    border-color: #7a7b88;
-    background-color: #27282d;
+    border-color: hsv(240, 10, 136);
+    background-color: hsv(228, 12, 45);
 }
 
-/* Current config */
 QPushButton#NpmTagCard[state="current"] {
-    border: 2px solid #4cc9f0;
-    background-color: #1f1f23;
-    color: #e7f7ff;
+    border: 2px solid hsv(194, 174, 240);
+    background-color: hsv(240, 9, 35);
+    color: hsv(200, 24, 255);
 }
 
-/* Target config */
 QPushButton#NpmTagCard[state="target"] {
-    border: 2px solid #ffb74d;
-    background-color: #3b311f;
-    color: #fff0d4;
+    border: 2px solid hsv(36, 178, 255);
+    background-color: hsv(39, 121, 59);
+    color: hsv(39, 43, 255);
     font-weight: bold;
 }
 
-/* Current + Target */
 QPushButton#NpmTagCard[state="both"] {
-    border: 2px solid #4cc9f0;
-    background-color: #184258;
-    color: #ffffff;
+    border: 2px solid hsv(194, 174, 240);
+    background-color: hsv(201, 185, 88);
+    color: hsv(0, 0, 255);
     font-weight: bold;
 }
 
-/* ==========================================================
-   CONSOLE LOG COLORS (Tokens)
-   ========================================================== */
-/* These are used by ConsolePanel for syntax highlighting */
+
+/* ==========================================================================
+   CONSOLE LOG COLORS / 控制台文本语法高亮配置标记
+   ========================================================================== */
+
+/* These are used by ConsolePanel for syntax highlighting / 控制台日志语法着色 */
 QTextEdit#ConsoleText {
-    qproperty-system_color: #6CB4EE;
-    qproperty-cmd_color: #56D6C2;
-    qproperty-stdout_color: #D4D4D4;
-    qproperty-stderr_color: #E8A838;
-    qproperty-success_color: #6BCB77;
-    qproperty-error_color: #FF6B6B;
-    qproperty-divider_color: #555555;
-}
-
-/* ==========================================================
-   REAL TERMINAL PANEL
-   (RealTerminalPanel reuses ConsolePanel objectNames for the
-   header/title/clear-button — those QSS rules apply as-is.
-   The rules below are terminal-canvas-specific additions.)
-   ========================================================== */
-
-/* Terminal canvas: wider cursor, subtle selection highlight */
-QFrame#ConsolePanel QTextEdit#ConsoleText {
-    selection-background-color: rgba(255, 255, 255, 0.15);
-    selection-color: #ffffff;
+    qproperty-system_color: hsv(207, 139, 238);
+    qproperty-user_color: hsv(95, 97, 195);
+    qproperty-error_color: hsv(355, 132, 224);
+    qproperty-info_color: hsv(219, 27, 191);
+    qproperty-success_color: hsv(95, 97, 195);
+    qproperty-warning_color: hsv(29, 130, 209);
+    qproperty-trace_color: hsv(286, 117, 221);
+    qproperty-debug_color: hsv(187, 142, 194);
 }

@@ -77,7 +77,6 @@ def _build_proxy_mapping(proxy_settings: Optional[dict]) -> Dict[str, str]:
         proxies["https"] = settings["https_proxy"]
     return proxies
 
-@contextlib.contextmanager
 def proxy_urlopen(
     url: str,
     *,
@@ -205,4 +204,49 @@ def merge_env_for_command(cmd: list[str], base_env: Optional[dict] = None, proxy
                     del env[existing_k]
                     
     env.update(p_env)
+    return env
+
+
+def proxy_env_for_terminal(proxy_settings: Optional[dict]) -> dict:
+    """Generates the combined proxy environment for the integrated terminal PTY."""
+    settings = normalize_proxy_settings(proxy_settings)
+    if not settings["enabled"]:
+        return {}
+
+    targets = settings.get("targets", {})
+    any_cmd_enabled = targets.get("pip", False) or targets.get("npm", False) or targets.get("winget", False)
+    if not any_cmd_enabled:
+        return {}
+
+    proxies = _build_proxy_mapping(settings)
+    if not proxies:
+        return {}
+
+    env = {}
+    is_insecure = settings.get("insecure", False)
+    
+    # We inject standard variables if any command target is enabled.
+    # Note: In a shared interactive shell, HTTP_PROXY affects all subprocesses.
+    if "http" in proxies:
+        p_val = proxies["http"]
+        env["HTTP_PROXY"] = p_val
+        env["http_proxy"] = p_val
+        if targets.get("npm", False):
+            env["NPM_CONFIG_PROXY"] = p_val
+            if is_insecure:
+                env["NPM_CONFIG_STRICT_SSL"] = "false"
+                env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+                env["NODE_NO_WARNINGS"] = "1"
+                
+    if "https" in proxies:
+        p_val = proxies["https"]
+        env["HTTPS_PROXY"] = p_val
+        env["https_proxy"] = p_val
+        if targets.get("npm", False):
+            env["NPM_CONFIG_HTTPS_PROXY"] = p_val
+            if is_insecure:
+                env["NPM_CONFIG_STRICT_SSL"] = "false"
+                env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+                env["NODE_NO_WARNINGS"] = "1"
+                
     return env

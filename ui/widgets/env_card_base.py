@@ -285,7 +285,7 @@ class BaseEnvCard(QFrame):
                 if pkg.has_update and not getattr(pkg, "is_missing", False):
                     metadata = getattr(pkg, "metadata", {}) or {}
                     if (
-                        not getattr(pkg, "breaks_constraint", False)
+                        (not getattr(pkg, "breaks_constraint", False) or getattr(pkg, "safe_update_version", ""))
                         and not getattr(pkg, "build_variant_mismatch", False)
                         and metadata.get("can_update", True)
                     ):

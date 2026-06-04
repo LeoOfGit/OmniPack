@@ -145,6 +145,18 @@ class NpmPanel(BasePanel):
         self._ansi_stripper = StreamingAnsiStripper()
         self._interceptor_buffer = ""
         self._active_operations = []  # list of dicts: {"env_path": str, "type": str, "pkgs": list, "marker": str}
+        
+        from PySide6.QtCore import QTimer
+        self._marker_timer = QTimer(self)
+        self._marker_timer.timeout.connect(self._check_marker_files)
+        self._marker_timer.start(1000)
+        
+        from PySide6.QtCore import QFileSystemWatcher
+        self._fs_watcher = QFileSystemWatcher(self)
+        self._fs_watcher.directoryChanged.connect(self._on_directory_changed)
+        
+        self._fs_debounce_timers = {}
+        
         self._outdated_filter_enabled = False
         self._dist_tags_workers = []
 
@@ -168,8 +180,6 @@ class NpmPanel(BasePanel):
         self.npm_mgr.updates_checked.connect(self._on_updates_checked)
         self.npm_mgr.specific_packages_scanned.connect(self._on_specific_packages_scanned)
         self.npm_mgr.runtime_update_done.connect(self._on_runtime_update_done)
-        if hasattr(self.terminal, "pty_output_ready"):
-            self.terminal.pty_output_ready.connect(self._on_pty_output_intercepted)
 
     # ── Status bar helper ──
 
@@ -189,6 +199,10 @@ class NpmPanel(BasePanel):
 
         try:
             self._clear_env_card_widgets()
+            
+            # Clear existing file watchers
+            if self._fs_watcher.directories():
+                self._fs_watcher.removePaths(self._fs_watcher.directories())
 
             self.npm_mgr.reload_envs()
             envs = self.npm_mgr.list_environments()
@@ -223,8 +237,16 @@ class NpmPanel(BasePanel):
                 card.activate_requested.connect(self._on_activate_requested)
 
                 self.npm_mgr.scan_environment(env)
+                
+                # Watch node_modules for manual terminal command changes
+                import os
+                node_modules = os.path.join(env.path, "node_modules")
+                if os.path.exists(node_modules):
+                    self._fs_watcher.addPath(node_modules)
+                elif os.path.exists(env.path):
+                    self._fs_watcher.addPath(env.path)
 
-            self._log("All environments queued for scan.", "system")
+            self._log("All npm environments queued for scan.", "system")
         except Exception as e:
             import traceback
             self._log(f"Scan failed with error: {str(e)}", "error")
@@ -312,45 +334,74 @@ class NpmPanel(BasePanel):
             self._update_status_counts()
 
     def _on_pty_output_intercepted(self, text: str):
-        clean = self._ansi_stripper.feed(text)
-        clean = clean.replace("\r", "\n").replace("\x08", "")
-        self._interceptor_buffer += clean
+        pass  # Kept for backward compatibility with tests
         
-        if len(self._interceptor_buffer) > 64000:
-            self._interceptor_buffer = self._interceptor_buffer[-64000:]
-            
-        import re
+    def _check_marker_files(self):
+        import os
+        import tempfile
+        temp_dir = tempfile.gettempdir()
         
-        while True:
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
-            if not match:
-                break
-                
-            marker = match.group(1)
-            exit_code_str = match.group(2)
-            exit_code = int(exit_code_str) if exit_code_str else 0
-            
-            op_index = next(
-                (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
-                None
-            )
-            
-            if op_index is None:
-                self._interceptor_buffer = self._interceptor_buffer[match.end():]
+        remaining_ops = []
+        for op in self._active_operations:
+            marker = op.get("marker")
+            if not marker:
                 continue
                 
-            op = self._active_operations.pop(op_index)
-            
-            # Incremental UI refresh
-            env = self._find_env_by_path(self.npm_mgr.environments, op["env_path"])
-            if env:
-                if exit_code != 0:
-                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
-                    self._refresh_single_env(env.path)
-                else:
-                    self.npm_mgr.scan_specific_packages(env, op["pkgs"])
+            marker_file = os.path.join(temp_dir, f"{marker}.done")
+            if os.path.exists(marker_file):
+                try:
+                    with open(marker_file, "r") as f:
+                        exit_code_str = f.read().strip()
+                    exit_code = int(exit_code_str) if exit_code_str.isdigit() or (exit_code_str.startswith("-") and exit_code_str[1:].isdigit()) else 0
+                    
+                    try:
+                        os.remove(marker_file)
+                    except OSError:
+                        pass
+                        
+                    env = self._find_env_by_path(self.npm_mgr.environments, op["env_path"])
+                    if env:
+                        if exit_code != 0:
+                            self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
+                            self._refresh_single_env(env.path)
+                        else:
+                            refresh_names = list(op.get("refresh_names") or [])
+                            if op.get("force_full_refresh") or not refresh_names:
+                                self._log("Fast refresh could not safely resolve npm package identities. Falling back to full refresh.", "system")
+                                self._refresh_single_env(env.path)
+                            else:
+                                self.npm_mgr.scan_specific_packages(env, refresh_names)
+                except Exception as e:
+                    self._log(f"Error reading marker file: {e}", "error")
+                    env = self._find_env_by_path(self.npm_mgr.environments, op["env_path"])
+                    if env:
+                        self._refresh_single_env(env.path)
+            else:
+                remaining_ops.append(op)
                 
-            self._interceptor_buffer = self._interceptor_buffer[match.end():]
+        self._active_operations = remaining_ops
+        
+    def _on_directory_changed(self, path: str):
+        import os
+        path = os.path.normpath(path)
+        # Find which env this belongs to
+        for env in self.npm_mgr.environments:
+            node_modules = os.path.normpath(os.path.join(env.path, "node_modules"))
+            norm_env_path = os.path.normpath(env.path)
+            if path == node_modules or path == norm_env_path:
+                norm_key = self._path_key(env.path)
+                if norm_key not in self._fs_debounce_timers:
+                    from PySide6.QtCore import QTimer
+                    t = QTimer(self)
+                    t.setSingleShot(True)
+                    t.setInterval(2000) # 2 seconds debounce
+                    t.timeout.connect(lambda e=env: self._on_fs_debounce_timeout(e))
+                    self._fs_debounce_timers[norm_key] = t
+                self._fs_debounce_timers[norm_key].start()
+
+    def _on_fs_debounce_timeout(self, env):
+        self._log(f"Detected file system changes in environment {env.name}. Auto-refreshing...", "system")
+        self._refresh_single_env(env.path)
 
     def _update_status_counts(self):
         self._emit_status_counts(self.npm_mgr.environments)

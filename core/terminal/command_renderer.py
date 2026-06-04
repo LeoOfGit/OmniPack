@@ -1,6 +1,7 @@
 import shlex
 import subprocess
 import os
+import tempfile
 
 class ShellCommandRenderer:
     @staticmethod
@@ -58,20 +59,26 @@ class ShellCommandRenderer:
         shell_lower = os.path.basename(shell_name).lower()
         is_pwsh = "powershell" in shell_lower or "pwsh" in shell_lower
         is_posix = shell_lower in {"sh", "bash", "zsh", "fish", "dash"}
+        
+        temp_dir = tempfile.gettempdir()
+        if is_pwsh or shell_name.lower() == "cmd.exe":
+            marker_file = os.path.join(temp_dir, f"{marker}.done").replace('/', '\\')
+        else:
+            marker_file = os.path.join(temp_dir, f"{marker}.done").replace('\\', '/')
 
         if is_pwsh:
             if include_exit_code:
-                return f"{cmd_str} ; echo {marker}:$LASTEXITCODE"
-            return f"{cmd_str} ; echo {marker}"
+                return f"{cmd_str} ; $LASTEXITCODE | Out-File -FilePath '{marker_file}' -Encoding ascii"
+            return f"{cmd_str} ; '0' | Out-File -FilePath '{marker_file}' -Encoding ascii"
         elif is_posix:
             if include_exit_code:
-                return f"{cmd_str} ; echo {marker}:$?"
-            return f"{cmd_str} ; echo {marker}"
+                return f"{cmd_str} ; echo $? > '{marker_file}'"
+            return f"{cmd_str} ; echo 0 > '{marker_file}'"
         else:
             # cmd.exe
             if include_exit_code:
-                return f"{cmd_str}\necho {marker}:%ERRORLEVEL%"
-            return f"{cmd_str}\necho {marker}"
+                return f"{cmd_str}\necho %ERRORLEVEL% > \"{marker_file}\""
+            return f"{cmd_str}\necho 0 > \"{marker_file}\""
 
     @staticmethod
     def write_rendered_command(terminal, cmd_str: str) -> None:

@@ -1,5 +1,42 @@
 # Changelog - OmniPack
 
+## [v12] - 智能依赖约束更新、文件系统联动同步与终端状态检测重构 (Intelligent Constraint-Safe Updates, FS Watcher & Marker Redesign)
+
+本次更新显著增强了包管理的智能化程度，引入了自动探测安全中间版本的能力，并实现了 UI 与物理硬盘状态的实时同步。同时，底层终端状态追踪机制进行了重构，极大地提升了在高压力输出场景下的任务可靠性。
+
+### 🛡️ 智能依赖约束更新 (Intelligent Constraint-Safe Updates)
+
+- **安全中间版本推荐 (Safe Update Recommendations)**：引入 `safe_update_version` 逻辑。当包的最新版本因依赖关系被其他包锁定（Breaks Constraints）时，OmniPack 现在会自动探测版本历史，并推荐一个在约束范围内的“最高安全版本”。
+- **可视化约束引导 (Visual Constraint Guidance)**：
+    - 针对受限包引入全新的**蓝色 UI 主题** (`PkgVersionUpdateConstrained`)。
+    - 悬停提示 (ToolTip) 大幅增强：不仅显示“可能导致冲突”，还会详细列出是哪些上游包施加了什么范围的约束（例如：`Django 要求 djangorestframework<3.15`），让用户对版本锁定原因一目了然。
+    - “一键全选过时包”逻辑优化：会自动包含这些受限但可安全升级到中间版本的包，而彻底无法无损升级的包仍保持手动确认模式。
+- **预发布版本智能过滤 (Prerelease Version Filtering)**：引入 `is_prerelease_version` 逻辑，在探测可用包版本及安全中间版本时自动排除 alpha、beta、rc 等非稳定的预发布版本，防止用户在自动升级中误入预览版分支。
+
+### 🔄 实时文件系统联动 (Real-time File System Watcher)
+
+- **环境自愈同步 (Auto-Refresh on External Changes)**：在 `PipPanel` 和 `NpmPanel` 中集成了 `QFileSystemWatcher`。
+- **命令行脱机联动**：当用户直接在系统终端或内置终端中运行 `pip install` 或 `npm install` 等命令导致本地文件变化时，OmniPack 会在静默期（Debounce）后自动触发环境刷新，确保 UI 状态始终与物理硬盘保持实时一致，无需手动点击刷新按钮。
+
+### 🧩 终端状态检测重构 (Terminal Marker Redesign)
+
+- **基于物理文件的 Marker 机制**：彻底重构了 PTY 终端任务结束的检测逻辑。由原来的“拦截输出流并正则匹配 UUID”改为“写入临时标记文件 (`.done`)”。
+- **极致稳定性**：解决了在极高并发输出、ANSI 颜色代码干扰或终端自动换行时，正则匹配 UUID 标记位可能失效导致界面无限加载的问题。新机制完全免疫任何终端字符流干扰。
+
+### ⚙️ 底层健壮性与代理优化 (Core Robustness & Proxy Enhancements)
+
+- **集成终端代理自动联动 (Terminal Proxy Auto-Sync)**：集成 PTY 终端在启动时会自动读取并继承全局代理配置。一旦软件的代理启用，PTY 进程将同步注入 `HTTP_PROXY`、`HTTPS_PROXY` 以及 NPM 专用的 `NPM_CONFIG_PROXY` 与忽略证书校验环境变量（如 `NODE_TLS_REJECT_UNAUTHORIZED=0`），从而保证内置命令行操作和主程序具备一致的网络穿透能力。
+- **多级版本探测 API 容灾回退 (Fallback Version Discovery)**：在 Pip 可用版本扫描中引入三级 Fallback 保护。当默认的 `pip index` 命令由于不支持或源限制无法查询时，会自动请求 PyPI 官方 JSON 接口；对于私有源则尝试拉取其 Simple API 的 JSON 响应，最终回退到直接请求 HTML 并以正则从链接名中解析提取版本号。这彻底解决了弱网、局域网或特定私有镜像源下无法探测更新的问题。
+- **安装规范（Spec）智能清洗 (Smart Spec Extraction)**：
+  - 新增 `extract_npm_package_name` 智能包名提取算法，能自动在各种复杂的 npm 安装 spec（如本地路径、Workspace 符号链接、Git URL、别名包等）中剥离噪音并提取出最终注册到 `node_modules` 里的真实包名。
+  - 在 Pip 局部扫描中，引入 `extract_pip_requirement_name` 对传入的包名先过滤约束条件等参数再扫描，双端齐下确保局部更新和扫描解析时不发生错位。
+- **控制台 ANSI OSC 控制流净化 (OSC Sequence Filtering)**：升级了内置的流式 ANSI 剥离器，增加了对 OSC 控制序列（如终端改名、标题重设等 `\x1b]...` 指令）的过滤支持，有效规避了高彩 PTY 流在向只读日志投射时的字符杂音与乱码。
+
+### 🏗️ 性能与细节改进 (Performance & UI Refinement)
+
+- **渲染精度修复**：修复了 `RealTerminalPanel` 在渲染 `pyte` 缓冲区时过度裁剪行尾空格导致交互式光标定位偏移的 Bug。
+- **并发性能优化**：Pip 环境在计算依赖约束时引入了版本缓存池，大幅减少了重复查询 PyPI 元数据带来的网络开销。
+
 ## [v11] - 安全防御升级、配置原子化写入与 WinGet 解析防弹重构 (Security Upgrades, Atomic Config & Bulletproof WinGet Parser)
 
 本次更新不仅解决了 WinGet 复杂输出场景下的表格解析崩溃问题，还大幅增强了底层的运行稳定性和网络安全性。涵盖配置文件的断电保护、下载件的安全签名校验以及 HTTP 代理的忽略证书特性。

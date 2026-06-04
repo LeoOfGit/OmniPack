@@ -7,8 +7,21 @@ import re
 import tempfile
 from pathlib import Path
 
-_ANSI_ESCAPE_PATTERN = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-_PARTIAL_ANSI_TAIL_RE = re.compile(r'\x1b(?:\[[0-?]*[ -/]*)?$')
+_ANSI_ESCAPE_PATTERN = re.compile(
+    r'\x1B'
+    r'(?:'
+    r'[@-Z\\-_]'              # C0 control (e.g. \x1bM)
+    r'|\[[0-?]*[ -/]*[@-~]'  # CSI sequences (e.g. \x1b[31m)
+    r'|\][^\x07\x1b]*(?:\x07|\x1b\\)'  # OSC sequences (e.g. \x1b]0;title\x07)
+    r')'
+)
+_PARTIAL_ANSI_TAIL_RE = re.compile(
+    r'\x1b'
+    r'(?:'
+    r'\[[0-?]*[ -/]*'         # Incomplete CSI
+    r'|\][^\x07\x1b]*'        # Incomplete OSC (no terminator yet)
+    r')?$'
+)
 
 def strip_ansi_codes(text: str) -> str:
     """Remove all ANSI escape sequences from a string."""
@@ -33,6 +46,7 @@ class StreamingAnsiStripper:
 
     def reset(self):
         self._pending = ""
+
 
 def _get_real_exe_path():
     """Return the real path of the running executable.

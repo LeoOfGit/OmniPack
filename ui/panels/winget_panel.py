@@ -14,6 +14,7 @@ import uuid
 
 from managers.winget_manager import WingetManager
 from core.terminal.command_renderer import ShellCommandRenderer
+from core.utils import StreamingAnsiStripper
 from ui.panels.base_panel import BasePanel
 from core.winget_helpers import find_uninstall_location
 
@@ -24,8 +25,12 @@ class WingetPanel(BasePanel):
         self.winget_mgr = WingetManager(config_mgr)
         self._env_cards = {}
         self._outdated_filter_enabled = False
-        self._interceptor_buffer = ""
         self._active_operations = []
+        
+        self._marker_timer = QTimer(self)
+        self._marker_timer.timeout.connect(self._check_marker_files)
+        self._marker_timer.start(1000)
+
         self._pin_refresh_targets = set()
         self._first_winget_settings_ensured = False
         self._init_proxy_workers = set()
@@ -154,38 +159,45 @@ class WingetPanel(BasePanel):
             self._update_status_counts()
 
     def _on_pty_output_intercepted(self, text: str):
-        self._interceptor_buffer += text
-        if len(self._interceptor_buffer) > 64000:
-            self._interceptor_buffer = self._interceptor_buffer[-64000:]
-
-        import re
-
-        while True:
-            match = re.search(r"(?:^|[\r\n])(__OMNIPACK_OP_DONE_[a-f0-9]+__)(?::(-?\d+))?", self._interceptor_buffer)
-            if not match:
-                break
-
-            marker = match.group(1)
-            exit_code_str = match.group(2)
-            exit_code = int(exit_code_str) if exit_code_str else 0
-
-            op_index = next(
-                (i for i, op in enumerate(self._active_operations) if op.get("marker") == marker),
-                None
-            )
-
-            if op_index is None:
-                self._interceptor_buffer = self._interceptor_buffer[match.end():]
+        pass  # Kept for backward compatibility with tests
+        
+    def _check_marker_files(self):
+        import os
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        
+        remaining_ops = []
+        for op in self._active_operations:
+            marker = op.get("marker")
+            if not marker:
                 continue
-
-            op = self._active_operations.pop(op_index)
-            env_path = op.get("env_path")
-            if env_path:
-                if exit_code != 0:
-                    self._log(f"Command failed with exit code {exit_code}. Doing full refresh.", "error")
-                self._refresh_single_env(env_path)
-
-            self._interceptor_buffer = self._interceptor_buffer[match.end():]
+                
+            marker_file = os.path.join(temp_dir, f"{marker}.done")
+            if os.path.exists(marker_file):
+                try:
+                    with open(marker_file, "r") as f:
+                        exit_code_str = f.read().strip()
+                    exit_code = int(exit_code_str) if exit_code_str.isdigit() or (exit_code_str.startswith("-") and exit_code_str[1:].isdigit()) else 0
+                    
+                    try:
+                        os.remove(marker_file)
+                    except OSError:
+                        pass
+                        
+                    env = self._find_env_by_path(self.winget_mgr.environments, op["env_path"])
+                    if env:
+                        if exit_code != 0:
+                            self._log(f"Command failed with exit code {exit_code}. Doing full refresh instead of optimistic.", "error")
+                        self._refresh_single_env(env.path)
+                except Exception as e:
+                    self._log(f"Error reading marker file: {e}", "error")
+                    env = self._find_env_by_path(self.winget_mgr.environments, op["env_path"])
+                    if env:
+                        self._refresh_single_env(env.path)
+            else:
+                remaining_ops.append(op)
+                
+        self._active_operations = remaining_ops
 
     def _build_terminal_command(self, cmd_list: list[str], marker: str) -> str:
         from core.terminal.command_renderer import ShellCommandRenderer

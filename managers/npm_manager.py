@@ -14,7 +14,7 @@ from PySide6.QtCore import Signal
 
 from core.manager_base import PackageManager, Environment, Package
 from core.network_proxy import merge_env_for_command
-from core.npm_spec import has_explicit_tag
+from core.npm_spec import extract_npm_package_name, has_explicit_tag
 from core.runtime_update import (
     build_node_runtime_update_command,
     build_node_runtime_update_command_nvm,
@@ -432,6 +432,10 @@ class NpmPartialScanWorker(BaseCmdWorker):
             if not npm_path:
                 return
 
+            requested_names = [extract_npm_package_name(spec) for spec in self.pkg_names]
+            requested_names = [name for name in requested_names if name]
+            target_names = set(requested_names)
+
             is_global, cmd_cwd, prefix_override = NpmBaseHelper.resolve_env_command_context(self.env)
             cmd = [npm_path, "list", "--depth=0", "--json"] + self.pkg_names
             if is_global:
@@ -448,7 +452,7 @@ class NpmPartialScanWorker(BaseCmdWorker):
                     data = json.loads(output)
                     dependencies = data.get("dependencies", {})
                     for name, info in dependencies.items():
-                        if isinstance(info, dict):
+                        if isinstance(info, dict) and name.lower() in target_names:
                             version = info.get("version", "")
                             if version:
                                 meta = {"channel": detect_channel(version), "channels_available": ["latest"], "display_name": name, "description": ""}
@@ -478,7 +482,7 @@ class NpmPartialScanWorker(BaseCmdWorker):
                 except json.JSONDecodeError:
                     pass
 
-            self.packages_scanned.emit(self.env.path, pkgs, self.pkg_names)
+            self.packages_scanned.emit(self.env.path, pkgs, requested_names)
         except Exception as e:
             self._log(f"Partial Scan Error: {e}", "error")
         finally:

@@ -50,7 +50,8 @@
 - `core/npm_spec.py` - **NPM 规范解析器**。解析 `@scope/name@tag` 格式的包规范字符串，提取包名与 dist-tag。
 - `core/winget_helpers.py` - **WinGet 本地化解析器与辅助工具**。通过极度坚固的流式 ANSI 剥离、退格回车仿真、动态列头偏移计算以及 Ultimate Fallback 兜底机制，实现针对 WinGet 命令行等宽输出表格的精准分割，完全免疫控制字符与进度条动画的干扰。
 - `core/source_profiles.py` - **源配置文件**。定义 PyPI/NPM 官方源及常用镜像列表，提供 `detect_system_pip_index_url()` / `detect_system_npm_registry_url()` 系统源探测函数。
-- `core/terminal/` - **真实 PTY 交互终端引擎**。支持跨平台（Windows `pywinpty` 与 Unix `pty`）的后端接入，底层集成 `pyte` 虚拟屏幕解析极复杂的 ANSI 颜色渲染与光标跳跃控制码，为界面提供可真实输入、双向交互的流式命令行后端。
+- `core/terminal/` - **真实 PTY 交互终端引擎**。支持跨平台（Windows `pywinpty` 与 Unix `pty`）的后端接入，底层集成 `pyte` 虚拟屏幕解析极复杂的 ANSI 颜色渲染与光标跳跃控制码。
+  - **任务终态追踪 (File-based Markers)**: 摒弃了不稳定的 PTY 输出正则拦截方案，改用重定向输出状态码至临时文件 (`.done`) 的物理标记机制，确保在任何复杂终端环境下均能 100% 准确触发 UI 刷新回调。
 - `core/trace_logger.py` - **调试轨迹记录器**。当 `OMNIPACK_TRACE_SELECTION=1` 时启用，以 JSONL 格式记录 UI 选择/过滤事件，用于调试。
 - `core/pypi_cache.py` - **PyPI 缓存层**。负责 `pypi_search_cache.json` 的读写、种子引导、词条索引与排序，还封装了后台刷新线程、进度状态、取消/续传流以及 `resolve_refresh_source` 的镜像策略，确保 `AddPackageDialog` 100% 只从本地查询数据而不再解析 PyPI 网页。
 
@@ -63,12 +64,13 @@
 #### /ui/panels - 宏观面板
 - `ui/panels/base_panel.py` - **极其神圣的界面基类**。负责渲染双栏布局，并提供**标准工具栏集**（含 Search 框、Outdated Only 勾选框、Manage Envs 按钮）。
 - `ui/panels/pip_panel.py`、`ui/panels/npm_panel.py` & `ui/panels/winget_panel.py` - 镜像化的业务面板。负责将 Manager 的信号连接至对应的 EnvCard 容器。
+  - **实时联动同步 (FS Watcher)**: Pip 与 NPM 面板内置 `QFileSystemWatcher` 监听环境库目录，实现与外部 CLI 命令操作的无缝同步。
 - `ui/panels/settings_dialog.py` - 统一设置页；新增 `Backend` 标签聚焦 `uv` 与 PyPI 缓存控制，提供进度轮询/取消按钮；`Proxy` 页压缩布局、默认收起连接测试输出、并提供 `Start/Cancel` 双态按钮以控制后台刷新。
 - `ui/panels/winget_settings_page.py` - 专属的 WinGet 设置页模块，用于管理和自愈系统代理等底层选项。
 
 #### /ui/widgets - 颗粒化卡片
 - `ui/widgets/env_card_base.py` - **通用环境容器基类**。处理折叠动画、标题与刷新按钮。
-- `ui/widgets/pip_env_card.py` - **Python 环境卡片**。渲染 `pip/uv` 环境信息与标签，显示 `Python current -> latest`，并提供独立运行时更新按钮（`Py`）。
+- `ui/widgets/pip_env_card.py` - **Python 环境卡片**。渲染 `pip/uv` 环境信息与标签，显示 `Python current -> latest`，提供独立运行时更新按钮（`Py`），并支持**智能依赖约束 (Constraint-Aware)** 状态显示，可高亮展示可安全升级的中间版本。
 - `ui/widgets/npm_env_card.py` - **NPM 环境卡片**。渲染项目/全局环境信息与标签，显示 `Node current -> latest`，并提供独立运行时更新按钮（`Nd`）。
 - `ui/widgets/winget_env_card.py` - **WinGet 环境卡片**。渲染 System/Machine 与 User 级别的环境扫描结果。
 - `ui/widgets/package_card.py` - **通用包条目**。显示版本、更新状态、多通道选择。

@@ -31,6 +31,7 @@ class Package:
     norm_name: str = ""                 # Normalized name for matching
     breaks_constraint: bool = False     # Latest version violates a version constraint from dependents
     build_variant_mismatch: bool = False  # Installed version has local suffix (+cu132) that differs from latest
+    safe_update_version: str = ""       # The highest version satisfying constraints when breaks_constraint is True
 
     @property
     def is_outdated(self) -> bool:
