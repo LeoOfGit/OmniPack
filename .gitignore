@@ -2,6 +2,7 @@
 docs/GenerateUserGuide/
 dist/
 .*/
+!.devin/
 __pycache__/
 History/
 clean_cache.py

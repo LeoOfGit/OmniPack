@@ -8,7 +8,10 @@
 ![Node.js](https://img.shields.io/badge/Node.js-NPM-green.svg?logo=nodedotjs)
 ![WinGet](https://img.shields.io/badge/WinGet-Windows-blue.svg?logo=windows)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-brightgreen.svg?logo=qt)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+![Nuitka](https://img.shields.io/badge/Compiler-Nuitka-blue?logo=python)
 ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LeoOfGit/OmniPack)
 
 *The ultimate **sandbox environment & system package manager** for modern developers.*
 > **OmniPack is a high-performance GUI wrapper for Python (uv/pip), Node.js (npm), and Windows Package Manager (WinGet).** It helps you manage scattered virtualenvs, explore deep dependency trees, handle local packages, and seamlessly control system-wide applications with unprecedented visual efficiency.
@@ -113,6 +116,7 @@ Go to the GitHub Releases area to get the latest pre-built single-file package (
 - Questions? Shortcuts? Advanced features? 👉 [**《OmniPack User Guide》**](./docs/UserGuide.zh-CN.md)
 - Low-level `QThread` synchronization and configuration details? 👉 [**《OmniPack Architecture Guide》**](./docs/Architecture.zh-CN.md)
 - How to compile from source to a single-file executable? 👉 [**《OmniPack Compilation Guide》**](./docs/Compile.md)
+- Interactive codebase visualization & documentation? 👉 [**《OmniPack DeepWiki》**](https://deepwiki.com/LeoOfGit/OmniPack)
 
 ---
 

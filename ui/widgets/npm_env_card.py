@@ -4,6 +4,8 @@ from PySide6.QtWidgets import (
 from core.manager_base import Environment
 from ui.widgets.add_package_dialog import AddPackageDialog
 from ui.widgets.env_card_base import BaseEnvCard
+import shutil
+from core.utils import determine_path_tooltip
 
 
 class NpmEnvCard(BaseEnvCard):
@@ -75,9 +77,17 @@ class NpmEnvCard(BaseEnvCard):
 
     def update_ui(self):
         title = f"{self.env.name}"
-        if "path" in getattr(self.env, "tags", []):
-            title += " [PATH]"
         self.name_lbl.setText(title)
+
+        tooltip = ""
+        if self.env.path == "global":
+            npm_exe = shutil.which("npm") or shutil.which("npm.cmd")
+            if npm_exe:
+                tooltip = determine_path_tooltip(npm_exe)
+        else:
+            tooltip = determine_path_tooltip(str(self.env.path))
+            
+        self.name_lbl.setToolTip(tooltip)
 
         runtime_ver = getattr(self.env, "runtime_version", "")
         runtime_latest = getattr(self.env, "runtime_latest_version", "")

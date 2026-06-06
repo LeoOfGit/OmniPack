@@ -8,7 +8,10 @@
 ![Node.js](https://img.shields.io/badge/Node.js-NPM-green.svg?logo=nodedotjs)
 ![WinGet](https://img.shields.io/badge/WinGet-Windows-blue.svg?logo=windows)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-brightgreen.svg?logo=qt)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+![Nuitka](https://img.shields.io/badge/Compiler-Nuitka-blue?logo=python)
 ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LeoOfGit/OmniPack)
 
 *专注于开发者所需的**隔离环境与系统包管理管家**。*
 > **OmniPack 是一款专为 Python (uv/pip)、Node.js (npm) 以及 Windows 系统包管理器 (WinGet) 设计的高性能图形化管理工具。** 旨在帮助开发者更直观地管控本地散乱的虚拟环境、深度透视依赖树，并在 Windows 下统一纳管系统应用，显著提升包管理效率。
@@ -112,6 +115,7 @@ OmniPack 能智能评估每个更新的安全性，并引导用户进行风险�
 - 使用中的疑问？快捷键？高级特性？ 👉 [**《OmniPack 用户指南 (UserGuide)》**](./docs/UserGuide.zh-CN.md)
 - 关于底层 `QThread` 同步逻辑与配置落盘细节？ 👉 [**《OmniPack 架构说明 (Architecture)》**](./docs/Architecture.zh-CN.md)
 - 如何从源码编译为单文件可执行程序？ 👉 [**《OmniPack 编译指南 (Compile)》**](./docs/Compile.zh-CN.md)
+- 想要通过交互式 AI 了解本项目？👉 [**《OmniPack DeepWiki》**](https://deepwiki.com/LeoOfGit/OmniPack)
 
 ---
 

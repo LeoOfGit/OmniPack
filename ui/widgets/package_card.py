@@ -144,6 +144,22 @@ class PackageCard(QFrame):
         display_name = pkg.metadata.get("display_name", pkg.name) if pkg.metadata else pkg.name
         name_lbl = QLabel(display_name)
         name_lbl.setObjectName("PkgNameMissing" if pkg.is_missing else "PkgName")
+        
+        location = pkg.metadata.get("location") if pkg.metadata else None
+        install_path = pkg.metadata.get("install_path") if pkg.metadata else None
+        
+        if location == "user":
+            name_lbl.setStyleSheet("color: #ffb703; font-weight: bold;")
+            tooltip_text = "Installed in User site-packages"
+            if install_path:
+                tooltip_text += f"\nPath: {install_path}"
+            name_lbl.setToolTip(tooltip_text)
+        elif location == "system":
+            tooltip_text = "Installed in System site-packages"
+            if install_path:
+                tooltip_text += f"\nPath: {install_path}"
+            name_lbl.setToolTip(tooltip_text)
+            
         row_layout.addWidget(name_lbl, 1)  # Stretch
 
         # Version constraint (shown for non-top-level items)
@@ -358,7 +374,11 @@ class PackageCard(QFrame):
 
     def _action_target(self) -> str:
         metadata = getattr(self.pkg, "metadata", {}) or {}
-        return str(metadata.get("target_id", self.pkg.name))
+        base_target = str(metadata.get("target_id", self.pkg.name))
+        location = metadata.get("location")
+        if location:
+            return f"{base_target}:{location}"
+        return base_target
 
     def _toggle_children(self):
         """Toggle expand/collapse of child dependencies."""
@@ -398,11 +418,19 @@ class PackageCard(QFrame):
         while self._child_load_queue and count < batch_size:
             dep_req = self._child_load_queue.pop(0)
 
-            # Look up the actual package in the environment
-            if hasattr(self.env, "get_package_by_norm_name"):
+            # Look up the actual package in the environment, prioritizing matching location (system/user)
+            child_pkg = None
+            parent_location = self.pkg.metadata.get("location") if self.pkg.metadata else None
+            
+            if self.env and hasattr(self.env, "packages"):
+                for p in getattr(self.env, "packages", []):
+                    if p.norm_name == dep_req.norm_name:
+                        if p.metadata.get("location") == parent_location:
+                            child_pkg = p
+                            break
+            
+            if child_pkg is None and hasattr(self.env, "get_package_by_norm_name"):
                 child_pkg = self.env.get_package_by_norm_name(dep_req.norm_name)
-            else:
-                child_pkg = None
 
             if child_pkg is None:
                 # Create a ghost/missing package for display

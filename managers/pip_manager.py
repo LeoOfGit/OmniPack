@@ -39,6 +39,13 @@ def build_pip_source_args(config_mgr):
     return []
 
 
+def _parse_target_loc(target: str) -> tuple[str, str]:
+    if ":" in target:
+        parts = target.split(":", 1)
+        return parts[0], parts[1]
+    return target, ""
+
+
 def resolve_python_executable(env: Environment) -> str:
     env_path = os.path.normpath(str(env.path or "").strip().strip('"').strip("'"))
     if not env_path:
@@ -196,12 +203,29 @@ class PipManager(PackageManager):
         uv_path = get_uv_path(self.config_mgr)
         env_path = os.path.normpath(env.path)
         py_exe = resolve_python_executable(env)
-        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+        
+        # Parse targets and determine if installing into user-site on system Pythons
+        real_names = []
+        use_user_target = False
+        for name in pkg_names.split():
+            pkg_name, loc = _parse_target_loc(name)
+            real_names.append(pkg_name)
+            if loc == "user":
+                use_user_target = True
+                
+        from core.utils import is_admin
+        if env.type == "system" and (use_user_target or not is_admin()):
+            from core.utils import get_user_site_packages
+            user_site = get_user_site_packages(py_exe)
+            args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+        else:
+            args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+            
         cmd = [uv_path, "pip", "install"]
         cmd.extend(build_pip_source_args(self.config_mgr))
         if force_reinstall:
             cmd.append("--force-reinstall")
-        cmd.extend(pkg_names.split())
+        cmd.extend(real_names)
         cmd.extend(args)
         return cmd
 
@@ -209,16 +233,47 @@ class PipManager(PackageManager):
         uv_path = get_uv_path(self.config_mgr)
         env_path = os.path.normpath(env.path)
         py_exe = resolve_python_executable(env)
-        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
-        cmd = [uv_path, "pip", "uninstall"] + pkg_names + args
+        
+        real_names = []
+        use_user_target = False
+        for name in pkg_names:
+            pkg_name, loc = _parse_target_loc(name)
+            real_names.append(pkg_name)
+            if loc == "user":
+                use_user_target = True
+                
+        if use_user_target and env.type == "system":
+            from core.utils import get_user_site_packages
+            user_site = get_user_site_packages(py_exe)
+            args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+        else:
+            args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+            
+        cmd = [uv_path, "pip", "uninstall"] + real_names + args
         return cmd
 
     def build_update_command(self, env: Environment, pkg_names: list[str]) -> list[str]:
         uv_path = get_uv_path(self.config_mgr)
         env_path = os.path.normpath(env.path)
         py_exe = resolve_python_executable(env)
-        args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
-        cmd = [uv_path, "pip", "install", "-U"] + build_pip_source_args(self.config_mgr) + pkg_names + args
+        
+        real_names = []
+        use_user_target = False
+        for name in pkg_names:
+            pkg_name, loc = _parse_target_loc(name)
+            real_names.append(pkg_name)
+            if loc == "user":
+                use_user_target = True
+                
+        from core.utils import is_admin
+        if env.type == "system" and (use_user_target or not is_admin()):
+            from core.utils import get_user_site_packages
+            user_site = get_user_site_packages(py_exe)
+            args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+        else:
+            args = ["--system", "--python", env_path] if env.type == "system" else ["--python", py_exe]
+            
+        cmd = [uv_path, "pip", "install", "-U"] + build_pip_source_args(self.config_mgr) + real_names + args
         return cmd
 
     def update_runtime(self, env: Environment):
@@ -296,8 +351,18 @@ class PipPartialScanWorker(BaseCmdWorker):
             res = self._run_command(cmd, capture_output=True, stream_stdout=False)
 
             pkgs = []
-            if res.returncode == 0 and res.stdout:
-                json_stdout = res.stdout[res.stdout.find('['):] if '[' in res.stdout else res.stdout
+            
+            # Calculate physical paths
+            system_site_path = ""
+            if self.env.path:
+                if os.name == "nt":
+                    system_site_path = os.path.normpath(os.path.join(self.env.path, "Lib", "site-packages"))
+                else:
+                    system_site_path = os.path.normpath(os.path.join(self.env.path, "lib", "python3.x", "site-packages"))
+
+            def parse_partial_pkgs(stdout_str, source_type="system", install_path=""):
+                parsed = []
+                json_stdout = stdout_str[stdout_str.find('['):] if '[' in stdout_str else stdout_str
                 if json_stdout.strip():
                     try:
                         end_idx = json_stdout.rfind(']')
@@ -307,10 +372,27 @@ class PipPartialScanWorker(BaseCmdWorker):
                         for item in data:
                             name = item.get("name", "")
                             if extract_pip_requirement_name(name) in target_names:
-                                pkgs.append(Package(name=name, version=item.get("version")))
+                                pkg = Package(name=name, version=item.get("version"))
+                                pkg.metadata["location"] = source_type
+                                if install_path:
+                                    pkg.metadata["install_path"] = install_path
+                                parsed.append(pkg)
                     except Exception:
                         pass
+                return parsed
 
+            if res.returncode == 0 and res.stdout:
+                pkgs.extend(parse_partial_pkgs(res.stdout, "system", system_site_path))
+
+            # Dual-path scanning for partial scan
+            if self.env.type == "system":
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                if user_site and os.path.exists(user_site):
+                    cmd_user = [uv_path, "pip", "list", "--format", "json", "--target", user_site]
+                    res_user = self._run_command(cmd_user, capture_output=True, stream_stdout=False)
+                    if res_user.returncode == 0 and res_user.stdout:
+                        pkgs.extend(parse_partial_pkgs(res_user.stdout, "user", user_site))
             self.packages_scanned.emit(self.env.path, pkgs, requested_names)
         except Exception as e:
             self._log(f"Partial Scan Error: {e}", "error")
@@ -548,21 +630,52 @@ class ScanWorker(BaseCmdWorker):
             cmd = [uv_path, "pip", "list", "--format", "json"] + args
             res = self._run_command(cmd, capture_output=True, stream_stdout=False)
 
+            # Calculate system site-packages physical path
+            system_site_path = ""
+            if self.env.path:
+                if os.name == "nt":
+                    system_site_path = os.path.normpath(os.path.join(self.env.path, "Lib", "site-packages"))
+                else:
+                    system_site_path = os.path.normpath(os.path.join(self.env.path, "lib", f"python{py_ver[:4] if py_ver else '3.x'}", "site-packages"))
+
             pkgs = []
-            if res.returncode == 0 and res.stdout:
-                # Find JSON start
-                json_stdout = res.stdout[res.stdout.find('['):] if '[' in res.stdout else res.stdout
+
+            def parse_packages_to_list(stdout_str, source_type="system", install_path=""):
+                parsed = []
+                json_stdout = stdout_str[stdout_str.find('['):] if '[' in stdout_str else stdout_str
                 if json_stdout.strip():
                     try:
                         data = json.loads(json_stdout)
-                        self._log(f"Loaded JSON for {len(data)} packages.", "stdout")
                         for item in data:
-                            pkgs.append(Package(
-                                name=item.get("name"),
-                                version=item.get("version")
-                            ))
+                            pkg_name = item.get("name")
+                            pkg_version = item.get("version")
+                            if pkg_name:
+                                pkg = Package(name=pkg_name, version=pkg_version)
+                                pkg.metadata["location"] = source_type
+                                if install_path:
+                                    pkg.metadata["install_path"] = install_path
+                                parsed.append(pkg)
                     except Exception as je:
                         self._log(f"JSON Parse Error: {je}", "error")
+                return parsed
+
+            if res.returncode == 0 and res.stdout:
+                system_pkgs = parse_packages_to_list(res.stdout, source_type="system", install_path=system_site_path)
+                self._log(f"Loaded JSON for {len(system_pkgs)} system packages.", "stdout")
+                pkgs.extend(system_pkgs)
+
+            # Dual-path scanning: include user-site packages for system environments
+            if self.env.type == "system":
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                if user_site and os.path.exists(user_site):
+                    self._log(f"Scanning user site-packages at {user_site}...", "system")
+                    cmd_user = [uv_path, "pip", "list", "--format", "json", "--target", user_site]
+                    res_user = self._run_command(cmd_user, capture_output=True, stream_stdout=False)
+                    if res_user.returncode == 0 and res_user.stdout:
+                        user_pkgs = parse_packages_to_list(res_user.stdout, source_type="user", install_path=user_site)
+                        self._log(f"Loaded JSON for {len(user_pkgs)} user packages.", "stdout")
+                        pkgs.extend(user_pkgs)
 
             outdated_map = {}
             count_updates = 0
@@ -578,19 +691,37 @@ class ScanWorker(BaseCmdWorker):
                 cmd_outdated = [uv_path, "pip", "list", "--outdated", "--format", "json"] + self.source_args + args
                 res_outdated = self._run_command(cmd_outdated, capture_output=True, stream_stdout=False)
 
-                if res_outdated.returncode == 0 and res_outdated.stdout:
-                    json_stdout = res_outdated.stdout[res_outdated.stdout.find('['):] if '[' in res_outdated.stdout else res_outdated.stdout
+                def parse_outdated_json(stdout_str):
+                    mapping = {}
+                    json_stdout = stdout_str[stdout_str.find('['):] if '[' in stdout_str else stdout_str
                     if json_stdout.strip():
                         try:
                             data = json.loads(json_stdout)
-                            self._log(f"Loaded JSON for {len(data)} outdated packages.", "stdout")
                             for item in data:
                                 name = item.get("name", "")
                                 latest = item.get("latest_version", "")
                                 if name and latest:
-                                    outdated_map[name] = latest
+                                    mapping[name] = latest
                         except Exception:
                             pass
+                    return mapping
+
+                if res_outdated.returncode == 0 and res_outdated.stdout:
+                    system_outdated = parse_outdated_json(res_outdated.stdout)
+                    self._log(f"Loaded JSON for {len(system_outdated)} outdated system packages.", "stdout")
+                    outdated_map.update(system_outdated)
+
+                # Check outdated user-site packages for system environments
+                if self.env.type == "system":
+                    from core.utils import get_user_site_packages
+                    user_site = get_user_site_packages(py_exe)
+                    if user_site and os.path.exists(user_site):
+                        cmd_outdated_user = [uv_path, "pip", "list", "--outdated", "--format", "json", "--target", user_site] + self.source_args
+                        res_outdated_user = self._run_command(cmd_outdated_user, capture_output=True, stream_stdout=False)
+                        if res_outdated_user.returncode == 0 and res_outdated_user.stdout:
+                            user_outdated = parse_outdated_json(res_outdated_user.stdout)
+                            self._log(f"Loaded JSON for {len(user_outdated)} outdated user packages.", "stdout")
+                            outdated_map.update(user_outdated)
 
                 # Update objects
                 for pkg in pkgs:
@@ -769,14 +900,28 @@ class UpdateWorker(BaseCmdWorker):
 
     def run(self):
         try:
-            self._log(f"Updating {self.pkg_name} in {self.env.name}...", "system")
+            pkg_name, loc = _parse_target_loc(self.pkg_name)
+            self._log(f"Updating {pkg_name} in {self.env.name}...", "system")
             uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
             py_exe = resolve_python_executable(self.env)
+            # Check if this package was installed in user-site
+            is_user_package = loc == "user"
+            if not is_user_package and self.env.type == "system":
+                for p in getattr(self.env, "packages", []):
+                    if p.name == pkg_name or getattr(p, "norm_name", "") == pkg_name:
+                        if p.metadata.get("location") == "user":
+                            is_user_package = True
+                            break
             
-            args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            if is_user_package:
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+            else:
+                args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
-            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + [self.pkg_name] + args
+            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + [pkg_name] + args
             
             res = self._run_command(cmd, capture_output=True)
             combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
@@ -812,14 +957,36 @@ class BatchUpdateWorker(BaseCmdWorker):
 
     def run(self):
         try:
-            names = ", ".join(self.pkg_names)
+            real_pkg_names = []
+            has_user_pkg = False
+            for name in self.pkg_names:
+                pkg_name, loc = _parse_target_loc(name)
+                real_pkg_names.append(pkg_name)
+                if loc == "user":
+                    has_user_pkg = True
+
+            names = ", ".join(real_pkg_names)
             self._log(f"Batch updating {names} in {self.env.name}...", "system")
             uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
             py_exe = resolve_python_executable(self.env)
 
-            args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
-            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + self.pkg_names + args
+            if self.env.type == "system" and not has_user_pkg:
+                user_pkg_names = {p.name for p in getattr(self.env, "packages", []) if p.metadata.get("location") == "user"}
+                for rname in real_pkg_names:
+                    if rname in user_pkg_names:
+                        has_user_pkg = True
+                        break
+            
+            from core.utils import is_admin
+            if self.env.type == "system" and (has_user_pkg or not is_admin()):
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+            else:
+                args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            
+            cmd = [uv_path, "pip", "install", "-v", "-U"] + self.source_args + real_pkg_names + args
             res = self._run_command(cmd, capture_output=True)
             combined_output = "\n".join(part for part in ((res.stdout or ""), (res.stderr or "")) if part)
 
@@ -852,14 +1019,29 @@ class RemoveWorker(BaseCmdWorker):
 
     def run(self):
         try:
-            self._log(f"Uninstalling {self.pkg_name} from {self.env.name}...", "system")
+            pkg_name, loc = _parse_target_loc(self.pkg_name)
+            self._log(f"Uninstalling {pkg_name} from {self.env.name}...", "system")
             uv_path = self.uv_path
             env_path = os.path.normpath(self.env.path)
             py_exe = resolve_python_executable(self.env)
             
-            args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            # Check if this package was installed in user-site
+            is_user_package = loc == "user"
+            if not is_user_package and self.env.type == "system":
+                for p in getattr(self.env, "packages", []):
+                    if p.name == pkg_name or getattr(p, "norm_name", "") == pkg_name:
+                        if p.metadata.get("location") == "user":
+                            is_user_package = True
+                            break
             
-            cmd = [uv_path, "pip", "uninstall", self.pkg_name] + args
+            if is_user_package:
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+            else:
+                args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            
+            cmd = [uv_path, "pip", "uninstall", pkg_name] + args
             
             self._run_command(cmd)
             
@@ -894,7 +1076,13 @@ class InstallWorker(BaseCmdWorker):
             env_path = os.path.normpath(self.env.path)
             py_exe = resolve_python_executable(self.env)
             
-            args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
+            from core.utils import is_admin
+            if self.env.type == "system" and not is_admin():
+                from core.utils import get_user_site_packages
+                user_site = get_user_site_packages(py_exe)
+                args = ["--target", user_site] if user_site else ["--system", "--python", env_path]
+            else:
+                args = ["--system", "--python", env_path] if self.env.type == "system" else ["--python", py_exe]
             
             cmd = [uv_path, "pip", "install", "-v"]
             cmd.extend(self.source_args)

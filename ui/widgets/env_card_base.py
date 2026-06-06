@@ -27,6 +27,8 @@ class BaseEnvCard(QFrame):
     selection_state_changed = Signal(str, int, int)   # env_path, outdated_selected, outdated_total
     expand_toggled = Signal(str, bool)                # env_path, is_expanded
     activate_requested = Signal(str)                  # env_path
+    remove_env_requested = Signal(str)                # env_path
+    reorder_requested = Signal(str, str, str)         # source_env_path, target_env_path, position
 
     def __init__(self, env: Environment):
         super().__init__()
@@ -37,8 +39,10 @@ class BaseEnvCard(QFrame):
         self._outdated_only = False
         self._search_query = ""
         self._search_timer = None
+        self._drag_hover_position = "before"
 
         self.setObjectName("EnvCard")
+        self.setAcceptDrops(True)
 
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
@@ -48,7 +52,9 @@ class BaseEnvCard(QFrame):
         # Build Header UI (Children will override this to add custom badges)
         self.header_frame = QFrame()
         self.header_frame.setObjectName("EnvHeaderFrame")
-        self.header_frame.mousePressEvent = lambda e: self._toggle_collapse()
+        self.header_frame.mousePressEvent = self._on_header_mouse_press
+        self.header_frame.mouseMoveEvent = self._on_header_mouse_move
+        self.header_frame.mouseReleaseEvent = self._on_header_mouse_release
         self.h_layout = QHBoxLayout(self.header_frame)
         self.h_layout.setContentsMargins(8, 6, 8, 6)
         self.h_layout.setSpacing(10)
@@ -81,6 +87,98 @@ class BaseEnvCard(QFrame):
         self.name_lbl = QLabel(f"{self.env.name}")
         self.name_lbl.setObjectName("CardTitle")
         self.h_layout.addWidget(self.name_lbl)
+
+    def _on_header_mouse_press(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.pos()
+        elif event.button() == Qt.RightButton:
+            self._show_context_menu(event.globalPos())
+
+    def _on_header_mouse_move(self, event):
+        if not hasattr(self, '_drag_start_pos'):
+            return
+        if not (event.buttons() & Qt.LeftButton):
+            return
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QDrag
+        from PySide6.QtCore import QMimeData
+        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(f"env_card:{self.env.path}")
+        drag.setMimeData(mime_data)
+        drag.exec(Qt.MoveAction)
+
+    def _on_header_mouse_release(self, event):
+        if event.button() == Qt.LeftButton:
+            from PySide6.QtWidgets import QApplication
+            if hasattr(self, '_drag_start_pos') and (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+                self._toggle_collapse()
+
+    def _show_context_menu(self, global_pos):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        del_action = menu.addAction("❌ Delete Environment")
+        action = menu.exec(global_pos)
+        if action == del_action:
+            self.remove_env_requested.emit(self.env.path)
+
+    def _get_drop_indicator(self):
+        from PySide6.QtWidgets import QFrame
+        parent = self.parentWidget()
+        if not parent:
+            return None
+        if not hasattr(parent, '_shared_drop_indicator'):
+            ind = QFrame(parent)
+            ind.setFixedHeight(4)
+            ind.setStyleSheet("background-color: #0078D7; border-radius: 2px;")
+            parent._shared_drop_indicator = ind
+        return parent._shared_drop_indicator
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText() and event.mimeData().text().startswith("env_card:"):
+            if event.source() != self:
+                event.acceptProposedAction()
+                ind = self._get_drop_indicator()
+                if ind:
+                    ind.raise_()
+                    ind.setVisible(True)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText() and event.mimeData().text().startswith("env_card:"):
+            pos_y = event.pos().y()
+            self._drag_hover_position = "before" if pos_y < self.height() / 2 else "after"
+            
+            ind = self._get_drop_indicator()
+            if ind:
+                ind.resize(self.width(), 4)
+                from PySide6.QtCore import QPoint
+                pt = self.mapToParent(QPoint(0, 0))
+                if self._drag_hover_position == "before":
+                    ind.move(pt.x(), pt.y() - 7)
+                else:
+                    ind.move(pt.x(), pt.y() + self.height() + 3)
+                
+            event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        ind = self._get_drop_indicator()
+        if ind:
+            ind.setVisible(False)
+
+    def dropEvent(self, event):
+        ind = self._get_drop_indicator()
+        if ind:
+            ind.setVisible(False)
+        position = getattr(self, "_drag_hover_position", "before")
+        text = event.mimeData().text()
+        if text.startswith("env_card:"):
+            source_path = text.split("env_card:", 1)[1]
+            if source_path != self.env.path:
+                self.reorder_requested.emit(source_path, self.env.path, position)
+                event.acceptProposedAction()
 
     def _on_env_check_changed(self, state):
         partial_val = Qt.PartiallyChecked.value if hasattr(Qt.PartiallyChecked, "value") else 1

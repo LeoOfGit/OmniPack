@@ -111,6 +111,13 @@ QLineEdit[readonly="true"] {
     border: 1px solid hsv(218, 59, 82);
 }
 
+QLineEdit:disabled,
+QTextEdit:disabled {
+    color: hsv(0, 0, 160);
+    background-color: hsv(240, 16, 35);
+    border: 1px solid hsv(240, 26, 50);
+}
+
 /* Checkboxes / 复选框样式 */
 QCheckBox {
     spacing: 8px;

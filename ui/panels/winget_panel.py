@@ -47,6 +47,8 @@ class WingetPanel(BasePanel):
             batch_remove_callback=self._batch_remove,
             manage_envs_callback=self._open_settings,
         )
+        if hasattr(self, "add_env_btn"):
+            self.add_env_btn.setVisible(False)
 
     def _connect_signals(self):
         self.winget_mgr.log_msg.connect(self._log)
@@ -121,7 +123,7 @@ class WingetPanel(BasePanel):
 
                 card = WingetEnvCard(env)
                 self._apply_current_filters_to_card(card)
-                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 2, card)
                 self._env_cards[self._path_key(env.path)] = card
 
                 card.refresh_requested.connect(self._refresh_single_env)

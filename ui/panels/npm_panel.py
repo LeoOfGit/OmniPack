@@ -170,8 +170,77 @@ class NpmPanel(BasePanel):
             refresh_callback=self.start_scan,
             batch_update_callback=self._batch_update,
             batch_remove_callback=self._batch_remove,
-            manage_envs_callback=self._open_settings
+            manage_envs_callback=self._open_settings,
+            add_env_callback=self._show_add_menu
         )
+
+    def _show_add_menu(self):
+        from PySide6.QtWidgets import QMenu, QFileDialog, QInputDialog, QMessageBox
+        from core.env_detector import resolve_npm_env, describe_npm_env
+        import os
+
+        menu = QMenu(self)
+
+        def process_path(path):
+            res_val, res_type = resolve_npm_env(path)
+            if not res_val:
+                QMessageBox.warning(self, "Invalid Path", f"Could not detect valid NPM Project in:\n{path}")
+                return
+            res_val = os.path.normpath(res_val)
+            existing_keys = {self._path_key(e.get("path", "")) for e in self.config_mgr.config.npm_environments}
+            if self._path_key(res_val) in existing_keys:
+                QMessageBox.information(self, "Info", "Already added.")
+                return
+            env_type, smart_name = describe_npm_env(res_val, res_type or "")
+            text, ok = QInputDialog.getText(self, "Name", "Confirm name:", text=smart_name)
+            if not ok or not text: return
+
+            self.config_mgr.add_npm_env(path=res_val, name=text, env_type=env_type)
+            self.start_scan()
+
+        def add_dir():
+            p = QFileDialog.getExistingDirectory(self, "Select NPM Root", "", QFileDialog.Option.ShowDirsOnly)
+            if p: process_path(p)
+
+        def add_file():
+            p, _ = QFileDialog.getOpenFileName(self, "Select NPM Package Metadata", "", "NPM Entry (package.json);;All Files (*)")
+            if p: process_path(p)
+
+        def add_direct():
+            text, ok = QInputDialog.getText(self, "Add NPM project by Path", "Enter full path:")
+            if ok and text.strip():
+                process_path(text.strip().strip('\"').strip('\''))
+
+        def add_batch():
+            text, ok = QInputDialog.getMultiLineText(self, "Batch Add", 
+                "Paste multiple paths from Explorer/Everything:\nOne path per line.")
+            if ok and text.strip():
+                added_count = 0
+                for line in text.strip().splitlines():
+                    path_str = line.strip().strip('"').strip("'")
+                    if path_str:
+                        res_val, res_type = resolve_npm_env(path_str)
+                        if res_val:
+                            res_val = os.path.normpath(res_val)
+                            existing_keys = {self._path_key(e.get("path", "")) for e in self.config_mgr.config.npm_environments}
+                            if self._path_key(res_val) not in existing_keys:
+                                env_type, smart_name = describe_npm_env(res_val, res_type or "")
+                                self.config_mgr.add_npm_env(path=res_val, name=smart_name, env_type=env_type, save=False)
+                                added_count += 1
+                if added_count > 0:
+                    self.config_mgr.save_config()
+                    self.start_scan()
+                    QMessageBox.information(self, "Success", f"Imported {added_count} new environments!")
+                else:
+                    QMessageBox.warning(self, "No Valid Paths", "Could not detect any new valid paths.")
+
+        menu.addAction("📁 From Directory (Project root)...", add_dir)
+        menu.addAction("📄 From File (package.json)...", add_file)
+        menu.addAction("⌨️ Enter Path...", add_direct)
+        menu.addAction("📋 Batch Paste...", add_batch)
+
+        from PySide6.QtGui import QCursor
+        menu.exec(QCursor.pos())
 
     def _connect_signals(self):
         self.npm_mgr.log_msg.connect(self._log)
@@ -220,7 +289,7 @@ class NpmPanel(BasePanel):
                 self._log(f"Initializing card for {env.name}...", "stdout")
                 card = NpmEnvCard(env)
                 self._apply_current_filters_to_card(card)
-                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 2, card)
 
                 norm_path = self._path_key(env.path)
                 self._env_cards[norm_path] = card
@@ -235,6 +304,8 @@ class NpmPanel(BasePanel):
                 card.selection_state_changed.connect(self._on_selection_state_changed)
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
                 card.activate_requested.connect(self._on_activate_requested)
+                card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.reorder_requested.connect(self._on_reorder_requested)
 
                 self.npm_mgr.scan_environment(env)
                 
@@ -408,6 +479,37 @@ class NpmPanel(BasePanel):
 
     def _get_env(self, env_path: str):
         return self._find_env_by_path(self.npm_mgr.environments, env_path)
+
+    def _on_remove_env_requested(self, env_path: str):
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, "Confirm Delete", f"Are you sure you want to remove the environment?\n\n{env_path}", QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.config_mgr.remove_npm_env(env_path)
+            self.start_scan()
+
+    def _on_reorder_requested(self, source_path: str, target_path: str, position: str):
+        envs = self.config_mgr.config.npm_environments
+        source_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(source_path)), -1)
+        target_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(target_path)), -1)
+        
+        if source_idx >= 0 and target_idx >= 0 and source_idx != target_idx:
+            env = envs.pop(source_idx)
+            target_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(target_path)), -1)
+            if position == "after":
+                target_idx += 1
+            envs.insert(target_idx, env)
+            self.config_mgr.save_config()
+            
+            mgr_source_idx = next((i for i, e in enumerate(self.npm_mgr.environments) if self._path_key(e.path) == self._path_key(source_path)), -1)
+            mgr_target_idx = next((i for i, e in enumerate(self.npm_mgr.environments) if self._path_key(e.path) == self._path_key(target_path)), -1)
+            if mgr_source_idx >= 0 and mgr_target_idx >= 0:
+                mgr_env = self.npm_mgr.environments.pop(mgr_source_idx)
+                mgr_target_idx = next((i for i, e in enumerate(self.npm_mgr.environments) if self._path_key(e.path) == self._path_key(target_path)), -1)
+                if position == "after":
+                    mgr_target_idx += 1
+                self.npm_mgr.environments.insert(mgr_target_idx, mgr_env)
+            
+            self._reorder_env_cards(self.npm_mgr.environments, self._env_cards)
 
     # ── Single Env ───────────────────────────────────────────────────────
 

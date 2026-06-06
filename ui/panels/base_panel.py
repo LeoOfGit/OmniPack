@@ -53,6 +53,12 @@ class BasePanel(QWidget):
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setContentsMargins(10, 10, 10, 10)
         self.scroll_layout.setSpacing(10)
+
+        self.add_env_btn = QPushButton("➕ Add Environment")
+        self.add_env_btn.setObjectName("AddEnvBtn")
+        self.add_env_btn.setMinimumHeight(40)
+        self.scroll_layout.addWidget(self.add_env_btn)
+
         self.scroll_layout.addStretch()
 
         self.scroll_area.setWidget(self.scroll_content)
@@ -108,6 +114,7 @@ class BasePanel(QWidget):
         batch_update_callback,
         batch_remove_callback,
         manage_envs_callback,
+        add_env_callback=None,
         extra_widgets_before_search=None,
         extra_widgets_end=None
     ):
@@ -156,6 +163,12 @@ class BasePanel(QWidget):
         self.manage_envs_btn.setObjectName("ActionBtnRefresh")
         self.manage_envs_btn.clicked.connect(manage_envs_callback)
         self.tb_layout.addWidget(self.manage_envs_btn)
+
+        if hasattr(self, "add_env_btn"):
+            if add_env_callback:
+                self.add_env_btn.clicked.connect(add_env_callback)
+            else:
+                self.add_env_btn.clicked.connect(manage_envs_callback)
 
         # Refresh
         self.refresh_btn = QPushButton("↻ Refresh")
@@ -258,11 +271,16 @@ class BasePanel(QWidget):
         self.selection_checkbox.blockSignals(False)
 
     def _clear_env_card_widgets(self):
-        """Clear all env cards while keeping the trailing stretch item."""
-        while self.scroll_layout.count() > 1:
-            item = self.scroll_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        """Clear all env cards while keeping the add button and trailing stretch item."""
+        to_delete = []
+        for i in range(self.scroll_layout.count()):
+            item = self.scroll_layout.itemAt(i)
+            widget = item.widget()
+            if widget and widget != getattr(self, "add_env_btn", None):
+                to_delete.append(widget)
+        for w in to_delete:
+            self.scroll_layout.removeWidget(w)
+            w.deleteLater()
 
     def _apply_current_filters_to_card(self, card):
         """Apply global toolbar filters to a card."""
@@ -290,7 +308,7 @@ class BasePanel(QWidget):
         # Remove all tracked cards from layout
         for key in ordered_keys:
             self.scroll_layout.removeWidget(env_cards_dict[key])
-        # Re-insert in target order (before the trailing stretch)
+        # Re-insert in target order (before the add button and stretch)
         for idx, key in enumerate(ordered_keys):
             self.scroll_layout.insertWidget(idx, env_cards_dict[key])
 

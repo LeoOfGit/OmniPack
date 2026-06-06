@@ -130,8 +130,77 @@ class PipPanel(BasePanel):
             refresh_callback=self.start_scan,
             batch_update_callback=self._batch_update,
             batch_remove_callback=self._batch_remove,
-            manage_envs_callback=self._open_settings
+            manage_envs_callback=self._open_settings,
+            add_env_callback=self._show_add_menu
         )
+
+    def _show_add_menu(self):
+        from PySide6.QtWidgets import QMenu, QFileDialog, QInputDialog, QMessageBox
+        from core.env_detector import resolve_python_env, generate_smart_env_name
+        import os
+
+        menu = QMenu(self)
+
+        def process_path(path):
+            res_val, res_type = resolve_python_env(path)
+            if not res_val:
+                QMessageBox.warning(self, "Invalid Path", f"Could not detect valid Python Environment in:\n{path}")
+                return
+            res_val = os.path.normpath(res_val)
+            existing_keys = {self._path_key(e.get("path", "")) for e in self.config_mgr.config.pip_environments}
+            if self._path_key(res_val) in existing_keys:
+                QMessageBox.information(self, "Info", "Already added.")
+                return
+            smart_name = generate_smart_env_name(res_val, res_type)
+            text, ok = QInputDialog.getText(self, "Name", "Confirm name:", text=smart_name)
+            if not ok or not text: return
+
+            self.config_mgr.add_pip_env(path=res_val, name=text, env_type=res_type)
+            self.start_scan()
+
+        def add_dir():
+            p = QFileDialog.getExistingDirectory(self, "Select Folder", "", QFileDialog.Option.ShowDirsOnly)
+            if p: process_path(p)
+
+        def add_file():
+            p, _ = QFileDialog.getOpenFileName(self, "Select Python", "", "Python (*.exe python*);;All (*)")
+            if p: process_path(p)
+
+        def add_direct():
+            text, ok = QInputDialog.getText(self, "Add Python environment by Path", "Enter full path:")
+            if ok and text.strip():
+                process_path(text.strip().strip('\"').strip('\''))
+
+        def add_batch():
+            text, ok = QInputDialog.getMultiLineText(self, "Batch Add", 
+                "Paste multiple paths from Explorer/Everything:\nOne path per line.")
+            if ok and text.strip():
+                added_count = 0
+                for line in text.strip().splitlines():
+                    path_str = line.strip().strip('"').strip("'")
+                    if path_str:
+                        res_val, res_type = resolve_python_env(path_str)
+                        if res_val:
+                            res_val = os.path.normpath(res_val)
+                            existing_keys = {self._path_key(e.get("path", "")) for e in self.config_mgr.config.pip_environments}
+                            if self._path_key(res_val) not in existing_keys:
+                                smart_name = generate_smart_env_name(res_val, res_type)
+                                self.config_mgr.add_pip_env(path=res_val, name=smart_name, env_type=res_type, save=False)
+                                added_count += 1
+                if added_count > 0:
+                    self.config_mgr.save_config()
+                    self.start_scan()
+                    QMessageBox.information(self, "Success", f"Imported {added_count} new environments!")
+                else:
+                    QMessageBox.warning(self, "No Valid Paths", "Could not detect any new valid paths.")
+
+        menu.addAction("📁 From Directory (Project/Venv)...", add_dir)
+        menu.addAction("📄 From Executable (python.exe)...", add_file)
+        menu.addAction("⌨️ Enter Path...", add_direct)
+        menu.addAction("📋 Batch Paste...", add_batch)
+
+        from PySide6.QtGui import QCursor
+        menu.exec(QCursor.pos())
 
     def _connect_signals(self):
         self.pip_mgr.log_msg.connect(self._log)
@@ -179,7 +248,8 @@ class PipPanel(BasePanel):
                 self._log(f"Initializing card for {env.name}...", "stdout")
                 card = PipEnvCard(env)
                 self._apply_current_filters_to_card(card)
-                self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+                # Insert before add_env_btn and stretch
+                self.scroll_layout.insertWidget(self.scroll_layout.count() - 2, card)
 
                 norm_path = self._path_key(env.path)
                 self._env_cards[norm_path] = card
@@ -193,15 +263,20 @@ class PipPanel(BasePanel):
                 card.selection_state_changed.connect(self._on_selection_state_changed)
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
                 card.activate_requested.connect(self._on_activate_requested)
+                card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.reorder_requested.connect(self._on_reorder_requested)
 
                 self.pip_mgr.scan_environment(env)
                 
                 # Watch site-packages for manual terminal command changes
                 import os
-                site_packages = self._get_site_packages_path(env)
-                if site_packages and os.path.exists(site_packages):
-                    self._fs_watcher.addPath(site_packages)
-                elif os.path.exists(env.path):
+                site_packages_list = self._get_site_packages_paths(env)
+                watched_any = False
+                for sp in site_packages_list:
+                    if os.path.exists(sp):
+                        self._fs_watcher.addPath(sp)
+                        watched_any = True
+                if not watched_any and os.path.exists(env.path):
                     self._fs_watcher.addPath(env.path)
 
             self._log("All environments queued for scan.", "system")
@@ -306,16 +381,40 @@ class PipPanel(BasePanel):
             else:
                 return os.path.normpath(os.path.join(path, "lib", f"python{env.version}", "site-packages"))
 
+    def _get_site_packages_paths(self, env) -> list:
+        import os
+        paths = []
+        site_pkg = self._get_site_packages_path(env)
+        if site_pkg:
+            paths.append(os.path.normpath(site_pkg))
+        
+        if env.type == "system":
+            from core.utils import get_user_site_packages
+            from managers.pip_manager import resolve_python_executable
+            py_exe = resolve_python_executable(env)
+            user_site = get_user_site_packages(py_exe)
+            if user_site and os.path.exists(user_site):
+                paths.append(os.path.normpath(user_site))
+                
+        return paths
+
     def _on_directory_changed(self, path: str):
         import os
         path = os.path.normpath(path)
         # Find which env this belongs to
         for env in self.pip_mgr.environments:
-            site_packages = self._get_site_packages_path(env)
-            if site_packages:
-                site_packages = os.path.normpath(site_packages)
+            site_packages_list = self._get_site_packages_paths(env)
             norm_env_path = os.path.normpath(env.path)
-            if path == site_packages or path == norm_env_path:
+            
+            matched = False
+            for sp in site_packages_list:
+                if path == sp:
+                    matched = True
+                    break
+            if path == norm_env_path:
+                matched = True
+                
+            if matched:
                 norm_key = self._path_key(env.path)
                 if norm_key not in self._fs_debounce_timers:
                     from PySide6.QtCore import QTimer
@@ -405,6 +504,37 @@ class PipPanel(BasePanel):
             if target_key in self._env_cards:
                 self._env_cards[target_key]._pkgs_loaded = False
             self.pip_mgr.scan_environment(env, scan_mode=scan_mode)
+
+    def _on_remove_env_requested(self, env_path: str):
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, "Confirm Delete", f"Are you sure you want to remove the environment?\n\n{env_path}", QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.config_mgr.remove_pip_env(env_path)
+            self.start_scan()
+
+    def _on_reorder_requested(self, source_path: str, target_path: str, position: str):
+        envs = self.config_mgr.config.pip_environments
+        source_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(source_path)), -1)
+        target_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(target_path)), -1)
+        
+        if source_idx >= 0 and target_idx >= 0 and source_idx != target_idx:
+            env = envs.pop(source_idx)
+            target_idx = next((i for i, e in enumerate(envs) if self._path_key(e.get("path", "")) == self._path_key(target_path)), -1)
+            if position == "after":
+                target_idx += 1
+            envs.insert(target_idx, env)
+            self.config_mgr.save_config()
+            
+            mgr_source_idx = next((i for i, e in enumerate(self.pip_mgr.environments) if self._path_key(e.path) == self._path_key(source_path)), -1)
+            mgr_target_idx = next((i for i, e in enumerate(self.pip_mgr.environments) if self._path_key(e.path) == self._path_key(target_path)), -1)
+            if mgr_source_idx >= 0 and mgr_target_idx >= 0:
+                mgr_env = self.pip_mgr.environments.pop(mgr_source_idx)
+                mgr_target_idx = next((i for i, e in enumerate(self.pip_mgr.environments) if self._path_key(e.path) == self._path_key(target_path)), -1)
+                if position == "after":
+                    mgr_target_idx += 1
+                self.pip_mgr.environments.insert(mgr_target_idx, mgr_env)
+            
+            self._reorder_env_cards(self.pip_mgr.environments, self._env_cards)
 
     def _start_background_full_refresh(self, env_path: str):
         target_key = self._path_key(env_path)
@@ -546,10 +676,11 @@ class PipPanel(BasePanel):
     def _start_pkg_update(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
         if env:
-            self.console.log_divider(f"UPDATE {pkg_name}")
+            real_name = pkg_name.split(":", 1)[0]
+            self.console.log_divider(f"UPDATE {real_name}")
             import uuid
             marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
-            self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": [pkg_name], "marker": marker})
+            self._active_operations.append({"env_path": env.path, "type": "update", "pkgs": [real_name], "marker": marker})
             cmd_list = self.pip_mgr.build_update_command(env, [pkg_name])
             from core.terminal.command_renderer import ShellCommandRenderer
             shell_name = os.path.basename(self.terminal._resolve_shell()).lower() if hasattr(self.terminal, "_resolve_shell") else "cmd.exe"
@@ -560,16 +691,17 @@ class PipPanel(BasePanel):
     def _start_pkg_remove(self, pkg_name: str, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)
         if env:
+            real_name = pkg_name.split(":", 1)[0]
             reply = QMessageBox.question(
                 self, "Confirm Uninstall",
-                f"Uninstall {pkg_name} from {env.name}?",
+                f"Uninstall {real_name} from {env.name}?",
                 QMessageBox.Yes | QMessageBox.No
             )
             if reply == QMessageBox.Yes:
-                self.console.log_divider(f"UNINSTALL {pkg_name}")
+                self.console.log_divider(f"UNINSTALL {real_name}")
                 import uuid
                 marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
-                self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": [pkg_name], "marker": marker})
+                self._active_operations.append({"env_path": env.path, "type": "remove", "pkgs": [real_name], "marker": marker})
                 
                 cmd_list = self.pip_mgr.build_remove_command(env, [pkg_name])
                 from core.terminal.command_renderer import ShellCommandRenderer

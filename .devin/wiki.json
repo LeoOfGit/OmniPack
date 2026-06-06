@@ -1,0 +1,10 @@
+{
+  "repo_notes": [
+    {
+      "content": "CRITICAL REQUIREMENT: You must generate a parallel, strictly separated bilingual Wiki structure. Do not mix English and Chinese within the same page."
+    },
+    {
+      "content": "How to structure: 1. Actively scan the codebase and determine the best hierarchical architecture. 2. Based on your discovered architecture, create two independent root directories or main sections in the sidebar: one named 'English Documentation' and the other named '中文技术文档'. 3. Generate fully localized sub-pages under each section respectively. The sub-pages under the Chinese section must be written entirely in professional Simplified Chinese, while the English section remains in English. 4. Keep core technical terms in English when generating Chinese pages."
+    }
+  ]
+}

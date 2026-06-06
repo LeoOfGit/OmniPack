@@ -164,6 +164,100 @@ def get_persistent_root():
             return Path(xdg_root) / app_name
         return Path(os.path.expanduser("~/.config")) / app_name
 
+_system_paths = None
+_user_paths = None
+_has_registry_paths = False
+
+def get_windows_registry_paths():
+    global _system_paths, _user_paths, _has_registry_paths
+    if _system_paths is not None:
+        return _system_paths, _user_paths, _has_registry_paths
+        
+    _system_paths = set()
+    _user_paths = set()
+    _has_registry_paths = False
+    
+    if sys.platform == "win32":
+        try:
+            import winreg
+            # Read System PATH
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"System\CurrentControlSet\Control\Session Manager\Environment", 0, winreg.KEY_READ) as key:
+                    val, _ = winreg.QueryValueEx(key, "Path")
+                    expanded_val = os.path.expandvars(val)
+                    for p in expanded_val.split(os.pathsep):
+                        if p.strip():
+                            _system_paths.add(os.path.normcase(os.path.normpath(p.strip())))
+            except Exception:
+                pass
+
+            # Read User PATH
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0, winreg.KEY_READ) as key:
+                    val, _ = winreg.QueryValueEx(key, "Path")
+                    expanded_val = os.path.expandvars(val)
+                    for p in expanded_val.split(os.pathsep):
+                        if p.strip():
+                            _user_paths.add(os.path.normcase(os.path.normpath(p.strip())))
+            except Exception:
+                pass
+            _has_registry_paths = True
+        except Exception:
+            pass
+            
+    return _system_paths, _user_paths, _has_registry_paths
+
+def determine_path_tooltip(env_path_str: str) -> str:
+    """Helper to dynamically determine if a path belongs to system or user variables."""
+    if not env_path_str:
+        return ""
+        
+    if os.path.isdir(env_path_str):
+        parent_dir = os.path.normcase(os.path.normpath(env_path_str))
+    else:
+        parent_dir = os.path.normcase(os.path.dirname(os.path.normpath(env_path_str)))
+        
+    parent_dir_scripts = os.path.normcase(os.path.join(parent_dir, "scripts"))
+    tooltip = ""
+    
+    if sys.platform == "win32":
+        sys_paths, user_paths, has_reg = get_windows_registry_paths()
+        if has_reg:
+            if parent_dir in sys_paths or parent_dir_scripts in sys_paths:
+                tooltip = "In the System Variables"
+            elif parent_dir in user_paths or parent_dir_scripts in user_paths:
+                tooltip = "In the User Variables"
+                
+        if not tooltip:
+            path_env = os.environ.get("PATH", "")
+            in_path = False
+            for p in path_env.split(os.pathsep):
+                if p:
+                    norm_p = os.path.normcase(os.path.normpath(p))
+                    if norm_p == parent_dir or norm_p == parent_dir_scripts:
+                        in_path = True
+                        break
+            if in_path:
+                user_profile = os.environ.get("USERPROFILE")
+                user_profile_dir = os.path.normcase(os.path.normpath(user_profile)) if user_profile else "c:\\users"
+                if parent_dir.startswith(user_profile_dir) or "c:\\users\\" in parent_dir:
+                    tooltip = "In the User Variables"
+                else:
+                    tooltip = "In the System Variables"
+    else:
+        path_env = os.environ.get("PATH", "")
+        in_path = False
+        for p in path_env.split(os.pathsep):
+            if p:
+                norm_p = os.path.normcase(os.path.normpath(p))
+                if norm_p == parent_dir or norm_p == parent_dir_scripts:
+                    in_path = True
+                    break
+        if in_path:
+            tooltip = "In the System Variables"
+            
+    return tooltip
+
 def find_system_pythons():
     """
     Robustly find installed Python interpreters.
@@ -171,6 +265,8 @@ def find_system_pythons():
     """
     pythons = []
     seen_paths = set()
+
+    system_paths, user_paths, has_registry_paths = get_windows_registry_paths()
 
     def _python_name_ok(name: str) -> bool:
         # Keep interpreters only, skip helper binaries such as python3-config.
@@ -196,12 +292,20 @@ def find_system_pythons():
             
             # Dynamically check if this python's folder is in PATH
             parent_dir = os.path.normcase(os.path.dirname(path))
-            path_env = os.environ.get("PATH", "")
-            for p in path_env.split(os.pathsep):
-                if p and os.path.normcase(os.path.normpath(p)) == parent_dir:
-                    if "path" not in actual_tags:
-                        actual_tags.append("path")
-                    break
+            if sys.platform == "win32" and has_registry_paths:
+                if parent_dir in system_paths:
+                    if "path_system" not in actual_tags:
+                        actual_tags.append("path_system")
+                elif parent_dir in user_paths:
+                    if "path_user" not in actual_tags:
+                        actual_tags.append("path_user")
+            else:
+                path_env = os.environ.get("PATH", "")
+                for p in path_env.split(os.pathsep):
+                    if p and os.path.normcase(os.path.normpath(p)) == parent_dir:
+                        if "path_system" not in actual_tags:
+                            actual_tags.append("path_system")
+                        break
 
             pythons.append({"path": path, "name": name, "tags": actual_tags})
             seen_paths.add(key)
@@ -326,4 +430,47 @@ def get_uv_path(config_mgr=None):
         return sys_uv
 
     return "uv"
+
+
+def get_user_site_packages(py_exe: str) -> str:
+    """
+    Get the user-site packages directory for the given Python interpreter.
+    Returns the path if it exists and is a directory, or empty string on failure.
+    """
+    import subprocess
+    import os
+    if not py_exe:
+        return ""
+    
+    # Resolve if py_exe is actually a directory (similar to resolve_python_executable)
+    if os.path.isdir(py_exe):
+        exe_name = "python.exe" if os.name == "nt" else "python"
+        scripts_dir = "Scripts" if os.name == "nt" else "bin"
+        candidate = os.path.join(py_exe, scripts_dir, exe_name)
+        if not os.path.exists(candidate):
+            candidate = os.path.join(py_exe, "bin", "python")
+        if os.path.exists(candidate):
+            py_exe = candidate
+        else:
+            return ""
+
+    if not os.path.isfile(py_exe):
+        return ""
+
+    try:
+        result = subprocess.run(
+            [py_exe, "-c", "import site; print(site.getusersitepackages())"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+        )
+        if result.returncode == 0:
+            path = result.stdout.strip()
+            if path and os.path.isdir(path):
+                return os.path.normpath(path)
+    except Exception:
+        pass
+    return ""
+
 

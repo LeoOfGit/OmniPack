@@ -444,36 +444,38 @@ def merge_dependency_info(packages: List[Package], dep_data: Dict) -> List[Packa
     plus any "ghost" (missing) dependencies added.
     """
     if not dep_data:
-        return packages
+        dep_graph = {pkg.norm_name: pkg for pkg in packages}
+        return packages, dep_graph
 
-    # Build lookup from existing packages
-    pkg_map: Dict[str, Package] = {}
+    # Build lookup mapping norm_name to a list of package instances
+    pkg_map: Dict[str, List[Package]] = {}
     for pkg in packages:
-        pkg_map[pkg.norm_name] = pkg
+        if pkg.norm_name not in pkg_map:
+            pkg_map[pkg.norm_name] = []
+        pkg_map[pkg.norm_name].append(pkg)
 
     # Enrich existing packages with dependency info
     for norm_name, info in dep_data.items():
         if norm_name not in pkg_map:
             continue
 
-        pkg = pkg_map[norm_name]
+        for pkg in pkg_map[norm_name]:
+            # Set requires
+            pkg.requires = [
+                DepRequirement(
+                    name=dep['name'],
+                    norm_name=dep['norm_name'],
+                    constraint=dep.get('constraint', ''),
+                    is_installed=dep.get('is_installed', True),
+                )
+                for dep in info.get('requires', [])
+            ]
 
-        # Set requires
-        pkg.requires = [
-            DepRequirement(
-                name=dep['name'],
-                norm_name=dep['norm_name'],
-                constraint=dep.get('constraint', ''),
-                is_installed=dep.get('is_installed', True),
-            )
-            for dep in info.get('requires', [])
-        ]
+            # Set required_by
+            pkg.required_by = info.get('required_by', [])
 
-        # Set required_by
-        pkg.required_by = info.get('required_by', [])
-
-        # Determine if top-level
-        pkg.is_top_level = len(pkg.required_by) == 0
+            # Determine if top-level
+            pkg.is_top_level = len(pkg.required_by) == 0
 
     # Create ghost packages for missing dependencies
     all_norm_names = set(pkg_map.keys())
@@ -495,11 +497,18 @@ def merge_dependency_info(packages: List[Package], dep_data: Dict) -> List[Packa
                 )
                 ghost_packages.append(ghost)
                 all_norm_names.add(dep_norm)
-                pkg_map[dep_norm] = ghost
+                pkg_map[dep_norm] = [ghost]
 
     packages.extend(ghost_packages)
 
     # Build dep_graph dict for the Environment
-    dep_graph = {pkg.norm_name: pkg for pkg in packages}
+    # In case of duplicates, keep the user-site one (if any) or just the last one
+    dep_graph = {}
+    for pkg in packages:
+        if pkg.norm_name in dep_graph:
+            if pkg.metadata.get("location") == "user":
+                dep_graph[pkg.norm_name] = pkg
+        else:
+            dep_graph[pkg.norm_name] = pkg
 
     return packages, dep_graph

@@ -1,9 +1,13 @@
+import sys
+import os
 from PySide6.QtWidgets import (
     QLabel, QPushButton, QCheckBox, QDialog, QLineEdit, QDialogButtonBox, QVBoxLayout
 )
 from core.manager_base import Environment
 from ui.widgets.add_package_dialog import AddPackageDialog
 from ui.widgets.env_card_base import BaseEnvCard
+
+from core.utils import determine_path_tooltip
 
 
 class PipEnvCard(BaseEnvCard):
@@ -74,10 +78,11 @@ class PipEnvCard(BaseEnvCard):
 
     def update_ui(self):
         title = f"{self.env.name}"
-        if "path" in getattr(self.env, "tags", []):
-            title += " [PATH]"
-            
         self.name_lbl.setText(title)
+
+        tooltip = determine_path_tooltip(str(self.env.path))
+
+        self.name_lbl.setToolTip(tooltip)
         runtime_ver = getattr(self.env, "runtime_version", "") or self.env.python_version
         runtime_latest = getattr(self.env, "runtime_latest_version", "")
         runtime_has_update = bool(getattr(self.env, "runtime_has_update", False))

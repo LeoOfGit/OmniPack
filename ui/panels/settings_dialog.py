@@ -657,25 +657,37 @@ class SettingsDialog(QDialog):
         proxy_group = QGroupBox("Proxy Connection")
         proxy_layout = QVBoxLayout(proxy_group)
 
-        self.proxy_enabled_check = QCheckBox("Enable proxy")
-        self.proxy_enabled_check.toggled.connect(self._on_proxy_fields_changed)
-        proxy_layout.addWidget(self.proxy_enabled_check)
+        self.proxy_enabled_check = QCheckBox("Enable Proxy")
+        self.proxy_same_check = QCheckBox("Same for HTTP and HTTPS")
+        self.proxy_same_check.setChecked(True)
+
+        self.proxy_http_edit = QLineEdit()
+        self.proxy_http_edit.setPlaceholderText("e.g. http://127.0.0.1:3128")
+
+        self.proxy_https_edit = QLineEdit()
+        self.proxy_https_edit.setPlaceholderText("e.g. http://127.0.0.1:3128")
+
+        enabled_row = QHBoxLayout()
+        enabled_row.addWidget(self.proxy_enabled_check)
+        enabled_row.addSpacing(20)
+        enabled_row.addWidget(self.proxy_same_check)
+        enabled_row.addStretch()
+        proxy_layout.addLayout(enabled_row)
 
         http_row = QHBoxLayout()
         http_row.addWidget(QLabel("HTTP:"))
-        self.proxy_http_edit = QLineEdit()
-        self.proxy_http_edit.setPlaceholderText("e.g. http://127.0.0.1:3128")
-        self.proxy_http_edit.textChanged.connect(self._on_proxy_fields_changed)
         http_row.addWidget(self.proxy_http_edit)
         proxy_layout.addLayout(http_row)
 
         https_row = QHBoxLayout()
         https_row.addWidget(QLabel("HTTPS:"))
-        self.proxy_https_edit = QLineEdit()
-        self.proxy_https_edit.setPlaceholderText("e.g. http://127.0.0.1:3128")
-        self.proxy_https_edit.textChanged.connect(self._on_proxy_fields_changed)
         https_row.addWidget(self.proxy_https_edit)
         proxy_layout.addLayout(https_row)
+
+        self.proxy_enabled_check.toggled.connect(self._on_proxy_fields_changed)
+        self.proxy_same_check.toggled.connect(self._on_proxy_fields_changed)
+        self.proxy_http_edit.textChanged.connect(self._on_proxy_fields_changed)
+        self.proxy_https_edit.textChanged.connect(self._on_proxy_fields_changed)
 
         layout.addWidget(proxy_group)
 
@@ -878,6 +890,7 @@ class SettingsDialog(QDialog):
         targets = settings.get("targets", {})
 
         self.proxy_enabled_check.blockSignals(True)
+        self.proxy_same_check.blockSignals(True)
         self.proxy_http_edit.blockSignals(True)
         self.proxy_https_edit.blockSignals(True)
         self.proxy_target_pypi.blockSignals(True)
@@ -887,8 +900,14 @@ class SettingsDialog(QDialog):
         self.proxy_target_winget.blockSignals(True)
 
         self.proxy_enabled_check.setChecked(bool(settings.get("enabled", False)))
-        self.proxy_http_edit.setText(str(settings.get("http_proxy", "")))
-        self.proxy_https_edit.setText(str(settings.get("https_proxy", "")))
+        
+        http_val = str(settings.get("http_proxy", ""))
+        https_val = str(settings.get("https_proxy", ""))
+        is_same = (http_val == https_val)
+        self.proxy_same_check.setChecked(is_same)
+
+        self.proxy_http_edit.setText(http_val)
+        self.proxy_https_edit.setText(https_val)
         self.proxy_target_pypi.setChecked(bool(targets.get("pypi", False)))
         self.proxy_target_npm.setChecked(bool(targets.get("npm", False)))
         self.proxy_target_pip_cmd.setChecked(bool(targets.get("pip", False)))
@@ -896,6 +915,7 @@ class SettingsDialog(QDialog):
         self.proxy_target_winget.setChecked(bool(targets.get("winget", False)))
 
         self.proxy_enabled_check.blockSignals(False)
+        self.proxy_same_check.blockSignals(False)
         self.proxy_http_edit.blockSignals(False)
         self.proxy_https_edit.blockSignals(False)
         self.proxy_target_pypi.blockSignals(False)
@@ -982,10 +1002,15 @@ class SettingsDialog(QDialog):
 
     def _save_proxy_settings(self):
         existing = getattr(self.config_mgr.config, "proxy_settings", {}) or {}
+        http_proxy = self.proxy_http_edit.text().strip()
+        https_proxy = self.proxy_https_edit.text().strip()
+        if self.proxy_same_check.isChecked():
+            https_proxy = http_proxy
+
         new_settings = normalize_proxy_settings({
             "enabled": self.proxy_enabled_check.isChecked(),
-            "http_proxy": self.proxy_http_edit.text().strip(),
-            "https_proxy": self.proxy_https_edit.text().strip(),
+            "http_proxy": http_proxy,
+            "https_proxy": https_proxy,
             "targets": {
                 "pypi": self.proxy_target_pypi.isChecked(),
                 "npm": self.proxy_target_npm.isChecked(),
@@ -1151,13 +1176,18 @@ class SettingsDialog(QDialog):
             return
 
     def _on_proxy_fields_changed(self, _value=None):
+        if hasattr(self, "proxy_same_check") and self.proxy_same_check.isChecked():
+            self.proxy_https_edit.blockSignals(True)
+            self.proxy_https_edit.setText(self.proxy_http_edit.text())
+            self.proxy_https_edit.blockSignals(False)
         self._changed = True
         self._apply_proxy_ui()
 
     def _apply_proxy_ui(self):
         enabled = self.proxy_enabled_check.isChecked()
+        self.proxy_same_check.setEnabled(enabled)
         self.proxy_http_edit.setEnabled(enabled)
-        self.proxy_https_edit.setEnabled(enabled)
+        self.proxy_https_edit.setEnabled(enabled and not self.proxy_same_check.isChecked())
         self.proxy_target_pypi.setEnabled(enabled)
         self.proxy_target_npm.setEnabled(enabled)
         self.proxy_target_pip_cmd.setEnabled(enabled)
