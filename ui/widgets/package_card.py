@@ -482,7 +482,5 @@ class PackageCard(QFrame):
         """Remove all child cards (for refresh)."""
         self._children_loaded = False
         self._child_cards.clear()
-        while self.children_layout.count():
-            item = self.children_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        from ui.utils import clear_layout
+        clear_layout(self.children_layout)

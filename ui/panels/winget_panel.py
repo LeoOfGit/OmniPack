@@ -128,6 +128,7 @@ class WingetPanel(BasePanel):
 
                 card.refresh_requested.connect(self._refresh_single_env)
                 card.update_all_requested.connect(self._update_all_in_env)
+                card.runtime_update_requested.connect(self._update_runtime_in_env)
                 card.update_package_requested.connect(self._start_pkg_update)
                 card.remove_package_requested.connect(self._start_pkg_remove)
                 card.add_package_requested.connect(self._start_pkg_install)
@@ -347,6 +348,42 @@ class WingetPanel(BasePanel):
         cmd_str = self._build_update_terminal_command(env, package_spec, marker)
         ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
 
+    def _update_runtime_in_env(self, env_path: str):
+        env = self._get_env(env_path)
+        if not env:
+            return
+
+        current_ver = getattr(env, "runtime_version", "") or "Unknown"
+        latest_ver = getattr(env, "runtime_latest_version", "") or "latest"
+        if not getattr(env, "runtime_has_update", False):
+            self._log("Winget (App Installer) is up to date.", "system")
+            return
+
+        msg = (
+            f"Update Winget (App Installer)?\n\n"
+            f"{current_ver} -> {latest_ver}\n\n"
+            f"This will update Microsoft.AppInstaller which provides Winget."
+        )
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Runtime Update",
+            msg,
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.console.log_divider("UPDATE WINGET RUNTIME")
+            marker = f"__OMNIPACK_OP_DONE_{uuid.uuid4().hex}__"
+            self._active_operations.append({"env_path": env.path, "marker": marker})
+            
+            winget = self.winget_mgr._current_settings().get("winget_path", "") or "winget"
+            cmd_list = [
+                winget, "upgrade", "--id", "Microsoft.AppInstaller",
+                "--accept-package-agreements", "--accept-source-agreements", "--exact"
+            ]
+            cmd_str = self._build_terminal_command(cmd_list, marker)
+            ShellCommandRenderer.write_rendered_command(self.terminal, cmd_str)
+
     def _start_pkg_remove(self, package_target: str, env_path: str):
         env = self._get_env(env_path)
         pkg = self._find_package(env, package_target)
@@ -467,6 +504,22 @@ class WingetPanel(BasePanel):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
+
+        def get_details():
+            details = [
+                f"Name: {pkg.name}",
+                f"ID: {package_id}",
+                f"Source: {source_name}",
+                f"Installed: {pkg.version}",
+                f"Available: {pkg.latest_version or '-'}"
+            ]
+            if install_location:
+                details.append(f"Location: {install_location}")
+            return "\n".join(details)
+
+        from ui.utils import add_copy_details_button
+        add_copy_details_button(dialog, get_details, buttons)
+
         layout.addWidget(buttons)
 
         if dialog.exec() != QDialog.Accepted:

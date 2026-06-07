@@ -264,6 +264,8 @@ class PipPanel(BasePanel):
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
                 card.activate_requested.connect(self._on_activate_requested)
                 card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.rename_requested.connect(self._on_rename_env_requested)
+                card.edit_requested.connect(self._on_edit_env_requested)
                 card.reorder_requested.connect(self._on_reorder_requested)
 
                 self.pip_mgr.scan_environment(env)
@@ -511,6 +513,21 @@ class PipPanel(BasePanel):
         if reply == QMessageBox.Yes:
             self.config_mgr.remove_pip_env(env_path)
             self.start_scan()
+
+    def _on_rename_env_requested(self, env_path: str):
+        from PySide6.QtWidgets import QInputDialog
+        envs = self.config_mgr.config.pip_environments
+        for env in envs:
+            if self._path_key(env.get("path", "")) == self._path_key(env_path):
+                new_name, ok = QInputDialog.getText(self, "Rename", "New Name:", text=env.get("name", ""))
+                if ok and new_name:
+                    env["name"] = new_name
+                    self.config_mgr.save_config()
+                    self.start_scan()
+                break
+
+    def _on_edit_env_requested(self, env_path: str):
+        self._open_settings(edit_env_path=env_path)
 
     def _on_reorder_requested(self, source_path: str, target_path: str, position: str):
         envs = self.config_mgr.config.pip_environments
@@ -935,9 +952,17 @@ class PipPanel(BasePanel):
 
     # ── Settings ─────────────────────────────────────────────────────────
 
-    def _open_settings(self):
+    def _open_settings(self, edit_env_path=None):
         from ui.panels.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self.config_mgr, initial_tab="pip", parent=self)
+
+        if isinstance(edit_env_path, str) and edit_env_path:
+            for i in range(dialog.pip_list.count()):
+                if dialog.pip_list.item(i).data(Qt.UserRole) == edit_env_path:
+                    dialog.pip_list.setCurrentRow(i)
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(10, lambda: dialog._edit_env("pip"))
+                    break
 
         def on_envs_changed():
             self._log("Config changed. Syncing UI...", "system")
@@ -969,6 +994,11 @@ class PipPanel(BasePanel):
                 card.add_package_requested.connect(self._start_pkg_install)
                 card.selection_state_changed.connect(self._on_selection_state_changed)
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
+                card.activate_requested.connect(self._on_activate_requested)
+                card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.rename_requested.connect(self._on_rename_env_requested)
+                card.edit_requested.connect(self._on_edit_env_requested)
+                card.reorder_requested.connect(self._on_reorder_requested)
                 self.pip_mgr.scan_environment(env)
 
             # Existing: force UI refresh (name changes, etc.)

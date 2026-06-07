@@ -305,6 +305,8 @@ class NpmPanel(BasePanel):
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
                 card.activate_requested.connect(self._on_activate_requested)
                 card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.rename_requested.connect(self._on_rename_env_requested)
+                card.edit_requested.connect(self._on_edit_env_requested)
                 card.reorder_requested.connect(self._on_reorder_requested)
 
                 self.npm_mgr.scan_environment(env)
@@ -486,6 +488,21 @@ class NpmPanel(BasePanel):
         if reply == QMessageBox.Yes:
             self.config_mgr.remove_npm_env(env_path)
             self.start_scan()
+
+    def _on_rename_env_requested(self, env_path: str):
+        from PySide6.QtWidgets import QInputDialog
+        envs = self.config_mgr.config.npm_environments
+        for env in envs:
+            if self._path_key(env.get("path", "")) == self._path_key(env_path):
+                new_name, ok = QInputDialog.getText(self, "Rename", "New Name:", text=env.get("name", ""))
+                if ok and new_name:
+                    env["name"] = new_name
+                    self.config_mgr.save_config()
+                    self.start_scan()
+                break
+
+    def _on_edit_env_requested(self, env_path: str):
+        self._open_settings(edit_env_path=env_path)
 
     def _on_reorder_requested(self, source_path: str, target_path: str, position: str):
         envs = self.config_mgr.config.npm_environments
@@ -905,9 +922,17 @@ class NpmPanel(BasePanel):
 
     # ── Settings ─────────────────────────────────────────────────────────
 
-    def _open_settings(self):
+    def _open_settings(self, edit_env_path=None):
         from ui.panels.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self.config_mgr, initial_tab="npm", parent=self)
+
+        if isinstance(edit_env_path, str) and edit_env_path:
+            for i in range(dialog.npm_list.count()):
+                if dialog.npm_list.item(i).data(Qt.UserRole) == edit_env_path:
+                    dialog.npm_list.setCurrentRow(i)
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(10, lambda: dialog._edit_env("npm"))
+                    break
 
         def on_envs_changed():
             self._log("NPM Environments changed. Syncing UI...", "system")
@@ -940,6 +965,11 @@ class NpmPanel(BasePanel):
                 card.config_package_requested.connect(self._config_package)
                 card.selection_state_changed.connect(self._on_selection_state_changed)
                 card.expand_toggled.connect(lambda *a: self._sync_expand_checkbox())
+                card.activate_requested.connect(self._on_activate_requested)
+                card.remove_env_requested.connect(self._on_remove_env_requested)
+                card.rename_requested.connect(self._on_rename_env_requested)
+                card.edit_requested.connect(self._on_edit_env_requested)
+                card.reorder_requested.connect(self._on_reorder_requested)
                 self.npm_mgr.scan_environment(env)
 
             # Existing: force UI refresh
@@ -1021,10 +1051,8 @@ class NpmPanel(BasePanel):
         columns = 3
 
         def _set_card_state(btn: QPushButton, state: str):
-            btn.setProperty("state", state)
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-            btn.update()
+            from ui.utils import update_widget_style_property
+            update_widget_style_property(btn, "state", state)
 
         def _format_version(ch: str) -> str:
             if isinstance(channel_versions, dict):

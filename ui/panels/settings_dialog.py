@@ -31,6 +31,17 @@ from core.source_profiles import (
 )
 from ui.panels.winget_settings_page import WingetTaskWorker
 
+_NPM_GLOBAL_PATH_CACHE = None
+def _get_npm_global_path_cached():
+    global _NPM_GLOBAL_PATH_CACHE
+    if _NPM_GLOBAL_PATH_CACHE is None:
+        try:
+            from managers.npm_manager import NpmBaseHelper
+            _, root = NpmBaseHelper.get_global_prefix_and_root()
+            _NPM_GLOBAL_PATH_CACHE = root or "System Global"
+        except Exception:
+            _NPM_GLOBAL_PATH_CACHE = "System Global"
+    return _NPM_GLOBAL_PATH_CACHE
 
 class SettingsDialog(QDialog):
     """Unified settings dialog for environments and source mirrors."""
@@ -205,7 +216,7 @@ class SettingsDialog(QDialog):
                 "remove_fn": self.config_mgr.remove_npm_env,
                 "resolve_fn": resolve_npm_env,
                 "name": "NPM Project",
-                "label_fn": lambda e: f"[{str(e.get('type', 'unknown')).replace('_', ' ').title()}] {e['name']} ({e['path']})",
+                "label_fn": lambda e: f"{e['name']} ({_get_npm_global_path_cached() if e.get('path') == 'global' else e.get('path', '')})",
                 "set_cfg_fn": lambda val: setattr(self.config_mgr.config, "npm_environments", val)
             }
 
@@ -1552,10 +1563,8 @@ class SettingsDialog(QDialog):
         line_edit.blockSignals(True)
         line_edit.setText(value)
         line_edit.setReadOnly(not editable)
-        line_edit.setProperty("readonly", not editable)
-        line_edit.style().unpolish(line_edit)
-        line_edit.style().polish(line_edit)
-        line_edit.update()
+        from ui.utils import update_widget_style_property
+        update_widget_style_property(line_edit, "readonly", not editable)
         line_edit.blockSignals(False)
 
     @staticmethod

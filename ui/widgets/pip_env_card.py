@@ -24,6 +24,10 @@ class PipEnvCard(BaseEnvCard):
             self.ver_lbl.setText(f"(Python {self.env.python_version})")
         self.h_layout.addWidget(self.ver_lbl)
 
+        self.type_lbl = QLabel()
+        self.type_lbl.setObjectName("EnvTypeBadge")
+        self.h_layout.addWidget(self.type_lbl)
+
         self.h_layout.addStretch()
 
         # Status Badges
@@ -83,6 +87,21 @@ class PipEnvCard(BaseEnvCard):
         tooltip = determine_path_tooltip(str(self.env.path))
 
         self.name_lbl.setToolTip(tooltip)
+        
+        env_type = str(getattr(self.env, "type", "") or "").lower()
+        if env_type == "system":
+            self.type_lbl.setText("[System]")
+            self.type_lbl.setStyleSheet("color: #FF9800;")
+        elif env_type == "venv":
+            self.type_lbl.setText("[venv]")
+            self.type_lbl.setStyleSheet("color: #42A5F5;")
+        elif env_type:
+            self.type_lbl.setText(f"[{env_type.capitalize()}]")
+            self.type_lbl.setStyleSheet("color: #4CAF50;")
+        else:
+            self.type_lbl.setText("")
+            self.type_lbl.setStyleSheet("")
+            
         runtime_ver = getattr(self.env, "runtime_version", "") or self.env.python_version
         runtime_latest = getattr(self.env, "runtime_latest_version", "")
         runtime_has_update = bool(getattr(self.env, "runtime_has_update", False))

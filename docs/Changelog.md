@@ -1,6 +1,68 @@
 # Changelog - OmniPack
 
-#### 🇺🇸 [v13] - User site-packages Integration, Drag-and-Drop Reordering, Batch Import & Proxy Sync
+## 🇺🇸 [v14] - Environment Editing & Renaming, Winget Self-Upgrade, Winget Diagnostics & Enhancements, Copyable Dialogs & Package Details
+
+<details>
+<summary><b>🇨🇳 [v14] - 环境编辑与重命名、Winget自身升级、Winget细节增强与去重优化、可复制对话框文本与包详情 (中文说明)</b></summary>
+
+<br>
+
+本次更新引入了对虚拟环境的直接编辑与重命名支持，提供了 Winget 包管理器自身（App Installer）的一键检测与升级能力，并极大提升了界面文本的可交互性，支持全局对话框文本复制和一键复制包详细信息。同时，对 Winget 扫描结果进行了架构识别与去重优化，并对底层 UI 工具函数进行了清理和重构。
+
+### ✏️ 环境编辑与重命名
+
+- **右键直接管理**：现在可以在 Pip 和 Npm 面板的环境卡片上，右键菜单中直接选择 **“✏️ Rename Environment”** 来修改环境展示名称，或选择 **“⚙️ Edit Settings”** 来编辑该环境的路径等详细设置。
+- **智能高亮跳转**：点击“编辑设置”后，程序会自动打开统一设置对话框，并以极高精度自动定位高亮到该环境，提供无缝的使用体验。
+
+### 🚀 Winget 包管理器自身升级支持
+
+- **版本实时展示**：在 Winget 机器和用户卡片上，现在会显示 Winget 当前的具体版本号（如 `Winget v1.9.25200`）。
+- **一键升级自身**：若检测到 Winget 有可用更新，卡片头部会显示闪烁的 **`Wg`** 按钮并显示升级路径（如 `v1.9.25200 -> v1.10.x`）。用户点击后会弹出确认框，确认后通过内置终端执行 `winget upgrade --id Microsoft.AppInstaller` 升级。
+
+### 📋 可复制对话框与包详情一键复制
+
+- **全局文本可复制**：安装了全局事件过滤器，使主程序中弹出的所有 `QMessageBox` 和 `QDialog` 的标签文本均支持鼠标选中和复制（Ctrl+C），便于用户在遇到报错时复制异常信息进行排查。
+- **包配置一键复制**：在包的“配置包”对话框中，新增了 **“Copy Details”**（复制详情）按钮。一键即可将该包的名称、ID、安装源、已安装版本、可用版本以及安装路径（如有）拷贝至剪贴板。
+
+### 🔍 Winget 细节增强与去重优化
+
+- **安装位置标记**：在包卡片和配置对话框中，对通过传统注册表安装的包增加 `[Win32]` 标记，对通过现代包管理器安装的包增加 `[MSIX]` 标记。
+- **架构信息自动追加**：智能从包 ID 中使用正则抓取 `x64`、`x86`、`arm64` 等架构信息，自动追加在 UI 展示 of 包名后（如 `Python 3.10 (x64)`），避免同名多架构包造成视觉混淆。
+- **扫描去重机制**：对具有相同 ID、源和版本的包进行去重过滤，避免重复显示。
+
+### ⚙️ NPM 与其他细节优化
+
+- **NPM 全局路径展示**：在设置面板中，不再单一显示 "global" 字样，而是会自动扫描并缓存呈现真实的 NPM 全局安装路径（如 System Global 对应的系统实际 node_modules 根目录）。
+- **代码重构与清理**：抽象并复用了 `update_widget_style_property` 和 `clear_layout` 辅助函数，避免冗余样式刷新的 boilerplate 代码。彻底移除了未使用的临时测试脚本 `test_winpty.py`。
+
+</details>
+
+This release introduces direct support for editing and renaming environments from context menus, enables one-click detection and upgrading of the Winget package manager itself (App Installer), and significantly improves UI text interactivity with copyable dialog text and package detail export buttons. Furthermore, it refactors core UI utilities and enhances Winget operations with automatic architecture appending, installation source tagging, and scan deduplication.
+
+### ✏️ Environment Renaming & Settings Editing
+- **ContextMenu Integration**: Pip and Npm environment card headers now support right-click context options: **"✏️ Rename Environment"** to quickly modify the alias, and **"⚙️ Edit Settings"** to modify the environment parameters.
+- **Automatic Highlighting**: Editing an environment automatically launches the Settings Dialog and focuses directly on the selected environment row for seamless adjustments.
+
+### 🚀 Winget Package Manager Self-Upgrade
+- **Version Display**: Automatically queries and displays the version of the `winget` executable directly on the Machine and User environment cards.
+- **One-Click Upgrade**: Detects if `Microsoft.AppInstaller` has an update available, displaying the upgrade path (e.g. `Winget v1.9.25200 -> v1.10.x`) and showing a dedicated **`Wg`** update button. Clicking it prompts for confirmation and triggers the CLI upgrade pipeline.
+
+### 📋 Copyable Dialog Labels & Package Details Export
+- **Selectable Dialog Labels**: Registered a global event filter to make text labels inside all `QMessageBox` and `QDialog` selectable and copyable, allowing users to easily capture error tracebacks.
+- **Copy Package Details**: Added a **"Copy Details"** button in package configuration dialogs, enabling users to copy all metadata (Name, ID, Source, Versions, and Install Location) to the clipboard.
+
+### 🔍 Winget Diagnostics & Enhancements
+- **Type Badge Tagging**: Displays `[Win32]` badges for classic desktop registry installations and `[MSIX]` badges for modern app package formats in details and lists.
+- **Architecture Identification**: Automatically extracts architecture descriptors (x64, x86, arm64, arm) from package IDs and appends them to package names (e.g., `Python 3.10 (x64)`) to avoid name collisions.
+- **Deduplication**: Filters out duplicate items carrying identical IDs, sources, and versions.
+
+### ⚙️ NPM & Miscellaneous Optimizations
+- **NPM Global Path Resolution**: Replaced the generic "global" keyword in Settings with a dynamically queried and cached physical prefix path (or "System Global") for NPM global installations.
+- **Refactoring & Cleanups**: Unified UI updates with modular `update_widget_style_property` and `clear_layout` functions. Deleted the obsolete `test_winpty.py` script.
+
+---
+
+## 🇺🇸 [v13] - User site-packages Integration, Drag-and-Drop Reordering, Batch Import & Proxy Sync
 
 <details>
 <summary><b>🇨🇳 [v13] - 用户目录包融合、拖拽排序、批量导入与代理同步 (中文说明)</b></summary>

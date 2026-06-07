@@ -28,6 +28,8 @@ class BaseEnvCard(QFrame):
     expand_toggled = Signal(str, bool)                # env_path, is_expanded
     activate_requested = Signal(str)                  # env_path
     remove_env_requested = Signal(str)                # env_path
+    rename_requested = Signal(str)                    # env_path
+    edit_requested = Signal(str)                      # env_path
     reorder_requested = Signal(str, str, str)         # source_env_path, target_env_path, position
 
     def __init__(self, env: Environment):
@@ -120,9 +122,17 @@ class BaseEnvCard(QFrame):
     def _show_context_menu(self, global_pos):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
+        rename_action = menu.addAction("✏️ Rename Environment")
+        edit_action = menu.addAction("⚙️ Edit Settings")
+        menu.addSeparator()
         del_action = menu.addAction("❌ Delete Environment")
         action = menu.exec(global_pos)
-        if action == del_action:
+        
+        if action == rename_action:
+            self.rename_requested.emit(self.env.path)
+        elif action == edit_action:
+            self.edit_requested.emit(self.env.path)
+        elif action == del_action:
             self.remove_env_requested.emit(self.env.path)
 
     def _get_drop_indicator(self):
@@ -251,10 +261,8 @@ class BaseEnvCard(QFrame):
     def _start_lazy_load(self):
         """Standard loading logic. Subclasses can override."""
         self._summary_lbl = None
-        while self.content_layout.count():
-            item = self.content_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        from ui.utils import clear_layout
+        clear_layout(self.content_layout)
 
         if not getattr(self.env, "is_scanned", False):
             lbl = QLabel("Scanning packages...")

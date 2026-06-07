@@ -75,6 +75,20 @@ OmniPack distinguishes **package updates** from **runtime updates**:
 - **Patch update detection**: for Python (`3.14.x`) and Node (`25.x`), OmniPack checks the latest patch in the same cycle and shows `current -> latest` directly on cards.
 - **Dedicated runtime update action**: runtime update uses a separate card action (`Py` / `Nd`), while `⇧` remains **package update only**.
 
+### ✏️ Environment Renaming & Settings Editing (New in v14)
+Modify environment setups directly from the workspace view:
+- **ContextMenu Integration**: Right-click any Pip/Npm environment card header to select **"✏️ Rename Environment"** or **"⚙️ Edit Settings"**.
+- **Automatic Highlighting**: Selecting "Edit Settings" automatically opens the unified Settings Dialog and scrolls directly to focus on the selected environment row, shortening configuration workflows.
+
+### 🚀 Winget Package Manager Self-Upgrade (New in v14)
+Audit and upgrade the Windows Package Manager (WinGet) executable itself:
+- **Version Display**: The exact version of the active `winget` binary (e.g. `Winget v1.9.25200`) is displayed directly on Machine/User cards.
+- **One-Click Upgrade**: If `Microsoft.AppInstaller` has an update available, a blinking **`Wg`** button and the upgrade path are shown. Clicking it prompts for confirmation and upgrades it via the interactive PTY console.
+
+### 📋 Selectable Dialog Labels & Package Details Export (New in v14)
+- **Copyable Dialog Labels**: Injected a global Qt event filter making text labels inside all QMessageBox and QDialog windows selectable, facilitating error diagnostics.
+- **Copy Package Details**: Added a **"Copy Details"** button in package detail dialogs, allowing one-click export of Name, ID, Source, Versions, and Location to the system clipboard.
+
 ### ⛑️ Safe Update Intelligence: Constraint-Aware & Safe Intermediates (Enhanced in v12)
 OmniPack knows which updates are **safe** and guides you through risk-free upgrades.
 - **Safe Intermediate Recommendation**: When a package's latest version violates a version constraint, OmniPack automatically searches the version history to find the highest available version that *does* satisfy the constraint. Such packages are highlighted with a **blue** indicator and can be safely updated in one click.

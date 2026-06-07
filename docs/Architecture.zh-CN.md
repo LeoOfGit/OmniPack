@@ -13,11 +13,11 @@
    - **命名规范**: 遵循 `Subsystem -> Manager -> Panel -> Card` 的命名链路。
     - **环境同权**: 所有自动发现或手动添加的环境在配置文件中均作为等价项处理。程序仅在首次启动时推荐环境。用户拥有对所有环境（包括自动扫描出的）进行重命名、排序和永久删除的绝对权力。
     - **内核自管 (Engine Self-Management)**: 为了实现“零依赖”运行，程序采用级联式的 `uv` 引擎寻找策略（用户指定 > bin/uv > 系统 PATH），并通过异步 Worker 实现 Github API 版本比对，输出支持 HTML 富文本状态展示。
-    - **更新语义分离 (Update Semantics Separation)**: “包更新”与“运行时更新”必须是两条独立链路。`⇧` 仅用于包更新，解释器/Node Runtime 更新必须通过独立动作触发。
+    - **更新语义分离 (Update Semantics Separation)**: “包更新”与“运行时更新”必须是两条独立链路。`⇧` 仅用于包更新，解释器/Node Runtime 更新必须通过独立动作触发（如 Python 的 `Py`、Node 的 `Nd` 以及 v14 新增的 WinGet 自身的 `Wg` 一键升级按钮）。
     - **版本来源一致性 (Version Source Consistency)**: Python 虚拟环境显示版本优先读取 `pyvenv.cfg`（`version` / `version_info`），避免系统解释器补丁升级后导致卡片误显示。
     - **逻辑归一与工厂化**: 为了降低维护成本，复杂的 UI 交互逻辑（如环境管理页）采用工厂函数 (`_build_env_tab`) 配合**底层的元数据映射驱动 (Metadata-driven logic)**。通过 `_get_env_map` 模式将 Pip 与 NPM 的 Load、Sync、Remove、Process 操作彻底抽象归一。
     - **体验归一**: 用户在任何包管理标签页下的操作直觉应该是完全一致的（如：Outdated Only 过滤器、直接拖拽排序、右键快速管理）。
-    - **设置页归一化与快捷操作**: 所有的设置项均通过统一的窗口管理。同时为了操作的高效性，主界面列表提供了底部的快速添加（➕ Add Environment）、环境卡片拖拽重排与右键菜单快速删除，设置页与主界面在此类操作上使用同一套底层的配置管理器逻辑，确保视觉平衡与交互动作的高度对称。
+    - **设置页归一化与快捷操作**: 所有的设置项均通过统一的窗口管理。同时为了操作的高效性，主界面列表提供了底部的快速添加（➕ Add Environment）、环境卡片拖拽重排与右键菜单快速删除/编辑，设置页与主界面在此类操作上使用同一套底层的配置管理器逻辑，确保视觉平衡与交互动作的高度对称。
 4. **跨平台原生倾向 (Platform Agnostic)**：
    - **路径中立**: 禁止硬编码 `Scripts` 或 `python.exe`，必须通过 `core/utils.py` 的工具函数进行动态拼接（适配 `bin/python`）。
    - **执行安全**: 调用 subprocess 时必须手动处理 `creationflags`，确保在 Unix 下不会因为 Windows 特有常量导致 `AttributeError`。
@@ -56,7 +56,7 @@
 - `core/pypi_cache.py` - **PyPI 缓存层**。负责 `pypi_search_cache.json` 的读写、种子引导、词条索引与排序，还封装了后台刷新线程、进度状态、取消/续传流以及 `resolve_refresh_source` 的镜像策略，确保 `AddPackageDialog` 100% 只从本地查询数据而不再解析 PyPI 网页。
 
 ### /managers - 业务逻辑执行引擎
-- `managers/pip_manager.py`、`managers/npm_manager.py` & `managers/winget_manager.py` - 子系统特定的逻辑实现。均需提供异步扫描和命令生成；同时包含运行时检测或专门更新逻辑，通过统一 Worker 发送命令与接收执行状态。`pip_manager.py` 内部实现了针对系统 Python 环境的用户站点包（User site-packages）物理路径探测与双路径并发扫描。不强制去重合并而进行并列展现，同时支持根据无管理员特权环境自动降级 Fallback 至 `--target <user-site-path>` 分流安装。
+- `managers/pip_manager.py`、`managers/npm_manager.py` & `managers/winget_manager.py` - 子系统特定的逻辑实现。均需提供异步扫描和命令生成；同时包含运行时检测或专门更新逻辑，通过统一 Worker 发送命令与接收执行状态。`pip_manager.py` 内部实现了针对系统 Python 环境的用户站点包（User site-packages）物理路径探测与双路径并发扫描。不强制去重合并而进行并列展现，同时支持根据无管理员特权环境自动降级 Fallback 至 `--target <user-site-path>` 分流安装。`winget_manager.py` 在 v14 中新增了对包管理器自身（App Installer）升级可用性的检测，并在 UI 端暴露一键升级入口；同时支持从包 ID 中智能捕获并追加架构标识（如 x64 等）防止同名混淆，并为包对象划分 `[MSIX]` 现代应用包与 `[Win32]` 经典注册表应用的标记。
 - `managers/base_worker.py` - **共享 Worker 核心**。封装 QThread 的通用逻辑，处理 stdout/stderr 流拦截、ANSI 染色解析和进度状态上报。
 
 ### /ui - 图形界面组件
@@ -93,7 +93,7 @@
     - 能够精准区分“系统级/全局”与“用户级/虚拟”环境。
     - **去重键规范**: 路径比对统一采用 `normcase(normpath(path))`，避免 Windows 下大小写与分隔符差异导致重复。
     - **主界面拖拽排序 (UI Drag-and-Drop)**: 环境卡片（`BaseEnvCard`）直接接受拖拽，支持在主界面环境列表中使用鼠标拖动卡片进行重新排序。拖拽时会显示亮蓝色的位置指示线，重排后发送 `reorder_requested` 信号，自动重置管理器中环境的顺序并同步写回 `omnipack_config.json` 配置文件。
-    - **右键快速管理**: 在环境卡片 Header 上点击右键可快速唤出上下文菜单，提供一键删除该环境的选项，发出 `remove_env_requested` 信号，不再依赖设置对话框。
+    - **右键快速管理 (重命名/编辑)**: 在环境卡片 Header 上点击右键可快速唤出上下文菜单，提供 **“✏️ 重命名环境”**（发出 `rename_requested` 信号进行快速更名）、**“⚙️ 编辑设置”**（发出 `edit_requested` 信号，自动唤起 Settings 统一配置对话框并高亮定位滚动到该环境以供修改）以及一键删除（`remove_env_requested`）的快捷选项，使主界面与设置对话框实现高效联动。
     - **批处理提交**: 批量导入使用“一次性保存 + 一次性刷新”，避免逐条写盘与反复重绘导致卡顿。
 3. **批量操作 (Batch Operations)**：
    - 统一提供“全选过时包”和“一键批量更新”的交互。

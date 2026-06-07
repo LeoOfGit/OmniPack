@@ -10,6 +10,7 @@ from core.winget_helpers import (
     build_winget_command,
     extract_version_from_name,
     find_winget_executable,
+    get_winget_version,
     is_default_source,
     parse_winget_table,
     versions_equivalent,
@@ -126,12 +127,27 @@ class WingetScanWorker(BaseCmdWorker):
                     for row in visible_updates
                 }
                 
+                
                 # Update cache
                 WingetScanWorker._last_global_scan_data = (installed_rows, visible_update_map)
                 WingetScanWorker._last_global_scan_time = now
 
+            # Check if Winget itself has an update available
+            app_installer_update = None
+            for key, row in visible_update_map.items():
+                if "microsoft.appinstaller" in key or "microsoft.desktopappinstaller" in key:
+                    app_installer_update = row
+                    break
+            
+            if app_installer_update:
+                self.env.runtime_has_update = True
+                self.env.runtime_latest_version = str(app_installer_update.get("available", "")).strip()
+            else:
+                self.env.runtime_has_update = False
+
             packages = []
             package_map = {}
+            seen_keys = set()
             for row in installed_rows:
                 pkg_name = str(row.get("name", "")).strip()
                 pkg_id = str(row.get("id", "")).strip()
@@ -146,6 +162,21 @@ class WingetScanWorker(BaseCmdWorker):
                     current_version = extract_version_from_name(pkg_name) or current_version
 
                 key = build_package_key(pkg_id, pkg_name, source_name)
+                
+                # Deduplicate exact matches (same ID, Source, and Version)
+                dedup_key = f"{key}|{current_version}"
+                if dedup_key in seen_keys:
+                    continue
+                seen_keys.add(dedup_key)
+
+                # Extract architecture from IDs to distinguish variants in the UI
+                import re
+                arch_match = re.search(r'(?:^|[._\-\\])(x64|x86|arm64|arm)(?:[._\-\\]|$)', pkg_id, re.IGNORECASE)
+                if arch_match and pkg_name:
+                    arch_str = arch_match.group(1).lower()
+                    # Only append if not already in the name
+                    if arch_str not in pkg_name.lower():
+                        pkg_name = f"{pkg_name} ({arch_str})"
                 
                 # An update exists if 'available' is set in the full list
                 has_update = bool(available_version)
@@ -191,6 +222,12 @@ class WingetScanWorker(BaseCmdWorker):
                     badges.append({"text": "[Pinned]", "tooltip": "Update is blocked by a winget pin."})
                 if newer_than_server:
                     badges.append({"text": "[⚠ Newer]", "tooltip": "Installed version is newer than the winget registry. Downgrading is not recommended."})
+
+                # Distinguish MSIX vs traditional Registry (Win32) installations
+                if pkg_id.upper().startswith("MSIX\\"):
+                    badges.append({"text": "[MSIX]", "tooltip": "Modern App Package (MSIX/Appx)"})
+                elif pkg_id.upper().startswith("ARP\\"):
+                    badges.append({"text": "[Win32]", "tooltip": "Classic Desktop App (Registry)"})
 
                 metadata = {
                     "manager": "winget",
@@ -392,6 +429,11 @@ class WingetManager(PackageManager):
         )
         user_env.runtime_name = "winget"
         user_env.tags = ["system", "winget", "scope:user"]
+        
+        winget_ver = get_winget_version(self._current_settings().get("winget_path", ""))
+        machine_env.runtime_version = winget_ver
+        user_env.runtime_version = winget_ver
+        
         self.environments = [machine_env, user_env]
 
     def reload_envs(self):

@@ -441,18 +441,13 @@ class AddPackageDialog(QDialog):
             self._channels_worker.start()
 
     def _set_tag_card_state(self, btn: QPushButton, state: str):
-        btn.setProperty("state", state)
-        btn.style().unpolish(btn)
-        btn.style().polish(btn)
-        btn.update()
+        from ui.utils import update_widget_style_property
+        update_widget_style_property(btn, "state", state)
 
     def _clear_channel_cards(self):
         self._channel_card_buttons = {}
-        while self.channel_grid.count():
-            item = self.channel_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+        from ui.utils import clear_layout
+        clear_layout(self.channel_grid)
 
     def _format_channel_version(self, channel: str) -> str:
         if isinstance(self._channel_versions, dict):

@@ -4,6 +4,10 @@
 
 欢迎使用 **OmniPack**！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。
 
+想要通过交互式 AI 了解本项目？👉 [![DeepWiki](https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/LeoOfGit/OmniPack)
+
+本项目更新频繁，本文档的部分插图或描述可能已经过时，具体以实际程序为准。
+
 ---
 
 ## 目录
@@ -40,6 +44,7 @@ OmniPack 的主界面经过精心设计，分为四个核心交互区域。
     - `⇧`：仅更新当前环境内所有可更新的包
     - `Py` / `Nd`：更新环境运行时本体（Python/Node）
     - `+`：添加包
+    - *在 v14 中，右键点击卡片头部可以进行 **✏️ 重命名环境** 或 **⚙️ 编辑设置**（一键调起设置面板并自动高亮且滚动定位到该环境对应的行）。*
 - **包列表**：列出当前环境下安装的所有包及其版本。
 
 ### 1.3 集成伪终端与控制台 (Integrated PTY Terminal & Live Console)
@@ -64,6 +69,11 @@ OmniPack 的主界面经过精心设计，分为四个核心交互区域。
     - **Python / Node.js / WinGet 按钮**：用于在不同的包管理面板之间快速切换（WinGet 面板仅在 Windows 系统下可见）。
     - **💡 Guide 按钮**：点击即可弹出本用户指南窗口。
 
+### 1.5 全局文本可复制与包详情一键复制 (v14 新增)
+为了方便开发者排查问题和导出数据，主程序在交互细节上做了如下优化：
+- **对话框文本可复制**：全局注入了事件过滤器。现在无论是提示升级、出错警告还是确认框，所有的 `QMessageBox` 和 `QDialog` 的提示标签文本均支持鼠标选择和键盘复制（Ctrl+C），便于复制具体的报错和路径信息。
+- **包配置一键复制**：双击包卡片打开的包配置/安装详情对话框中，新增了 **“Copy Details”** 按钮。点击即可一键将当前包的名称、ID、源、已安装版本、最新可用版本和安装路径导出为格式化的文本到剪贴板。
+
 > **注意**：若程序获得了管理员权限，**(Admin)** 标识会显示在窗口的**最上方标题栏**。
 
 ![Node.js 管理主界面](../resources/Node.js.png)
@@ -87,7 +97,7 @@ OmniPack 的主界面经过精心设计，分为四个核心交互区域。
 
 ### 2.2 环境操作说明
 - **拖拽重排**：在列表项上长按图标即可上下拖动，调整环境在主界面的首选顺序。
-- **编辑环境**：双击任意项可修改显示别名或修正因移动文件夹导致的路径变化。
+- **编辑环境**：双击任意项可修改显示别名或修正因移动文件夹导致的路径变化。在主界面的环境卡片头部点击右键即可快速进行重命名（✏️）或点击编辑设置（⚙️），一键高亮跳转定位到设置面板中修改路径。
 
 ---
 
@@ -203,6 +213,10 @@ OmniPack 将 NPM 的 `Dist-Tags` 机制进行了 GUI 封装。
   - 点击卡片标题栏的 `+` 按钮，可以输入任意 WinGet 软件 ID（如 `Google.Chrome`）直接进行下载并静默或交互安装。
 - **智能范围回退机制 (Scope Fallback)**：
   - 在 Machine 范围升级或安装大型软件如果遇到文件占用或写入权限问题而报错，OmniPack 会自动执行 Fallback，改为以 `--scope user` 尝试向用户范围下载安装，极大地提高了对软件版本自动更新的宽容度。
+- **WinGet 自身升级与包细节优化 (v14 新增)**：
+  - **WinGet 自身升级 (Wg 按钮)**：在 WinGet 卡片上，主程序会读取并显示 Winget 当前的具体版本号（如 `Winget v1.9.25200`）。若检测到 Winget 本体有更新，卡片头部会显示闪烁的 **`Wg`** 按钮，点击后可以一键自动升级本体。
+  - **包架构后缀追加**：包名后会自动追加智能抓取到的架构信息（如 `(x64)`、`(x86)`、`(arm64)` 等），以防不同架构的同名应用在 UI 中发生混淆。
+  - **应用类型标记**：包详细配置框和卡片上会根据包 ID 特征清晰显示该应用的来源是 `[Win32]` (经典注册表安装) 还是 `[MSIX]` (现代应用包)。
 
 ![Winget 管理主界面](../resources/Winget.png)
 

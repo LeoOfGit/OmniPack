@@ -519,3 +519,39 @@ def find_uninstall_location(package_name: str, package_id: str = "") -> str:
             return v
             
     return ""
+
+
+_WINGET_VERSION_CACHE = None
+
+def get_winget_version(winget_path: str = "") -> str:
+    """Return the winget version string (e.g. 'v1.9.25200'), or empty string on failure."""
+    global _WINGET_VERSION_CACHE
+    if _WINGET_VERSION_CACHE is not None:
+        return _WINGET_VERSION_CACHE
+        
+    winget = find_winget_executable(winget_path)
+    if not winget:
+        return ""
+        
+    import subprocess
+    try:
+        # Prevent showing a command window on Windows when calling winget
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+        result = subprocess.run(
+            [winget, "--version"], 
+            capture_output=True, 
+            text=True, 
+            timeout=5,
+            startupinfo=startupinfo
+        )
+        if result.returncode == 0:
+            version_str = result.stdout.strip()
+            _WINGET_VERSION_CACHE = version_str
+            return version_str
+    except Exception:
+        pass
+    return ""

@@ -9,6 +9,9 @@ class WingetEnvCard(BaseEnvCard):
     def __init__(self, env: Environment):
         super().__init__(env)
 
+    def _show_context_menu(self, global_pos):
+        pass # Winget environments are fixed and cannot be edited or removed
+
     def _build_header_ui(self):
         super()._build_header_ui()
 
@@ -43,6 +46,12 @@ class WingetEnvCard(BaseEnvCard):
         self.up_all_btn.clicked.connect(lambda: self.update_all_requested.emit(self.env.path))
         self.h_layout.addWidget(self.up_all_btn)
 
+        self.runtime_up_btn = QPushButton("Wg")
+        self.runtime_up_btn.setObjectName("EnvRuntimeUpdateBtn")
+        self.runtime_up_btn.setToolTip("Update Winget (App Installer)")
+        self.runtime_up_btn.clicked.connect(lambda: self.runtime_update_requested.emit(self.env.path))
+        self.h_layout.addWidget(self.runtime_up_btn)
+
         self.add_pkg_btn = QPushButton("+")
         self.add_pkg_btn.setObjectName("ActionBtnInstall")
         self.add_pkg_btn.setToolTip("Install application from winget")
@@ -62,13 +71,23 @@ class WingetEnvCard(BaseEnvCard):
         self.name_lbl.setText(self.env.name)
         env_type = str(getattr(self.env, "type", "") or "").lower()
         if env_type == "machine":
-            self.ver_lbl.setText("(System-wide)")
             self.type_lbl.setText("[Machine]")
             self.type_lbl.setStyleSheet("color: #FF9800;")
         else:
-            self.ver_lbl.setText("(Per-user)")
             self.type_lbl.setText("[User]")
             self.type_lbl.setStyleSheet("color: #42A5F5;")
+
+        runtime_ver = getattr(self.env, "runtime_version", "")
+        runtime_latest = getattr(self.env, "runtime_latest_version", "")
+        runtime_has_update = bool(getattr(self.env, "runtime_has_update", False))
+        
+        if runtime_ver:
+            if runtime_has_update and runtime_latest:
+                self.ver_lbl.setText(f"(Winget {runtime_ver} -> {runtime_latest})")
+            else:
+                self.ver_lbl.setText(f"(Winget {runtime_ver})")
+        else:
+            self.ver_lbl.setText("")
 
         pkg_list = self.env.packages if self.env.packages is not None else []
         real_pkgs = [pkg for pkg in pkg_list if getattr(pkg, "is_missing", False) is False]
@@ -85,6 +104,13 @@ class WingetEnvCard(BaseEnvCard):
         else:
             self.badge_lbl.setVisible(False)
             self.up_all_btn.setVisible(False)
+
+        if runtime_has_update:
+            self.runtime_up_btn.setVisible(True)
+            self.runtime_up_btn.setToolTip(f"Update Winget: {runtime_ver} -> {runtime_latest}")
+        else:
+            self.runtime_up_btn.setVisible(False)
+            self.runtime_up_btn.setToolTip("Winget is up to date")
 
         if self.is_expanded and getattr(self.env, "is_scanned", False):
             self._start_lazy_load()

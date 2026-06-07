@@ -31,6 +31,10 @@ class OmniPackWindow(QMainWindow):
         # Icon and Taskbar Fix
         self._set_app_icon()
 
+        # Global Event Filter to make all QMessageBox and QDialog labels copyable
+        from ui.utils import install_global_dialog_text_selector
+        install_global_dialog_text_selector(QApplication.instance())
+
         # Central Stack
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
