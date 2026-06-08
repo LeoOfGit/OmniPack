@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 import os
 import subprocess
 import uuid
@@ -17,6 +17,44 @@ from core.terminal.command_renderer import ShellCommandRenderer
 from core.utils import StreamingAnsiStripper
 from ui.panels.base_panel import BasePanel
 from core.winget_helpers import find_uninstall_location
+from managers.base_worker import BaseCmdWorker
+
+class WingetInstallerWorker(BaseCmdWorker):
+    """Download and run the WinGet installer from GitHub."""
+    installer_done = Signal(bool, str)
+
+    def __init__(self, proxy_settings=None):
+        super().__init__()
+        self.proxy_settings = proxy_settings or {}
+
+    def run(self):
+        try:
+            self._log("Downloading WinGet from GitHub...", "system")
+            from core.runtime_update import install_winget
+            
+            def _progress(msg):
+                self._log(msg, "system")
+
+            success, err = install_winget(
+                proxy_settings=self.proxy_settings,
+                log_callback=_progress
+            )
+            
+            if not success:
+                self.success = False
+                self._log(f"✗ Installation failed: {err}", "error")
+                self.installer_done.emit(False, err)
+                return
+
+            self.success = True
+            self._log("✓ WinGet installation completed successfully", "success")
+            self.installer_done.emit(True, "")
+        except Exception as exc:
+            self.success = False
+            self._log(f"✗ Installer error: {exc}", "error")
+            self.installer_done.emit(False, str(exc))
+        finally:
+            self._flush_logs()
 
 
 class WingetPanel(BasePanel):
@@ -49,6 +87,32 @@ class WingetPanel(BasePanel):
         )
         if hasattr(self, "add_env_btn"):
             self.add_env_btn.setVisible(False)
+            
+        from ui.widgets.runtime_setup_widget import RuntimeSetupWidget
+        self.setup_widget = RuntimeSetupWidget("winget")
+        self.setup_widget.install_requested.connect(self._on_install_missing_runtime)
+        self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, self.setup_widget)
+        self.setup_widget.hide()
+
+    def _on_install_missing_runtime(self, runtime_kind, version):
+        self.console.log_divider(f"INSTALLING WINGET")
+        self._installer_worker = WingetInstallerWorker(
+            proxy_settings=getattr(self.config_mgr.config, "proxy_settings", {}) or {}
+        )
+        self._installer_worker.log_msg.connect(self._log)
+        self._installer_worker.log_batch.connect(self._log_batch)
+        self._installer_worker.installer_done.connect(self._on_installer_done)
+        self._installer_worker.start()
+
+    def _on_installer_done(self, success: bool, message: str):
+        if hasattr(self, "setup_widget"):
+            self.setup_widget.reset_state()
+            
+        if success:
+            self._log("WinGet installer completed. Refreshing...", "system")
+            self.start_scan()
+        elif message:
+            QMessageBox.warning(self, "Installer Failed", message)
 
     def _connect_signals(self):
         self.winget_mgr.log_msg.connect(self._log)
@@ -112,8 +176,16 @@ class WingetPanel(BasePanel):
             self._clear_env_card_widgets()
             self.winget_mgr.reload_envs()
             envs = self.winget_mgr.list_environments()
+            
+            force_show = getattr(self.config_mgr.config, "force_show_setup", False)
+            if force_show:
+                self.setup_widget.show()
+            else:
+                self.setup_widget.hide()
+                
             if not envs:
-                self._log("WinGet is only available on Windows.", "error")
+                self._log("WinGet is not installed on this system.", "error")
+                self.setup_widget.show()
                 self.refresh_btn.setEnabled(True)
                 return
 
@@ -123,7 +195,12 @@ class WingetPanel(BasePanel):
 
                 card = WingetEnvCard(env)
                 self._apply_current_filters_to_card(card)
-                self.scroll_layout.insertWidget(self.scroll_layout.count() - 2, card)
+                
+                idx = self.scroll_layout.indexOf(self.setup_widget)
+                if idx == -1:
+                    idx = self.scroll_layout.count() - 2
+                self.scroll_layout.insertWidget(idx, card)
+                
                 self._env_cards[self._path_key(env.path)] = card
 
                 card.refresh_requested.connect(self._refresh_single_env)

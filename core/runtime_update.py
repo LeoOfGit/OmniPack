@@ -194,35 +194,49 @@ def _runtime_api_url(runtime_kind: str) -> Optional[str]:
 
 
 def _fetch_runtime_index(runtime_kind: str, proxy_settings=None, timeout: int = 8) -> tuple[list[dict], str]:
-    now = time.time()
+    url = _runtime_api_url(runtime_kind)
+    if not url:
+        return [], "Unsupported runtime."
+
     with _api_cache_lock:
+        now = time.time()
         cached = _api_cache.get(runtime_kind)
         if cached and (now - cached[0]) <= _CACHE_TTL_SECONDS:
             return list(cached[1]), ""
 
-    url = _runtime_api_url(runtime_kind)
-    if not url:
-        return [], f"Unsupported runtime kind: {runtime_kind}"
-
-    try:
-        import json
-
-        with urlopen(
-            url,
-            timeout=timeout,
-            headers={"User-Agent": f"OmniPack/{__version__}"},
-            proxy_settings=proxy_settings or {},
-            force_proxy=True,
-        ) as response:
-            payload = response.read().decode("utf-8", errors="replace")
+        try:
+            import json
+            
+            payload = None
+            last_exc = None
+            
+            for attempt in range(3):
+                time.sleep(0.3) # Avoid aggressive concurrent hits
+                try:
+                    with urlopen(
+                        url,
+                        timeout=timeout,
+                        headers={"User-Agent": f"OmniPack/{__version__}"},
+                        proxy_settings=proxy_settings or {},
+                        force_proxy=True,
+                    ) as response:
+                        payload = response.read().decode("utf-8", errors="replace")
+                        break
+                except Exception as e:
+                    last_exc = e
+                    time.sleep(1.0) # Backoff before retry
+                    
+            if payload is None:
+                raise last_exc or Exception("Failed to fetch after retries")
+                
             data = json.loads(payload)
-        if not isinstance(data, list):
-            return [], "Invalid API response format."
-        with _api_cache_lock:
+            if not isinstance(data, list):
+                return [], "Invalid API response format."
+            
             _api_cache[runtime_kind] = (time.time(), list(data))
-        return data, ""
-    except Exception as exc:
-        return [], str(exc)
+            return data, ""
+        except Exception as exc:
+            return [], str(exc)
 
 
 def _extract_versions_for_cycle(runtime_kind: str, cycle: str, text: str) -> list[str]:
@@ -464,7 +478,7 @@ def resolve_venv_root(env_path: str) -> str:
     return parent
 
 
-def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str) -> tuple[Optional[list[list[str]]], str]:
+def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str, target_version: str = "") -> tuple[Optional[list[list[str]]], str]:
     """Build command(s) to update the Python runtime.
 
     Returns a tuple of (commands, error_reason).
@@ -509,7 +523,13 @@ def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str
 
         # Step 1: Update the system Python for this cycle via winget.
         # This ensures py -X.Y has the latest patch to upgrade the venv against.
-        if shutil.which("winget"):
+        skip_winget = False
+        if target_version:
+            local_ver, _ = _get_latest_from_local_python(cycle)
+            if local_ver and compare_versions(local_ver, target_version) >= 0:
+                skip_winget = True
+
+        if shutil.which("winget") and not skip_winget:
             package_id = f"Python.Python.{cycle}"
             commands.append([
                 "winget",
@@ -522,7 +542,7 @@ def build_python_runtime_update_command(env_type: str, env_path: str, cycle: str
                 "--accept-source-agreements",
             ])
         else:
-            # winget not available — log a warning but still try venv upgrade.
+            # winget not available or skipped — log a warning but still try venv upgrade.
             # The venv will relink against whatever py -X.Y currently resolves to.
             pass
 
@@ -631,22 +651,33 @@ def build_node_runtime_update_command_nvm(
 
 def get_python_installer_url(version: str) -> str:
     """Build the download URL for the official Python Windows installer (64-bit)."""
+    import sys
     ver = _parse_numeric_version(version)
+    if sys.platform == "darwin":
+        return f"https://www.python.org/ftp/python/{ver}/python-{ver}-macos11.pkg"
     return f"https://www.python.org/ftp/python/{ver}/python-{ver}-amd64.exe"
 
 
 def get_node_installer_url(version: str) -> str:
     """Build the download URL for the official Node.js Windows MSI installer (x64)."""
+    import sys
     ver = _parse_numeric_version(version)
+    if sys.platform == "darwin":
+        return f"https://nodejs.org/dist/v{ver}/node-v{ver}.pkg"
     return f"https://nodejs.org/dist/v{ver}/node-v{ver}-x64.msi"
 
 
 def _resolve_installer_dest(runtime_kind: str, version: str) -> str:
     """Return the full path where the installer should be saved."""
     import tempfile
+    import sys
     ver = _parse_numeric_version(version)
-    suffix = ".exe" if runtime_kind == "python" else ".msi"
-    filename = f"python-{ver}-amd64{suffix}" if runtime_kind == "python" else f"node-v{ver}-x64{suffix}"
+    if runtime_kind == "python":
+        suffix = ".pkg" if sys.platform == "darwin" else ".exe"
+        filename = f"python-{ver}-installer{suffix}"
+    else:
+        suffix = ".pkg" if sys.platform == "darwin" else ".msi"
+        filename = f"node-v{ver}-installer{suffix}"
     return os.path.join(tempfile.gettempdir(), "OmniPack", filename)
 
 
@@ -667,6 +698,49 @@ def download_runtime_installer(
     On success, error is an empty string.
     """
     import time as _time
+    import sys
+    import platform
+    import stat
+    import tempfile
+    
+    ver = _parse_numeric_version(version)
+
+    if sys.platform == "linux":
+        if runtime_kind == "python":
+            script = f"""#!/bin/bash
+echo "Installing Python {ver} using uv..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+uv python install {ver}
+"""
+            dest = os.path.join(tempfile.gettempdir(), f"install_python_{ver}.sh")
+            with open(dest, "w") as f:
+                f.write(script)
+            os.chmod(dest, os.stat(dest).st_mode | stat.S_IEXEC)
+            return dest, ""
+        elif runtime_kind == "node":
+            arch = "arm64" if platform.machine() == "aarch64" else "x64"
+            url = f"https://nodejs.org/dist/v{ver}/node-v{ver}-linux-{arch}.tar.xz"
+            script = f"""#!/bin/bash
+echo "Downloading Node.js {ver}..."
+cd /tmp
+curl -LO {url}
+echo "Extracting to ~/.local/node-{ver}..."
+mkdir -p ~/.local/node-{ver}
+tar -xf node-v{ver}-linux-{arch}.tar.xz -C ~/.local/node-{ver} --strip-components=1
+rm node-v{ver}-linux-{arch}.tar.xz
+echo "Symlinking to ~/.local/bin..."
+mkdir -p ~/.local/bin
+ln -sf ~/.local/node-{ver}/bin/node ~/.local/bin/node
+ln -sf ~/.local/node-{ver}/bin/npm ~/.local/bin/npm
+ln -sf ~/.local/node-{ver}/bin/npx ~/.local/bin/npx
+echo "Node.js {ver} installed successfully to ~/.local/bin!"
+"""
+            dest = os.path.join(tempfile.gettempdir(), f"install_node_{ver}.sh")
+            with open(dest, "w") as f:
+                f.write(script)
+            os.chmod(dest, os.stat(dest).st_mode | stat.S_IEXEC)
+            return dest, ""
 
     if runtime_kind == "python":
         url = get_python_installer_url(version)
@@ -763,8 +837,17 @@ def build_installer_run_command(
 
     Returns (command_list, error). On success, error is an empty string.
     """
+    import sys
     if not os.path.isfile(installer_path):
         return [], f"Installer not found: {installer_path}"
+
+    if installer_path.endswith(".sh"):
+        return ["bash", installer_path], ""
+
+    if sys.platform == "darwin":
+        if installer_path.endswith(".pkg"):
+            # open -W wait for the GUI installer to finish
+            return ["open", "-W", installer_path], ""
 
     if runtime_kind == "python":
         return [
@@ -821,3 +904,93 @@ def find_safe_update_version(
             return version
 
     return ""
+
+
+def install_winget(proxy_settings=None, log_callback=None) -> tuple[bool, str]:
+    """Download and install the latest WinGet using PowerShell."""
+    import subprocess
+    import tempfile
+    import os
+    
+    if log_callback:
+        log_callback("Fetching latest WinGet release from GitHub...")
+        
+    script = """
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    try {
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/winget-cli/releases/latest" -ErrorAction Stop
+        $msixUrl = ($releases.assets | Where-Object { $_.name -like "*.msixbundle" }).browser_download_url
+        if (-not $msixUrl) { throw "Could not find .msixbundle in the latest release." }
+        
+        $vclibsUrl = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+        $uiXamlUrl = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
+        
+        $tempDir = Join-Path $env:TEMP "OmniPack_WinGet"
+        if (!(Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | Out-Null }
+        
+        $vclibsPath = Join-Path $tempDir "vclibs.appx"
+        $uiXamlPath = Join-Path $tempDir "uixaml.appx"
+        $msixPath = Join-Path $tempDir "winget.msixbundle"
+        
+        Write-Output "Downloading VCLibs..."
+        Invoke-WebRequest -Uri $vclibsUrl -OutFile $vclibsPath -ErrorAction Stop
+        
+        Write-Output "Downloading UI.Xaml..."
+        Invoke-WebRequest -Uri $uiXamlUrl -OutFile $uiXamlPath -ErrorAction Stop
+        
+        Write-Output "Downloading WinGet..."
+        Invoke-WebRequest -Uri $msixUrl -OutFile $msixPath -ErrorAction Stop
+        
+        Write-Output "Installing VCLibs..."
+        Add-AppxPackage -Path $vclibsPath -ErrorAction Stop
+        
+        Write-Output "Installing UI.Xaml..."
+        Add-AppxPackage -Path $uiXamlPath -ErrorAction Stop
+        
+        Write-Output "Installing WinGet..."
+        Add-AppxPackage -Path $msixPath -ErrorAction Stop
+        
+        Write-Output "WinGet installed successfully."
+    } catch {
+        Write-Error $_.Exception.Message
+        exit 1
+    }
+    """
+    
+    script_path = os.path.join(tempfile.gettempdir(), "install_winget_omnipack.ps1")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(script)
+        
+    try:
+        from core.network_proxy import merge_env_for_command
+        env = merge_env_for_command(["powershell.exe"], proxy_settings=proxy_settings)
+        
+        process = subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            env=env
+        )
+        
+        output_lines = []
+        for line in process.stdout:
+            clean_line = line.strip()
+            if clean_line:
+                output_lines.append(clean_line)
+                if log_callback:
+                    log_callback(clean_line)
+                
+        process.wait()
+        if process.returncode == 0:
+            return True, ""
+        else:
+            return False, "\\n".join(output_lines)
+    except Exception as e:
+        return False, str(e)
+    finally:
+        try:
+            os.remove(script_path)
+        except OSError:
+            pass

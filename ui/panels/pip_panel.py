@@ -133,6 +133,16 @@ class PipPanel(BasePanel):
             manage_envs_callback=self._open_settings,
             add_env_callback=self._show_add_menu
         )
+        
+        from ui.widgets.runtime_setup_widget import RuntimeSetupWidget
+        self.setup_widget = RuntimeSetupWidget("python")
+        self.setup_widget.install_requested.connect(self._on_install_missing_runtime)
+        self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, self.setup_widget)
+        self.setup_widget.hide()
+
+    def _on_install_missing_runtime(self, runtime_kind, version):
+        self.console.log_divider(f"INSTALLING {runtime_kind.upper()} {version}")
+        self._start_installer_download(runtime_kind, version, "")
 
     def _show_add_menu(self):
         from PySide6.QtWidgets import QMenu, QFileDialog, QInputDialog, QMessageBox
@@ -235,11 +245,18 @@ class PipPanel(BasePanel):
             self.pip_mgr.reload_envs()
             envs = self.pip_mgr.list_environments()
 
+            force_show = getattr(self.config_mgr.config, "force_show_setup", False)
+            if force_show:
+                self.setup_widget.show()
+            else:
+                self.setup_widget.hide()
+
             if not envs:
-                self._log("No Python environments found. Please add one in Settings.", "error")
+                self._log("No Python environments found. Please add one or install a new one.", "error")
+                self.setup_widget.show()
                 self.refresh_btn.setEnabled(True)
                 return
-
+            
             self._log(f"Loading {len(envs)} environments...", "system")
             self._env_cards = {}
 
@@ -248,8 +265,11 @@ class PipPanel(BasePanel):
                 self._log(f"Initializing card for {env.name}...", "stdout")
                 card = PipEnvCard(env)
                 self._apply_current_filters_to_card(card)
-                # Insert before add_env_btn and stretch
-                self.scroll_layout.insertWidget(self.scroll_layout.count() - 2, card)
+                
+                idx = self.scroll_layout.indexOf(self.add_env_btn)
+                if idx == -1:
+                    idx = self.scroll_layout.count() - 2
+                self.scroll_layout.insertWidget(idx, card)
 
                 norm_path = self._path_key(env.path)
                 self._env_cards[norm_path] = card
@@ -582,8 +602,8 @@ class PipPanel(BasePanel):
             msg = (
                 f"Update {cycle_display} runtime in {env.name}?\n\n"
                 f"{current_ver} -> {latest_ver}\n\n"
-                f"This will first update the system {cycle_display} installation\n"
-                f"via winget, then upgrade this virtual environment.\n\n"
+                f"This will first update the system {cycle_display} installation via winget if necessary,\n"
+                f"then upgrade this virtual environment.\n\n"
                 f"This does not update packages."
             )
         else:
@@ -664,11 +684,18 @@ class PipPanel(BasePanel):
         self._installer_worker.start()
 
     def _on_installer_done(self, env_path: str, success: bool, message: str):
+        if hasattr(self, "setup_widget"):
+            self.setup_widget.reset_state()
+            
         if success:
-            self._log("Runtime installer completed. Refreshing environment...", "system")
+            self._log("Runtime installer completed. Refreshing...", "system")
         elif message:
             QMessageBox.warning(self, "Installer Failed", message)
-        self._refresh_single_env(env_path, scan_mode="fast", schedule_full=True)
+            
+        if env_path:
+            self._refresh_single_env(env_path, scan_mode="fast", schedule_full=True)
+        else:
+            self.start_scan()
 
     def _update_all_in_env(self, env_path: str):
         env = self._find_env_by_path(self.pip_mgr.environments, env_path)

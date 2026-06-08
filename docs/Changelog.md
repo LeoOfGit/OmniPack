@@ -1,5 +1,60 @@
 # Changelog - OmniPack
 
+## 🇺🇸 [v15] - Cross-Platform Runtime Installers (macOS/Linux), WinGet Automated Setup (Windows), Runtime Setup Guide UI, Virtual Environment File-Lock Guard & Resilient Network API
+
+<details>
+<summary><b>🇨🇳 [v15] - 跨平台运行时一键安装（macOS/Linux）、WinGet 系统级全自动安装（Windows）、运行环境引导界面、虚拟环境升级文件锁防御与高可用 API (中文说明)</b></summary>
+
+<br>
+
+本次更新大幅扩展了 OmniPack 的运行环境自愈与安装能力，正式引入对 macOS 和 Linux 平台的运行时一键下载与自动配置支持，并在 Windows 平台上实现了缺失 WinGet 时的后台全自动下载及安装。此外，在 UI 层面引入了常驻且直观的“运行环境安装引导界面”（RuntimeSetupWidget），同时增强了 Pip 虚拟环境升级时的进程文件锁静默冲突保护，避免因 IDE 占用导致环境受损，并进一步优化了网络 API 容灾重试逻辑。
+
+### 🚀 跨平台运行环境一键自愈与安装引导 (Auto-Setup & Guide UI)
+
+为了给缺失运行环境的用户提供无痛的起步体验，本次更新将底层的一键自愈链路与上层的智能引导界面进行了深度整合：
+
+- **智能缺失引导界面**：当在 Pip 面板、Npm 面板或 WinGet 面板中未检测到任何可用环境时，UI 底部会自动展现精美的“运行环境安装引导”卡片（RuntimeSetupWidget）。支持强制调试标志（`force_show_setup: true`），优化了窗口拉伸时的固定高度及按钮字符渲染，并集成跳转至官网下载历史版本的 "Other Version" 链接。
+- **Windows 系统级一键修复 WinGet**：若当前系统缺失或损坏了 WinGet 客户端，OmniPack 将通过 PowerShell 自动从 GitHub 抓取最新官方 `.msixbundle`，并后台静默部署其必须的 `Microsoft.VCLibs` 与 `Microsoft.UI.Xaml` 依赖组件，实现 WinGet 从无到有的全自动安装（支持代理与进度回传）。
+- **macOS/Linux 运行时一键安装**：
+  - **Linux 自动极速部署**：缺失 Python 时自动通过极速 Python 工具 `uv` 进行一键下载安装；缺失 Node.js 时，则会自动下载对应架构（x64/arm64）的官方二进制包，全自动解压并软链接（symlink）至用户本地 `~/.local/bin`。
+  - **macOS 官方包静默流式安装**：支持一键下载官方 Python/Node.js 的 `.pkg` 安装包，并调用系统 `open -W` 指令拉起系统 GUI 安装器并同步等待其完成。
+
+### 🔒 虚拟环境升级文件锁冲突防御 (Venv File-Lock Guard)
+
+针对 Python 虚拟环境升级（`python -m venv --upgrade`）时易被外部进程锁定导致损坏的痛点，引入了文件锁静默拦截与诊断机制：
+
+- **占用锁精准诊断**：一旦检测到由于 PyCharm、VSCode 或 OmniPack 自身等进程锁定了 `python.exe` 文件导致复制失败，程序将静默拦截原始命令行的乱码输出，转而向用户抛出极其清晰易懂的错误引导，提醒其关闭所有可能占用该环境的程序后再试，从根本上防止虚拟环境损坏。
+
+### ⚙️ 稳定性提升与底层解析优化 (Stability & Parsing Optimizations)
+
+对网络 API 交互、配置文件解析以及测试套件生命周期进行了全方位的健壮性加固：
+
+- **高可用 API 容灾重试**：重构了 `_fetch_runtime_index` 获取机制，增加了最多 3 次的网络连接重试及退避延迟，并在多线程并发访问时引入 0.3 秒睡眠保护，完美解决了因 Cloudflare 防御导致的 SSL 握手超时（<urlopen error _ssl.c:1063...>）和高达 50% 的 API 获取失败率。
+- **解析与配置容错**：优化了 `pyvenv.cfg` 的读取兼容性，对缺失 `Python` 关键字的前缀版本行进行自动修正，确保各种非标准虚拟环境的版本号均能被精准读取；同时为 `msvc_path.cfg` 增加了详细的说明注释，明确了 Nuitka 编译器的查找和回退逻辑。
+- **测试框架进程级崩溃修复**：修复了在自动化测试（`pytest`）环境下，由于底层拉取版本的异步 `QThread` 仍处于运行状态而导致 C++ Fatal Error 强制掐断测试进程的生命周期 Bug，自动化测试恢复 100% 通过率。
+
+</details>
+
+This release expands OmniPack's environment self-healing capabilities by introducing official runtime installers for macOS and Linux, as well as a fully automated, proxy-supported background install process for WinGet on Windows. A new dedicated setup guide UI (RuntimeSetupWidget) automatically assists users in bootstrapping missing runtimes. Furthermore, this update introduces robust file-lock guards for virtual environment upgrades to prevent IDE-locked process failures, optimizes pyvenv.cfg reading tolerances, and integrates exponential backoff retries for network runtime API indexes.
+
+### 🚀 Cross-Platform Runtime Auto-Setup & Guide UI
+- **Contextual Setup Prompts**: Displays a beautifully styled setup card (`RuntimeSetupWidget`) at the bottom of the scroll view when Pip, Npm, or WinGet panels have zero loaded environments, allowing users to trigger installation pipelines instantly. Fixed vertical stretching bugs by applying Fixed size policies, corrected missing `&` ampersand bugs in buttons, and added a custom `force_show_setup` debugging flag.
+- **External Legacy Version Links**: Added a convenient "Other Version" hyperlink next to the version selector, allowing users to quickly access the official Python/Node.js download pages for specific legacy versions.
+- **Zero-Dependency WinGet Deployment**: If WinGet is missing or broken on Windows, OmniPack runs a proxy-aware PowerShell worker to fetch the latest `.msixbundle` directly from the official GitHub repository and install it alongside necessary Microsoft Appx dependencies (VCLibs and UI.Xaml).
+- **One-Click macOS & Linux Installers**:
+  - **Linux Automated Deployments**: If a Python runtime is missing, the application installs it using `uv`; for missing Node.js runtimes, it pulls the official tar.xz binary pack (tailored for x64/arm64) and symlinks the binary links (`node`, `npm`, `npx`) to the user's local path.
+  - **macOS Official Installer Execution**: Automatically fetches the official `.pkg` packages for macOS Darwin and executes them using the interactive `open -W` system installer pipeline, pausing runtime updates until completion.
+
+### 🔒 Virtual Environment Upgrade File-Lock Guard
+- **Silent File-Lock Diagnostics**: Detects if virtual environment upgrades fail due to locked executable files (`python.exe` occupied by IDEs, running scripts, or OmniPack itself). Intercepts console errors and warns the user with clear instructions, preventing environment corruption.
+
+### ⚙️ Stability, API Resilience & Parsing Optimizations
+- **Resilient Retry Pipeline**: Rewrote `_fetch_runtime_index` to protect network indexing queries with a 3-pass retry fallback and connection sleep offsets. This completely mitigates SSL handshake timeouts caused by aggressive CDN rate-limiting, resolving a ~50% failure rate anomaly.
+- **Robust Config Parsing**: Automatically normalizes and prepends missing "Python" keywords when parsing version lines inside `pyvenv.cfg` configs, ensuring correct local scans. Also documented the compiler discovery order and Zig backup routes directly within `msvc_path.cfg`.
+- **Pytest QThread Fatal Error Fix**: Isolated and bypassed asynchronous `QThread` instantiations during automated `pytest` lifecycles to prevent premature garbage collection from triggering C++ fatal aborts, restoring the test suite to a 100% green passing state.
+
+---
+
 ## 🇺🇸 [v14] - Environment Editing & Renaming, Winget Self-Upgrade, Winget Diagnostics & Enhancements, Copyable Dialogs & Package Details
 
 <details>

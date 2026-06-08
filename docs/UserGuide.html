@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -112,8 +111,7 @@
             justify-content: center;
         }
 
-        ul,
-        ol {
+        ul, ol {
             margin-left: 12px;
             margin-top: 15px;
         }
@@ -150,8 +148,7 @@
             background-color: #252526;
         }
 
-        th,
-        td {
+        th, td {
             border: 1px solid var(--border-color);
             padding: 14px;
             text-align: left;
@@ -182,7 +179,6 @@
         }
     </style>
 </head>
-
 <body data-lang="en">
     <div id="lang-toggle">
         <div class="lang-btn" onclick="switchLang('zh')">简体中文</div>
@@ -190,1105 +186,941 @@
     </div>
 
     <!-- START OF CHINESE CONTENT -->
-    <section class="lang-zh">
-        <h1 id="omnipack-用户指南-user-guide">OmniPack 用户指南</h1>
-        <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
-        <a href="https://deepwiki.com/LeoOfGit/OmniPack"><img src="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==" alt="DeepWiki"></a>
-        <p>欢迎使用 <b>OmniPack</b>！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。</p>
-        <p>本项目更新频繁，本文档的部分插图或描述可能已经过时，具体以实际程序为准。</p>
-        <hr>
-        <h2 id="目录">目录</h2>
-        <ol>
-            <li><a href="#1-界面布局全解析">界面布局全解析</a>
-            </li>
-            <li><a href="#2-环境管理">环境管理 (Environments)</a>
-            </li>
-            <li><a href="#3-python-uvpip-深度管理">Python (uv/pip) 深度管理</a>
-            </li>
-            <li><a href="#4-nodejs-npm-项目管理">Node.js (npm) 项目管理</a>
-            </li>
-            <li><a href="#5-winget-系统包管理-windows-特有">WinGet 系统包管理 (Windows 特有)</a>
-            </li>
-            <li><a href="#6-设置中心">设置中心 (Settings Center)</a>
-            </li>
-            <li><a href="#7-高级配置与环境变量参考">高级配置与环境变量参考</a>
-            </li>
-            <li><a href="#8-常见问题解答-faq">常见问题解答 (FAQ)</a>
-            </li>
-        </ol>
-        <hr>
-        <h2 id="1-界面布局全解析">1. 界面布局全解析</h2>
-        <p>OmniPack 的主界面经过精心设计，分为四个核心交互区域。</p>
-        <h3 id="11-顶层工具栏-global-toolbar">1.1 顶层工具栏 (Global Toolbar)</h3>
-        <p>这是执行全局搜索、过滤与批量指令的指挥中心。</p>
-        <ul>
-            <li><b>选择控制 (All/None)</b>：快速全选或全取消当前主界面中所有可见的包。
-            </li>
-            <li><b>搜索框 (Search)</b>：实时过滤各个环境卡片中显示的包名，支持模糊匹配。
-            </li>
-            <li><b>待更新过滤 (Only Show Outdated)</b>：一键隐藏所有已是最新版本的包，让您可以集中处理需要升级的项目。系统会智能评估每个更新的安全性：约束冲突（橙色
-                <code>⚠</code>）和构建变体切换（蓝色 <code>🔀</code>）的包不会被自动选中，但若是存在安全中间版本（蓝色 <code>🔒</code>）则会被自动选中。
-            </li>
-            <li><b>全局刷新 (Refresh All)</b>：重新扫描所有配置环境的本地包列表，并查询云端最新版本。
-            </li>
-            <li><b>批量更新 (Batch Update)</b>：对当前所有【已勾选】且【云端有新版本】的包发起并行升级指令（仅作用于包，不更新解释器/Node 运行时）。
-            </li>
-            <li><b>批量卸载 (Batch Remove)</b>：对所有当前勾选的包发起卸载指令（会有二次确认弹窗）。
-            </li>
-            <li><b>设置 (Settings)</b>：直接跳转至环境配置与系统设置页面。
-            </li>
-        </ul>
-        <h3 id="12-环境主体卡片-env-canvas">1.2 环境主体卡片 (Env Canvas)</h3>
-        <p>左侧区域，以卡片形式展示每一个 Python 虚拟环境或 Node.js 项目。</p>
-        <ul>
-            <li><b>环境信息</b>：每张卡片顶部显示环境别名、路径、运行时版本；当检测到同周期补丁更新时，会显示 <code>当前 -&gt; 最新</code>。
-            </li>
-            <li><b>操作按钮</b>：
-                <ul>
-                    <li><code>↻</code>：刷新当前环境
-                    </li>
-                    <li><code>⇧</code>：仅更新当前环境内所有可更新的包
-                    </li>
-                    <li><code>Py</code> / <code>Nd</code>：更新环境运行时本体（Python/Node）
-                    </li>
-                    <li><code>+</code>：添加包
-                    </li>
-                    <li>在 v14 中，右键点击卡片头部可以进行 <b>✏️ 重命名环境</b> 或 <b>⚙️ 编辑设置</b>（一键调起设置面板并自动高亮且滚动定位到该环境对应的行）。
-                    </li>
-                </ul>
-            </li>
-            <li><b>包列表</b>：列出当前环境下安装的所有包及其版本。
-            </li>
-        </ul>
-        <h3 id="13-集成伪终端与控制台-integrated-pty-terminal-live-console">1.3 集成伪终端与控制台 (Integrated PTY Terminal &amp; Live
-            Console)</h3>
-        <p>右侧区域是 OmniPack 的核心执行显示中心，在 V10 中经过全新架构重构，支持两种互补的显示与交互模式（双控制台设计）：</p>
-        <ul>
-            <li><b>交互式伪终端 (Real Terminal)</b>：
-                <ul>
-                    <li><b>实时深度交互</b>：这是一个真正的 PTY 终端 Shell（默认启用）。不仅可以实时流式呈现底层包管理命令的执行日志，还能接受您的全盘键盘输入。这意味着在遇到
-                        <code>git clone</code> 账户密码输入、或安装中途需要输入 <code>y/n</code>
-                        进行确认等高交互场景时，您可以直接在终端中打字并回车，彻底打破了以往“模拟控制台”容易产生进程死锁的硬伤。
-                    </li>
-                    <li><b>ANSI 丰富染色</b>：底层搭载了 <code>pyte</code> 色彩染色引擎，完美解析 ANSI 转义序列。这意味着
-                        <code>uv</code>、<code>pip</code>、<code>npm</code>
-                        在终端里绘制的<b>动态高色彩字符进度条</b>、或者带颜色的错误堆栈，均能在控制台内平滑流畅地流动展示，还原了极其丝滑的原生终端视觉体验。
-                    </li>
-                    <li><b>环境与目录静默同步 (Active Sync)</b>：终端与左侧的环境状态实现了深度联动。每当您切换或激活左侧的环境卡片时，主程序会静默且无感地发送 <code>cd</code>
-                        改变目录或调用激活 <code>venv</code> 的指令，实现“界面点到哪，终端跟到哪”的顺畅同步。
-                    </li>
-                    <li><b>操作容器化与 UI 快刷</b>：在 PTY 终端模式下，面板按钮触发的“更新”、“安装”或“卸载”均会直接转化为 CLI 命令写进终端窗口中运行。命令末尾自动追加一个唯一的 UUID
-                        Marker（标记）。主程序后台捕捉该 Marker 以判定命令执行完毕，并立刻对环境进行<b>增量快速刷新 (Fast Refresh)</b>，大大减少了界面的重绘卡顿。
-                    </li>
-                    <li><b>键盘高级组合</b>：完美拦截 Tab 键命令补全、上下方向键回溯历史、<code>Ctrl+C</code> 强行中断子任务，以及 <code>Ctrl+V</code>
-                        系统剪贴板文字粘贴。
-                    </li>
-                </ul>
-            </li>
-            <li><b>只读模拟控制台 (Simulated Console)</b>：
-                <ul>
-                    <li>如果您在设置中将模式切换为只读模拟控制台，它将作为安全保底存在，被动地以富文本日志形式展示命令的 <code>stdout</code> 与
-                        <code>stderr</code>，且提供基于正则表达式的 ANSI 字符剔除过滤。
-                    </li>
-                    <li>右键支持“清空控制台”、“复制选区”以及“打开日志文件所在目录”等通用功能。
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <h3 id="14-状态栏反馈-status-bar">1.4 状态栏反馈 (Status Bar)</h3>
-        <p>位于窗口最底部，提供实时的统计与全局功能入口。</p>
-        <ul>
-            <li><b>左侧统计区</b>：<code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>。实时反映当前扫描出的环境总数、包总数及待更新统计。
-            </li>
-            <li><b>中间状态区</b>：显示当前正在执行的操作（如 &quot;Ready&quot;, &quot;Scanning...&quot;, &quot;Installing...&quot;）。
-            </li>
-            <li><b>右侧切换区</b>：
-                <ul>
-                    <li><b>Python / Node.js / WinGet 按钮</b>：用于在不同的包管理面板之间快速切换（WinGet 面板仅在 Windows 系统下可见）。
-                    </li>
-                    <li><b>💡 Guide 按钮</b>：点击即可弹出本用户指南窗口。
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <blockquote><b>注意</b>：若程序获得了管理员权限，<b>(Admin)</b> 标识会显示在窗口的<b>最上方标题栏</b>。</blockquote>
-        <div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="868"></div>
-        <hr>
-        <h2 id="2-环境管理">2. 环境管理</h2>
-        <h3 id="21-统一导入流程-unified-intake">2.1 统一导入流程 (Unified Intake)</h3>
-        <p>在 <b>Settings -&gt; Python/NPM Environments</b> 中，您可以管理项目的生命周期。</p>
-        <ul>
-            <li><b>Python 环境 (Pip/uv)</b>：
-                <ul>
-                    <li><b>Detect System</b>：扫描 PATH、注册表及桌面/用户目录下的 Python 解释器。
-                    </li>
-                    <li><b>Add Manually</b>：支持指向具体的 <code>python.exe</code> 解释器，或直接拖入包含 <code>.venv</code> 或
-                        <code>venv</code> 的项目根目录。
-                    </li>
-                </ul>
-            </li>
-            <li><b>Node.js 环境 (NPM)</b>：
-                <ul>
-                    <li><b>Add Manually</b>：支持指向 <code>package.json</code> 文件或其所在的任意父目录。OmniPack 会自动溯源至项目根节点并解析项目名。
-                    </li>
-                </ul>
-            </li>
-            <li><b>Batch Paste (批量导入)</b>：您可以用Everything等搜索工具直接复制得到包含多个路径的多行文本，然后粘贴到输入框中，内置的 <code>env_detector</code>
-                引擎会自动执行去重、有效性验证和智能命名。。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
-        <h3 id="22-环境操作说明">2.2 环境操作说明</h3>
-        <ul>
-            <li><b>拖拽重排</b>：在列表项上长按图标即可上下拖动，调整环境在主界面的首选顺序。
-            </li>
-            <li><b>编辑环境</b>：双击任意项可修改显示别名或修正因移动文件夹导致的路径变化。在主界面的环境卡片头部点击右键即可快速进行重命名（✏️）或点击编辑设置（⚙️），一键高亮跳转定位到设置面板中修改路径。
-            </li>
-        </ul>
-        <hr>
-        <h2 id="3-python-uvpip-深度管理">3. Python (uv/pip) 深度管理</h2>
-        <h3 id="31-极速-uv-引擎">3.1 极速 uv 引擎</h3>
-        <p>OmniPack 原生集成了一流的 <a href="https://github.com/astral-sh/uv">uv</a> 引擎。</p>
-        <ul>
-            <li><b>性能优势</b>：对于复杂的依赖解析和大规模包安装，由于 uv 采用 Rust 编写且具备高效缓存，其速度通常是 <code>pip</code> 的数十倍。
-            </li>
-            <li><b>引擎更新</b>：在 <code>Settings</code> -&gt; <code>Backend</code> 设置中，可以一键触发 <code>Check for Update</code>
-                异步检查并在线更新 <code>uv</code> 引擎，无需重装程序。
-            </li>
-        </ul>
-        <h3 id="36-实时文件系统联动-real-time-sync-v12-新增">3.6 实时文件系统联动 (Real-time Sync) (v12 新增)</h3>
-        <p>OmniPack 内置了<b>目录监听引擎 (File System Watcher)</b>，无需任何配置即可生效。</p>
-        <ul>
-            <li><b>脱机操作同步</b>：如果您在系统外部终端（如 <code>cmd.exe</code>）或 OmniPack 的内置 PTY 终端中直接运行了 <code>pip install xxx</code>
-                或 <code>uv pip install xxx</code>（NPM 面板则监听 <code>node_modules</code>），当命令结束后（无论成功或失败），OmniPack 会在静默 2
-                秒后<b>自动</b>抓取 <code>site-packages</code> / <code>node_modules</code> 目录的物理变化，并触发对应环境卡片的自动刷新。
-            </li>
-            <li><b>多端协作无缝衔接</b>：该机制省去了频繁点击 <code>↻</code> 刷新按钮的繁琐步骤，实现了 UI 状态与硬盘物理状态的绝对实时一致。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="576"></div>
-        <h3 id="32-依赖查询与依赖树">3.2 依赖查询与依赖树</h3>
-        <ul>
-            <li><b>层级展开</b>：点击包名前的箭头，可无限向下展示该包引入的子依赖（Dependency Tree）。
-            </li>
-            <li><b>顶层视图</b>：默认仅显示您主动安装的包，隐藏由于级联关系引入的被动安装包，极大减少视觉噪音。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
-        <h3 id="33-本地缓存驱动的包搜索">3.3 本地缓存驱动的包搜索</h3>
-        <ul>
-            <li><b>秒开响应</b>：OmniPack 内置了超过 50 万笔热门 PyPI 包的数据缓存。在主界面或“添加包”对话框搜索时，其响应速度堪比本地文件搜索。
-            </li>
-            <li><b>搜索增强</b>：搜索时支持对结果按版本范围进行筛选。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
-        <h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python 运行时补丁更新（解释器本体）</h3>
-        <ul>
-            <li><b>显示逻辑</b>：Python 虚拟环境卡片优先读取 <code>pyvenv.cfg</code> 的版本元数据，避免系统 Python 小版本升级后导致显示偏差。
-            </li>
-            <li><b>更新检测</b>：按同一 <code>major.minor</code> 周期检测最新补丁（例如 <code>3.14.3 -&gt; 3.14.4</code>）。
-            </li>
-            <li><b>更新入口</b>：当检测到可更新时，卡片显示 <code>Py</code> 按钮。点击后执行的是解释器/venv 升级流程，而非 <code>pip</code> 包升级。
-            </li>
-            <li><b>语义隔离</b>：<code>Py</code> 与 <code>⇧</code> 独立，前者更新运行时，后者更新包。
-            </li>
-        </ul>
-        <h3 id="35-风险感知更新-risk-aware-updates">3.5 风险感知更新 (Risk-Aware Updates)</h3>
-        <p>当您开启工具栏的 <b>&quot;Outdated&quot;</b> 过滤时，并非所有可更新的包都会被自动选中。系统会对以下两类高风险更新进行<b>智能拦截</b>：</p>
-        <h4 id="约束冲突-橙色-标识">约束冲突（橙色 ⚠ 标识）</h4>
-        <p>如果一个包的依赖者对其设定了版本上限（如 <code>sympy</code> 依赖 <code>mpmath&lt;1.4</code>），而最新版超过了该上限，那么该包：</p>
-        <ul>
-            <li>不会被 <code>Outdated</code> 自动勾选
-            </li>
-            <li>版本文本显示为橙黄色：<code>1.3.0 ➜ 1.4.1 ⚠</code>
-            </li>
-            <li>鼠标悬停时提示：&quot;Latest version may break version constraints from: sympy&quot;
-            </li>
-            <li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知具体的约束来源
-            </li>
-        </ul>
-        <h4 id="v12-智能安全升级-蓝色-标识-safe-intermediate-update">v12 智能安全升级（蓝色 🔒 标识） (Safe Intermediate Update)</h4>
-        <p>v12 引入了更优雅的版本选择机制。若最新版被约束阻断，系统会自动扫描历史版本，<b>寻找约束范围内允许的最高可用版本</b>：</p>
-        <ul>
-            <li>版本文本显示为亮蓝色：<code>1.3.0 ➜ 1.3.5 🔒 (latest 1.4.1)</code>
-            </li>
-            <li>鼠标悬停时不仅显示冲突约束，还会特别提示 &quot;Can safely update to 1.3.5&quot;
-            </li>
-            <li>升级按钮变为蓝色且<b>不需要二次确认</b>，点击即可丝滑更新到 1.3.5
-            </li>
-            <li>此类型的受限包会被 <code>Outdated</code> <b>自动勾选</b>，便于您批量升级
-            </li>
-        </ul>
-        <h4 id="构建变体切换-蓝色-标识">构建变体切换（蓝色 🔀 标识）</h4>
-        <p>对于带有本地版本标识的包（如 <code>torchaudio 2.11.0.dev20260506+cu132</code>），当最新版不带该标识或标识不同时：</p>
-        <ul>
-            <li>不会被 <code>Outdated</code> 自动勾选
-            </li>
-            <li>版本文本显示为亮蓝色：<code>2.11.0.dev+cu132 ➜ 2.11.0 🔀</code>
-            </li>
-            <li>鼠标悬停时提示：&quot;Build variant may change: +cu132 → (none)&quot;
-            </li>
-            <li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知构建类型可能改变
-            </li>
-        </ul>
-        <blockquote><b>手动操作不受限</b>：以上拦截仅针对 <code>Outdated</code> 过滤的自动选中行为。您仍可手动勾选这些包，或直接点击其 <code>⇧</code>
-            按钮并确认风险后进行更新。</blockquote>
-        <div class="image-wrap"><img src="./resources/VersionLimits.png" alt="版本限制可视化"></div>
-        <hr>
-        <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) 项目管理</h2>
-        <h3 id="41-项目深度溯源">4.1 项目深度溯源</h3>
-        <p>当您向 OmniPack 提供一个含有 Node.js 模块的任意深层文件夹时，它能自动确定真正的项目根目录，并精准展示出本地安装的模块版本。</p>
-        <h3 id="42-在线搜索npm包">4.2 在线搜索npm包</h3>
-        <ul>
-            <li><b>在线搜索</b>：从npm源搜索包，支持模糊匹配。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="250"></div>
-        <h3 id="43-dist-tags-精准分发">4.3 Dist-Tags 精准分发</h3>
-        <p>OmniPack 将 NPM 的 <code>Dist-Tags</code> 机制进行了 GUI 封装。</p>
-        <ul>
-            <li><b>标签切换</b>：在添加或更新包时，界面会整齐排列出所有远程 Release 通道（如 <code>latest</code>, <code>beta</code>,
-                <code>next</code>, <code>lts</code>）。
-            </li>
-            <li><b>一键更新</b>：点击对应标签卡片，系统会自动构造出如 <code>npm install lodash@beta</code> 这样的精准命令并执行。
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
-        <h3 id="44-nodejs-运行时补丁更新">4.4 Node.js 运行时补丁更新</h3>
-        <ul>
-            <li><b>版本展示</b>：Node 环境卡片会显示当前 Node 版本；若检测到同周期补丁更新，会展示 <code>当前 -&gt; 最新</code>。
-            </li>
-            <li><b>更新入口</b>：当可更新时显示 <code>Nd</code> 按钮，执行 Node 运行时升级。
-            </li>
-            <li><b>注意区分</b>：<code>Nd</code> 更新 Node 运行时，<code>⇧</code> 更新 npm 包，二者互不替代。
-            </li>
-        </ul>
-        <hr>
-        <h2 id="5-winget-系统包管理-windows-特有">5. WinGet 系统包管理 (Windows 特有)</h2>
-        <p>在 Windows 10/11 操作系统下，OmniPack 会自动在状态栏右侧注册 <b>WinGet</b> 包管理面板。它能对您系统上通过 Microsoft Store、WinGet
-            源或本地安装的桌面应用程序进行统一纳管。</p>
-        <h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 双 Scope 环境自动探测 (Dual Scope Environment)</h3>
-        <p>在主界面左侧会展示两个虚拟的系统环境：</p>
-        <ul>
-            <li><b>System (Machine)</b>：显示系统全局安装的软件（对应 <code>winget://machine</code>），通常位于 <code>Program Files</code>
-                目录下，更新时需要管理员权限。
-            </li>
-            <li><b>User</b>：显示当前用户专属安装的软件（对应 <code>winget://user</code>），通常位于用户个人目录下（如
-                <code>%USERPROFILE%\AppData</code>）。
-            </li>
-            <li><b>去重与范围智能判定 (Package Redistribution)</b>：
-                <ul>
-                    <li>OmniPack 内置了注册表物理路径审计机制。在扫描软件时，它会读取卸载路径，如果发现某个全局上报的软件其实物理安装在用户目录中，会自动将其归类到 <b>User</b>
-                        虚拟环境中，保证信息的绝对精准。
-                    </li>
-                    <li>若同一个软件在系统和用户下都被安装了，卡片上会自动挂载 <code>[Also Installed In User/Machine]</code> 彩色徽章。
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 精准管理与锁定更新 (Full Actions &amp; Pinning)</h3>
-        <ul>
-            <li><b>获取更新 (Upgrades)</b>：如果有可用更新，应用卡片上会显示 <code>⇧</code> 按钮。
-            </li>
-            <li><b>配置与锁定 (Blocking Pin)</b>：
-                <ul>
-                    <li>点击应用卡片上的 <b>⚙ 配置按钮</b>，会弹出专属配置框。
-                    </li>
-                    <li>支持设置 <b>锁定更新 (winget blocking pin)</b>。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载
-                        <code>[Pinned]</code> 徽章，同时不会被工具栏 &quot;Outdated&quot; 选项自动勾选，避免大面积静默升级破坏特定软件版本。
-                    </li>
-                    <li>在配置框中，您还可以直接查看该软件的<b>物理安装路径 (Uninstall Location)</b> 并进行一键鼠标选定与复制，极其方便定位软件根目录。
-                    </li>
-                </ul>
-            </li>
-            <li><b>版本异常警告 (⚠ Newer Badge)</b>：
-                <ul>
-                    <li>如果您从官网安装了比 WinGet 云端注册表更新的版本，系统会挂载 <code>[⚠ Newer]</code> 徽章警告，并阻止 <code>Outdated</code>
-                        自动勾选它，防止误退级。
-                    </li>
-                </ul>
-            </li>
-            <li><b>安装新包 (Install)</b>：
-                <ul>
-                    <li>点击卡片标题栏的 <code>+</code> 按钮，可以输入任意 WinGet 软件 ID（如 <code>Google.Chrome</code>）直接进行下载并静默或交互安装。
-                    </li>
-                </ul>
-            </li>
-            <li><b>WinGet 自身升级与包细节优化 (v14 新增)</b>：
-                <ul>
-                    <li><b>WinGet 自身升级 (Wg 按钮)</b>：在 WinGet 卡片上，主程序会读取并显示 Winget 当前的具体版本号（如 `Winget v1.9.25200`）。若检测到 Winget 本体有更新，卡片头部会显示闪烁的 <code>Wg</code> 按钮，点击后可以一键自动升级本体。</li>
-                    <li><b>包架构后缀追加</b>：包名后会自动追加智能抓取到的架构信息（如 <code>(x64)</code>、<code>(x86)</code> 等），以防不同架构的同名应用在 UI 中发生混淆。</li>
-                    <li><b>应用类型标记</b>：包详细配置框和卡片上会根据包 ID 特征清晰显示该应用的来源是 <code>[Win32]</code> (经典注册表安装) 还是 <code>[MSIX]</code> (现代应用包)。</li>
-                </ul>
-            </li>
-            <li><b>智能范围回退机制 (Scope Fallback)</b>：
-                <ul>
-                    <li>在 Machine 范围升级或安装大型软件如果遇到文件占用或写入权限问题而报错，OmniPack 会自动执行 Fallback，改为以 <code>--scope user</code>
-                        尝试向用户范围下载安装，极大地提高了对软件版本自动更新的宽容度。
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Winget.png" alt="Winget 管理主界面" width="871"></div>
-        <hr>
-        <h2 id="6-设置中心-settings-center">6. 设置中心 (Settings Center)</h2>
-        <p>设置对话框是 OmniPack 的后台核心，按功能划分为六个清晰的选项卡（在 Windows 下）：</p>
-        <ol>
-            <li><b>Python/NPM Environments</b>：环境列表维护区，支持增删改查及排序。
-            </li>
-            <li><b>Sources (注册表/镜像源)</b>：
-                <ul>
-                    <li><b>Follow System</b>：尊重系统原有的配置。
-                    </li>
-                    <li><b>Official</b>：使用官方源。
-                    </li>
-                    <li><b>Custom Preset</b>：内置清华、阿里、华为等顶级镜像，一键切换。
-                    </li>
-                    <li><b>独立性</b>：此处的设置仅针对 OmniPack 调用的命令生效，不会修改您的系统全局配置。
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="580"></div>
-        <ol>
-            <li><b>Backend (核心引擎与缓存)</b>：
-                <ul>
-                    <li><b>uv 路径管理</b>：手动指定或自动发现 <code>uv</code> 解释器。
-                    </li>
-                    <li><b>PyPI Cache 同步</b>：提供可视化的同步日志流。支持在程序运行期间静默同步几千万条记录，并可以随时随时暂停或取消。
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="580"></div>
-        <ol>
-            <li><b>Proxy (代理配置)</b>：
-                <ul>
-                    <li><b>协议分离</b>：支持独立的 HTTP 和 HTTPS 代理设置。后台命令多数情况会使用https，建议两个都填。
-                    </li>
-                    <li><b>颗粒度控制</b>：可单独勾选哪些域名（PyPI / NPM / GitHub）需要通过代理服务器。
-                    </li>
-                    <li><b>连通性测试</b>：一键执行 Direct vs Proxy 响应延迟对比。
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="580"></div>
-        <ol>
-            <li><b>WinGet (Windows 专属设置)</b>：
-                <ul>
-                    <li><b>安装模式选择</b>：支持配置 winget 安装和升级的全局行为模式：静默模式 (<code>silent</code>)、交互模式
-                        (<code>interactive</code>)、默认模式 (<code>default</code>)。
-                    </li>
-                    <li><b> winget.exe 路径</b>：支持自动探测系统 PATH 上的 winget 进程，也支持手动浏览定位自定义的 winget 绝对路径。
-                    </li>
-                    <li><b>实时诊断状态</b>：在设置页面内建 Diagnostics 控制台，可实时探知 winget 引擎是否可用、系统物理绝对路径、运行版本以及已启用的注册表源数量与可能上报的源配置错误。
-                    </li>
-                </ul>
-            </li>
-            <li><b>Terminal (终端与控制台配置)</b>：
-                <ul>
-                    <li><b>控制台模式 (Console Mode)</b>：支持用户在线自由切换控制台模式。可选 <code>Simulated Console</code>（经典的只读日志流模式，安全保底）与
-                        <code>Real Terminal</code>（PTY 交互终端模式，默认启用）。
-                    </li>
-                    <li><b>默认 Shell 选择</b>：支持配置内置伪终端默认调起的 Shell 程序（内置
-                        <code>cmd.exe</code>、<code>powershell.exe</code>、<code>pwsh.exe</code>，并支持自定义特定外部 Shell 绝对路径）。
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <hr>
-        <h2 id="7-高级配置与环境变量参考">7. 高级配置与环境变量参考</h2>
-        <p>通过设置系统环境变量，您可以进一步解锁 OmniPack 的潜在功能：</p>
-        <table>
-            <tr>
-                <th>变量名</th>
-                <th>描述</th>
-                <th>默认行为</th>
-                <th>备注</th>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_LIVE_RELOAD</code></td>
-                <td>启用样式的热重载</td>
-                <td>关</td>
-                <td>源码运行下修改 .qss 文件可即时生效</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
-                <td>强制使用便携模式</td>
-                <td>自动</td>
-                <td>优先级高于系统路径自动判定</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_TRACE_SELECTION</code></td>
-                <td>调试日志导出</td>
-                <td>关</td>
-                <td>将主界面所有的点击路径记录为 jsonl 文件</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
-                <td>提权申请策略</td>
-                <td>自动</td>
-                <td>设置为 0 可停止自动发起的 UAC 申请</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
-                <td>屏蔽 Qt 重复警告</td>
-                <td>关</td>
-                <td>帮助保持终端/日志简洁</td>
-            </tr>
-        </table>
-        <hr>
-        <h2 id="8-常见问题解答-faq">8. 常见问题解答 (FAQ)</h2>
-        <p><b>Q: 某些npm应用已经发布新版本，但程序未能检测到</b><br>A: 很多npm的镜像源对nightly、preview等非正式版本的更新不及时，换用官方源即可。</p>
-        <p><b>Q: 为什么“状态栏”中的统计数量和卡片中看到的不一致？</b><br>A: 状态栏统计的是背景线程中所有已识别环境的总和，而卡片中显示的可能是经过“搜索框”过滤后的结果。</p>
-        <p><b>Q: 如何让我的 Python 环境显示在 Settings 列表最前面？</b><br>A: 在 Settings 对话框中，点击环境项左侧的拖拽手柄，将其移动到第一行并保存即可。</p>
-        <p><b>Q: “控制台”显示更新失败，但包版本却变了？</b><br>A: 这可能是由于底层工具（如 npm）在某些网络环境下报告了非零返回码。您可以点击对应卡片的“刷新”按钮查看环境的真实最新状态。</p>
-        <p><b>Q: 为什么我看不到 <code>Py</code> / <code>Nd</code> 运行时更新按钮？</b><br>A:
-            仅当检测到“同周期补丁可更新”时才显示该按钮。若当前已是最新补丁，或网络/源不可用导致暂时无法确认最新版本，按钮会隐藏。</p>
-        <p><b>Q: <code>⇧</code> 和 <code>Py</code> / <code>Nd</code> 有什么区别？</b><br>A: <code>⇧</code> 只更新环境内的包（pip/npm
-            dependencies）；<code>Py</code> / <code>Nd</code> 更新的是解释器或 Node 运行时本体。</p>
-        <p><b>Q: (Admin) 状态是什么触发的？</b><br>A: 在 Windows 上以源码运行时，OmniPack 默认会自动请求管理员提权（可通过
-            <code>OMNIPACK_REQUIRE_ADMIN=0</code> 环境变量关闭）。提权成功后标题栏会显示 <code>(Admin)</code> 标记。打包发布版本则根据实际运行环境自动判断。</p>
-        <p><b>Q: 为什么在 macOS 或 Linux 上我看不到 WinGet 选项卡或面板？</b><br>A: WinGet 是 Windows 系统的内置包管理器，因此 OmniPack 仅在 Windows
-            操作系统下动态注册并显示 WinGet 面板和设置选项。</p>
-        <p><b>Q: WinGet 更新时提示需要管理员权限怎么办？</b><br>A: 升级系统全局应用（Machine 范围）通常需要写入 <code>C:\Program Files</code>
-            等系统敏感路径，这需要管理员特权。建议右键以管理员身份运行 OmniPack，或在系统提示时接受 UAC 提权请求。如果更新失败，OmniPack 会自动执行 Fallback，尝试以
-            <code>--scope user</code> 权限进行安装，最大程度保障部署成功。</p>
-        <p><b>Q: 为什么集成终端里常常输出一些带有 <code>__OMNIPACK_OP_DONE_&lt;uuid&gt;__</code> 的字符串？</b><br>A: 这是 OmniPack
-            早期版本（v10/v11）为了实现“界面操作与真实终端完美联动”而设计的高性能标记（Marker）系统。在最新的 v12 版本中，底层已经升级为更稳健的<b>临时文件标记机制</b>（在系统临时目录生成
-            <code>.done</code> 文件以捕获退出码），从而彻底避免了正则拦截输出在某些复杂终端环境下的偶发抖动。如果您在终端中看到残留的 UUID
-            字符串，通常是早前复制粘贴的旧命令尚未清理，属正常现象，您可以安全地忽略或 <code>cls</code> / <code>clear</code> 清理。</p>
-        <p><b>Q: 在集成终端中，除了执行包管理器的命令，我还可以执行其他普通命令吗？</b><br>A: 完全可以！因为它是一个完整、真实的系统 Shell 伪终端（PTY）。您可以把它当成普通的 Terminal
-            使用，比如键入 <code>git status</code>、<code>ls</code>、<code>dir</code> 或者是运行您的 Python 脚本，它都完美支持，并且同样具有高色彩 ANSI 渲染和
-            Tab 自动补全功能。</p>
-        <p><b>Q: 我在设置中修改了终端默认 Shell，为什么没有立即变化？</b><br>A: 终端的 Shell 调起以及模式的切换（模拟/真实终端）由于涉及到底层 PTY
-            进程与线程的销毁与重新实例化，因此需要您<b>重新启动 OmniPack</b> 才会正式生效。</p>
-        <hr>
-        <p><i>OmniPack - 您手边最专业的全平台包管理专家。</i></p>
-    </section>
+<section class="lang-zh">
+<h1 id="omnipack-用户指南-user-guide">OmniPack 用户指南 (User Guide)</h1>
+<div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
+<p>欢迎使用 <b>OmniPack</b>！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。</p>
+<p>想要通过交互式 AI 了解本项目？👉 <img url="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==">![DeepWiki](https://deepwiki.com/LeoOfGit/OmniPack)</a></p>
+<p>本项目更新频繁，本文档的部分插图或描述可能已经过时，具体以实际程序为准。</p>
+<hr>
+<h2 id="目录">目录</h2>
+<ol>
+<li><a href="#1-界面布局全解析">界面布局全解析</a>
+</li>
+<li><a href="#2-环境管理">环境管理 (Environments)</a>
+</li>
+<li><a href="#3-python-uvpip-深度管理">Python (uv/pip) 深度管理</a>
+</li>
+<li><a href="#4-nodejs-npm-项目管理">Node.js (npm) 项目管理</a>
+</li>
+<li><a href="#5-winget-系统包管理-windows-特有">WinGet 系统包管理 (Windows 特有)</a>
+</li>
+<li><a href="#6-设置中心">设置中心 (Settings Center)</a>
+</li>
+<li><a href="#7-高级配置与环境变量参考">高级配置与环境变量参考</a>
+</li>
+<li><a href="#8-常见问题解答-faq">常见问题解答 (FAQ)</a>
+</li>
+</ol>
+<hr>
+<h2 id="1-界面布局全解析">1. 界面布局全解析</h2>
+<p>OmniPack 的主界面经过精心设计，分为四个核心交互区域。</p>
+<h3 id="11-顶层工具栏-global-toolbar">1.1 顶层工具栏 (Global Toolbar)</h3>
+<p>这是执行全局搜索、过滤与批量指令的指挥中心。</p>
+<ul>
+<li><b>选择控制 (All/None)</b>：快速全选或全取消当前主界面中所有可见的包。
+</li>
+<li><b>搜索框 (Search)</b>：实时过滤各个环境卡片中显示的包名，支持模糊匹配。
+</li>
+<li><b>待更新过滤 (Only Show Outdated)</b>：一键隐藏所有已是最新版本的包，让您可以集中处理需要升级的项目。系统会智能评估每个更新的安全性：约束冲突（橙色 <code>⚠</code>）和构建变体切换（蓝色 <code>🔀</code>）的包不会被自动选中，但若是存在安全中间版本（蓝色 <code>🔒</code>）则会被自动选中。
+</li>
+<li><b>全局刷新 (Refresh All)</b>：重新扫描所有配置环境的本地包列表，并查询云端最新版本。
+</li>
+<li><b>批量更新 (Batch Update)</b>：对当前所有【已勾选】且【云端有新版本】的包发起并行升级指令（仅作用于包，不更新解释器/Node 运行时）。
+</li>
+<li><b>批量卸载 (Batch Remove)</b>：对所有当前勾选的包发起卸载指令（会有二次确认弹窗）。
+</li>
+<li><b>设置 (Settings)</b>：直接跳转至环境配置与系统设置页面。
+</li>
+</ul>
+<h3 id="12-环境主体卡片-env-canvas">1.2 环境主体卡片 (Env Canvas)</h3>
+<p>左侧区域，以卡片形式展示每一个 Python 虚拟环境或 Node.js 项目。</p>
+<ul>
+<li><b>环境信息</b>：每张卡片顶部显示环境别名、路径、运行时版本；当检测到同周期补丁更新时，会显示 <code>当前 -&gt; 最新</code>。
+</li>
+<li><b>操作按钮</b>：
+<ul>
+<li><code>↻</code>：刷新当前环境
+</li>
+<li><code>⇧</code>：仅更新当前环境内所有可更新的包
+</li>
+<li><code>Py</code> / <code>Nd</code>：更新环境运行时本体（Python/Node）
+</li>
+<li><code>+</code>：添加包
+</li>
+<li><i>右键点击卡片头部可以进行 <b>✏️ 重命名环境</b> 或 <b>⚙️ 编辑设置</b>（一键调起设置面板并自动高亮且滚动定位到该环境对应的行）。</i>
+</li>
+</ul>
+</li>
+<li><b>包列表</b>：列出当前环境下安装的所有包及其版本。
+</li>
+</ul>
+<h3 id="13-集成伪终端与控制台-integrated-pty-terminal-live-console">1.3 集成伪终端与控制台 (Integrated PTY Terminal &amp; Live Console)</h3>
+<p>右侧区域是 OmniPack 的核心执行显示中心，支持两种互补的显示与交互模式（双控制台设计）：</p>
+<ul>
+<li><b>交互式伪终端 (Real Terminal)</b>：
+<ul>
+<li><b>实时深度交互</b>：这是一个真正的 PTY 终端 Shell（默认启用）。不仅可以实时流式呈现底层包管理命令的执行日志，还能接受您的全盘键盘输入。这意味着在遇到 <code>git clone</code> 账户密码输入、或安装中途需要输入 <code>y/n</code> 进行确认等高交互场景时，您可以直接在终端中打字并回车，彻底打破了以往“模拟控制台”容易产生进程死锁的硬伤。
+</li>
+<li><b>ANSI 丰富染色</b>：底层搭载了 <code>pyte</code> 色彩染色引擎，完美解析 ANSI 转义序列。这意味着 <code>uv</code>、<code>pip</code>、<code>npm</code> 在终端里绘制的<b>动态高色彩字符进度条</b>、或者带颜色的错误堆栈，均能在控制台内平滑流畅地流动展示，还原了极其丝滑的原生终端视觉体验。
+</li>
+<li><b>环境与目录静默同步 (Active Sync)</b>：终端与左侧的环境状态实现了深度联动。每当您切换或激活左侧的环境卡片时，主程序会静默且无感地发送 <code>cd</code> 改变目录或调用激活 <code>venv</code> 的指令，实现“界面点到哪，终端跟到哪”的顺畅同步。
+</li>
+<li><b>操作容器化与 UI 快刷</b>：在 PTY 终端模式下，面板按钮触发的“更新”、“安装”或“卸载”均会直接转化为 CLI 命令写进终端窗口中运行。命令末尾自动追加一个唯一的 UUID Marker（标记）。主程序后台捕捉该 Marker 以判定命令执行完毕，并立刻对环境进行<b>增量快速刷新 (Fast Refresh)</b>，大大减少了界面的重绘卡顿。
+</li>
+<li><b>键盘高级组合</b>：完美拦截 Tab 键命令补全、上下方向键回溯历史、<code>Ctrl+C</code> 强行中断子任务，以及 <code>Ctrl+V</code> 系统剪贴板文字粘贴。
+</li>
+</ul>
+</li>
+<li><b>只读模拟控制台 (Simulated Console)</b>：
+<ul>
+<li>如果您在设置中将模式切换为只读模拟控制台，它将作为安全保底存在，被动地以富文本日志形式展示命令的 <code>stdout</code> 与 <code>stderr</code>，且提供基于正则表达式的 ANSI 字符剔除过滤。
+</li>
+<li>右键支持“清空控制台”、“复制选区”以及“打开日志文件所在目录”等通用功能。
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="14-状态栏反馈-status-bar">1.4 状态栏反馈 (Status Bar)</h3>
+<p>位于窗口最底部，提供实时的统计与全局功能入口。</p>
+<ul>
+<li><b>左侧统计区</b>：<code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>。实时反映当前扫描出的环境总数、包总数及待更新统计。
+</li>
+<li><b>中间状态区</b>：显示当前正在执行的操作（如 &quot;Ready&quot;, &quot;Scanning...&quot;, &quot;Installing...&quot;）。
+</li>
+<li><b>右侧切换区</b>：
+<ul>
+<li><b>Python / Node.js / WinGet 按钮</b>：用于在不同的包管理面板之间快速切换（WinGet 面板仅在 Windows 系统下可见）。
+</li>
+<li><b>💡 Guide 按钮</b>：点击即可弹出本用户指南窗口。
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="15-全局文本可复制与包详情一键复制">1.5 全局文本可复制与包详情一键复制</h3>
+<p>为了方便开发者排查问题和导出数据，主程序在交互细节上做了如下优化：</p>
+<ul>
+<li><b>对话框文本可复制</b>：全局注入了事件过滤器。现在无论是提示升级、出错警告还是确认框，所有的 <code>QMessageBox</code> 和 <code>QDialog</code> 的提示标签文本均支持鼠标选择和键盘复制（Ctrl+C），便于复制具体的报错和路径信息。
+</li>
+<li><b>包配置一键复制</b>：双击包卡片打开的包配置/安装详情对话框中，新增了 <b>“Copy Details”</b> 按钮。点击即可一键将当前包的名称、ID、源、已安装版本、最新可用版本和安装路径导出为格式化的文本到剪贴板。
+</li>
+</ul>
+<blockquote><b>注意</b>：若程序获得了管理员权限，<b>(Admin)</b> 标识会显示在窗口的<b>最上方标题栏</b>。</blockquote>
+<div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="1042"></div>
+<hr>
+<h2 id="2-环境管理">2. 环境管理</h2>
+<h3 id="21-统一导入流程-unified-intake">2.1 统一导入流程 (Unified Intake)</h3>
+<p>在 <b>Settings -&gt; Python/NPM Environments</b> 中，您可以管理项目的生命周期。</p>
+<ul>
+<li><b>Python 环境 (Pip/uv)</b>：
+<ul>
+<li><b>Detect System</b>：扫描 PATH、注册表及桌面/用户目录下的 Python 解释器。
+</li>
+<li><b>Add Manually</b>：支持指向具体的 <code>python.exe</code> 解释器，或直接拖入包含 <code>.venv</code> 或 <code>venv</code> 的项目根目录。
+</li>
+</ul>
+</li>
+<li><b>Node.js 环境 (NPM)</b>：
+<ul>
+<li><b>Add Manually</b>：支持指向 <code>package.json</code> 文件或其所在的任意父目录。OmniPack 会自动溯源至项目根节点并解析项目名。
+</li>
+</ul>
+</li>
+<li><b>Batch Paste (批量导入)</b>：您可以用Everything等搜索工具直接复制得到包含多个路径的多行文本，然后粘贴到输入框中，内置的 <code>env_detector</code> 引擎会自动执行去重、有效性验证和智能命名。。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
+<h3 id="22-环境操作说明">2.2 环境操作说明</h3>
+<ul>
+<li><b>拖拽重排</b>：在列表项上长按图标即可上下拖动，调整环境在主界面的首选顺序。
+</li>
+<li><b>编辑环境</b>：双击任意项可修改显示别名或修正因移动文件夹导致的路径变化。在主界面的环境卡片头部点击右键即可快速进行重命名（✏️）或点击编辑设置（⚙️），一键高亮跳转定位到设置面板中修改路径。
+</li>
+</ul>
+<h3 id="23-运行环境引导与一键自愈-runtime-setup-guide-auto-setup">2.3 运行环境引导与一键自愈 (Runtime Setup Guide &amp; Auto-Setup)</h3>
+<p>当程序首次启动，或者在 Pip 面板、Npm 面板、WinGet 面板中没有检测到任何已加载或可用的运行时环境时，UI 界面底部会自动浮现出“运行环境安装引导”组件（<code>RuntimeSetupWidget</code>）。</p>
+<ul>
+<li><b>Windows 一键部署 WinGet</b>：如果 Windows 系统下的 WinGet 包管理器缺失或损坏，该组件将通过 PowerShell 后台线程自动从官方 GitHub 获取最新包，并自动下载部署所需的 <code>VCLibs</code> 与 <code>UI.Xaml</code> 系统依赖。
+</li>
+<li><b>跨平台运行时自动下载与配置 (macOS/Linux)</b>：
+<ul>
+<li><b>Linux 自动极速部署</b>：如缺失 Python 环境，程序会直接通过 <code>uv</code> 引擎自动下载部署；若缺失 Node.js，则会自动下载对应架构的 Linux 官方二进制包，并将其解压到用户目录中，自动建立软链接至本地 bin 路径。
+</li>
+<li><b>macOS 流式图形化安装</b>：对于 macOS 系统，支持一键下载官方 <code>.pkg</code> 安装包并流式拉起系统 GUI 安装器，同步等待其安装完成。
+</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2 id="3-python-uvpip-深度管理">3. Python (uv/pip) 深度管理</h2>
+<h3 id="31-极速-uv-引擎">3.1 极速 uv 引擎</h3>
+<p>OmniPack 原生集成了一流的 <a href="https://github.com/astral-sh/uv">uv</a> 引擎。</p>
+<ul>
+<li><b>性能优势</b>：对于复杂的依赖解析和大规模包安装，由于 uv 采用 Rust 编写且具备高效缓存，其速度通常是 <code>pip</code> 的数十倍。
+</li>
+<li><b>引擎更新</b>：在  <code>Settings</code> -&gt; <code>Backend</code> 设置中，可以一键触发 <code>Check for Update</code> 异步检查并在线更新 <code>uv</code> 引擎，无需重装程序。
+</li>
+</ul>
+<h3 id="36-实时文件系统联动-real-time-sync">3.6 实时文件系统联动 (Real-time Sync)</h3>
+<p>OmniPack 内置了<b>目录监听引擎 (File System Watcher)</b>，无需任何配置即可生效。</p>
+<ul>
+<li><b>脱机操作同步</b>：如果您在系统外部终端（如 <code>cmd.exe</code>）或 OmniPack 的内置 PTY 终端中直接运行了 <code>pip install xxx</code> 或 <code>uv pip install xxx</code>（NPM 面板则监听 <code>node_modules</code>），当命令结束后（无论成功或失败），OmniPack 会在静默 2 秒后<b>自动</b>抓取 <code>site-packages</code> / <code>node_modules</code> 目录的物理变化，并触发对应环境卡片的自动刷新。
+</li>
+<li><b>多端协作无缝衔接</b>：该机制省去了频繁点击 <code>↻</code> 刷新按钮的繁琐步骤，实现了 UI 状态与硬盘物理状态的绝对实时一致。
+</li>
+</ul>
+<h4 id="361-虚拟环境升级文件锁冲突防御-file-lock-protection">3.6.1 虚拟环境升级文件锁冲突防御 (File-Lock Protection)</h4>
+<p>在对 Python 虚拟环境执行 <code>python -m venv --upgrade</code> 升级时，如果由于 PyCharm、VSCode 或其他后台 Python 进程占用了虚拟环境的 <code>python.exe</code>，会导致文件复制失败。OmniPack 能够自动捕获并诊断此类锁定冲突，向用户抛出人性化的诊断提示：“虚拟环境更新部分失败：python.exe 被其他程序锁定。请关闭所有占用该环境的程序后再试。”，有效防止开发环境意外损坏。</p>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="869"></div>
+<h3 id="32-依赖查询与依赖树">3.2 依赖查询与依赖树</h3>
+<ul>
+<li><b>层级展开</b>：点击包名前的箭头，可无限向下展示该包引入的子依赖（Dependency Tree）。
+</li>
+<li><b>顶层视图</b>：默认仅显示您主动安装的包，隐藏由于级联关系引入的被动安装包，极大减少视觉噪音。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="565"></div>
+<h3 id="33-本地缓存驱动的包搜索">3.3 本地缓存驱动的包搜索</h3>
+<ul>
+<li><b>秒开响应</b>：OmniPack 内置了超过 50 万笔热门 PyPI 包的数据缓存。在主界面或“添加包”对话框搜索时，其响应速度堪比本地文件搜索。
+</li>
+<li><b>搜索增强</b>：搜索时支持对结果按版本范围进行筛选。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python 运行时补丁更新（解释器本体）</h3>
+<ul>
+<li><b>显示逻辑</b>：Python 虚拟环境卡片优先读取 <code>pyvenv.cfg</code> 的版本元数据，避免系统 Python 小版本升级后导致显示偏差。
+</li>
+<li><b>更新检测</b>：按同一 <code>major.minor</code> 周期检测最新补丁（例如 <code>3.14.3 -&gt; 3.14.4</code>）。
+</li>
+<li><b>更新入口</b>：当检测到可更新时，卡片显示 <code>Py</code> 按钮。点击后执行的是解释器/venv 升级流程，而非 <code>pip</code> 包升级。
+</li>
+<li><b>语义隔离</b>：<code>Py</code> 与 <code>⇧</code> 独立，前者更新运行时，后者更新包。
+</li>
+</ul>
+<h3 id="35-风险感知更新-risk-aware-updates">3.5 风险感知更新 (Risk-Aware Updates)</h3>
+<p>当您开启工具栏的 <b>&quot;Outdated&quot;</b> 过滤时，并非所有可更新的包都会被自动选中。系统会对以下两类高风险更新进行<b>智能拦截</b>：</p>
+<h4 id="约束冲突-橙色-标识">约束冲突（橙色 ⚠ 标识）</h4>
+<p>如果一个包的依赖者对其设定了版本上限（如 <code>sympy</code> 依赖 <code>mpmath&lt;1.4</code>），而最新版超过了该上限，那么该包：</p>
+<ul>
+<li>不会被 <code>Outdated</code> 自动勾选
+</li>
+<li>版本文本显示为橙黄色：<code>1.3.0 ➜ 1.4.1 ⚠</code>
+</li>
+<li>鼠标悬停时提示：&quot;Latest version may break version constraints from: sympy&quot;
+</li>
+<li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知具体的约束来源
+</li>
+</ul>
+<h4 id="智能安全升级-蓝色-标识-safe-intermediate-update">智能安全升级（蓝色 🔒 标识） (Safe Intermediate Update)</h4>
+<p>系统引入了更优雅的版本选择机制。若最新版被约束阻断，系统会自动扫描历史版本，<b>寻找约束范围内允许的最高可用版本</b>：</p>
+<ul>
+<li>版本文本显示为亮蓝色：<code>1.3.0 ➜ 1.3.5 🔒 (最新 1.4.1)</code>
+</li>
+<li>鼠标悬停时不仅显示冲突约束，还会特别提示 &quot;可安全更新到 1.3.5&quot;
+</li>
+<li>升级按钮变为蓝色且<b>不需要二次确认</b>，点击即可丝滑更新到 1.3.5
+</li>
+<li>此类型的受限包会被 <code>Outdated</code> <b>自动勾选</b>，便于您批量升级
+</li>
+</ul>
+<h4 id="构建变体切换-蓝色-标识">构建变体切换（蓝色 🔀 标识）</h4>
+<p>对于带有本地版本标识的包（如 <code>torchaudio 2.11.0.dev20260506+cu132</code>），当最新版不带该标识或标识不同时：</p>
+<ul>
+<li>不会被 <code>Outdated</code> 自动勾选
+</li>
+<li>版本文本显示为亮蓝色：<code>2.11.0.dev+cu132 ➜ 2.11.0 🔀</code>
+</li>
+<li>鼠标悬停时提示：&quot;Build variant may change: +cu132 → (none)&quot;
+</li>
+<li>点击 <code>⇧</code> 按钮时弹出确认对话框，告知构建类型可能改变
+</li>
+</ul>
+<blockquote><b>手动操作不受限</b>：以上拦截仅针对 <code>Outdated</code> 过滤的自动选中行为。您仍可手动勾选这些包，或直接点击其 <code>⇧</code> 按钮并确认风险后进行更新。</blockquote>
+<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="583"></div>
+<hr>
+<h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) 项目管理</h2>
+<h3 id="41-项目深度溯源">4.1 项目深度溯源</h3>
+<p>当您向 OmniPack 提供一个含有 Node.js 模块的任意深层文件夹时，它能自动确定真正的项目根目录，并精准展示出本地安装的模块版本。</p>
+<h3 id="42-在线搜索npm包">4.2 在线搜索npm包</h3>
+<ul>
+<li><b>在线搜索</b>：从npm源搜索包，支持模糊匹配。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="224"></div>
+<h3 id="43-dist-tags-精准分发">4.3 Dist-Tags 精准分发</h3>
+<p>OmniPack 将 NPM 的 <code>Dist-Tags</code> 机制进行了 GUI 封装。</p>
+<ul>
+<li><b>标签切换</b>：在添加或更新包时，界面会整齐排列出所有远程 Release 通道（如 <code>latest</code>, <code>beta</code>, <code>next</code>, <code>lts</code>）。
+</li>
+<li><b>一键更新</b>：点击对应标签卡片，系统会自动构造出如 <code>npm install lodash@beta</code> 这样的精准命令并执行。
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<h3 id="44-nodejs-运行时补丁更新">4.4 Node.js 运行时补丁更新</h3>
+<ul>
+<li><b>版本展示</b>：Node 环境卡片会显示当前 Node 版本；若检测到同周期补丁更新，会展示 <code>当前 -&gt; 最新</code>。
+</li>
+<li><b>更新入口</b>：当可更新时显示 <code>Nd</code> 按钮，执行 Node 运行时升级。
+</li>
+<li><b>注意区分</b>：<code>Nd</code> 更新 Node 运行时，<code>⇧</code> 更新 npm 包，二者互不替代。
+</li>
+</ul>
+<hr>
+<h2 id="5-winget-系统包管理-windows-特有">5. WinGet 系统包管理 (Windows 特有)</h2>
+<p>在 Windows 10/11 操作系统下，OmniPack 会自动在状态栏右侧注册 <b>WinGet</b> 包管理面板。它能对您系统上通过 Microsoft Store、WinGet 源或本地安装的桌面应用程序进行统一纳管。</p>
+<h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 双 Scope 环境自动探测 (Dual Scope Environment)</h3>
+<p>在主界面左侧会展示两个虚拟的系统环境：</p>
+<ul>
+<li><b>System (Machine)</b>：显示系统全局安装的软件（对应 <code>winget://machine</code>），通常位于 <code>Program Files</code> 目录下，更新时需要管理员权限。
+</li>
+<li><b>User</b>：显示当前用户专属安装的软件（对应 <code>winget://user</code>），通常位于用户个人目录下（如 <code>%USERPROFILE%\AppData</code>）。
+</li>
+<li><b>去重与范围智能判定 (Package Redistribution)</b>：
+<ul>
+<li>OmniPack 内置了注册表物理路径审计机制。在扫描软件时，它会读取卸载路径，如果发现某个全局上报的软件其实物理安装在用户目录中，会自动将其归类到 <b>User</b> 虚拟环境中，保证信息的绝对精准。
+</li>
+<li>若同一个软件在系统和用户下都被安装了，卡片上会自动挂载 <code>[Also Installed In User/Machine]</code> 彩色徽章。
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 精准管理与锁定更新 (Full Actions &amp; Pinning)</h3>
+<ul>
+<li><b>获取更新 (Upgrades)</b>：如果有可用更新，应用卡片上会显示 <code>⇧</code> 按钮。
+</li>
+<li><b>配置与锁定 (Blocking Pin)</b>：
+<ul>
+<li>点击应用卡片上的 <b>⚙ 配置按钮</b>，会弹出专属配置框。
+</li>
+<li>支持设置 <b>锁定更新 (winget blocking pin)</b>。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 <code>[Pinned]</code> 徽章，同时不会被工具栏 &quot;Outdated&quot; 选项自动勾选，避免大面积静默升级破坏特定软件版本。
+</li>
+<li>在配置框中，您还可以直接查看该软件的<b>物理安装路径 (Uninstall Location)</b> 并进行一键鼠标选定与复制，极其方便定位软件根目录。
+</li>
+</ul>
+</li>
+<li><b>版本异常警告 (⚠ Newer Badge)</b>：
+<ul>
+<li>如果您从官网安装了比 WinGet 云端注册表更新的版本，系统会挂载 <code>[⚠ Newer]</code> 徽章警告，并阻止 <code>Outdated</code> 自动勾选它，防止误退级。
+</li>
+</ul>
+</li>
+<li><b>安装新包 (Install)</b>：
+<ul>
+<li>点击卡片标题栏的 <code>+</code> 按钮，可以输入任意 WinGet 软件 ID（如 <code>Google.Chrome</code>）直接进行下载并静默或交互安装。
+</li>
+</ul>
+</li>
+<li><b>智能范围回退机制 (Scope Fallback)</b>：
+<ul>
+<li>在 Machine 范围升级或安装大型软件如果遇到文件占用或写入权限问题而报错，OmniPack 会自动执行 Fallback，改为以 <code>--scope user</code> 尝试向用户范围下载安装，极大地提高了对软件版本自动更新的宽容度。
+</li>
+</ul>
+</li>
+<li><b>WinGet 自身升级与包细节优化</b>：
+<ul>
+<li><b>WinGet 自身升级 (Wg 按钮)</b>：在 WinGet 卡片上，主程序会读取并显示 Winget 当前的具体版本号（如 <code>Winget v1.9.25200</code>）。若检测到 Winget 本体有更新，卡片头部会显示闪烁的 <b><code>Wg</code></b> 按钮，点击后可以一键自动升级本体。
+</li>
+<li><b>包架构后缀追加</b>：包名后会自动追加智能抓取到的架构信息（如 <code>(x64)</code>、<code>(x86)</code>、<code>(arm64)</code> 等），以防不同架构的同名应用在 UI 中发生混淆。
+</li>
+<li><b>应用类型标记</b>：包详细配置框和卡片上会根据包 ID 特征清晰显示该应用的来源是 <code>[Win32]</code> (经典注册表安装) 还是 <code>[MSIX]</code> (现代应用包)。
+</li>
+</ul>
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Winget.png" alt="Winget 管理主界面" width="871"></div>
+<hr>
+<h2 id="6-设置中心-settings-center">6. 设置中心 (Settings Center)</h2>
+<p>设置对话框是 OmniPack 的后台核心，按功能划分为六个清晰的选项卡（在 Windows 下）：</p>
+<ol>
+<li><b>Python/NPM Environments</b>：环境列表维护区，支持增删改查及排序。
+</li>
+<li><b>Sources (注册表/镜像源)</b>：
+<ul>
+<li><b>Follow System</b>：尊重系统原有的配置。
+</li>
+<li><b>Official</b>：使用官方源。
+</li>
+<li><b>Custom Preset</b>：内置清华、阿里、华为等顶级镜像，一键切换。
+</li>
+<li><b>独立性</b>：此处的设置仅针对 OmniPack 调用的命令生效，不会修改您的系统全局配置。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="516"></div>
+<ol>
+<li><b>Backend (核心引擎与缓存)</b>：
+<ul>
+<li><b>uv 路径管理</b>：手动指定或自动发现 <code>uv</code> 解释器。
+</li>
+<li><b>PyPI Cache 同步</b>：提供可视化的同步日志流。支持在程序运行期间静默同步几千万条记录，并可以随时随时暂停或取消。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="516"></div>
+<ol>
+<li><b>Proxy (代理配置)</b>：
+<ul>
+<li><b>协议分离</b>：支持独立的 HTTP 和 HTTPS 代理设置。后台命令多数情况会使用https，建议两个都填。
+</li>
+<li><b>颗粒度控制</b>：可单独勾选哪些域名（PyPI / NPM / GitHub）需要通过代理服务器。
+</li>
+<li><b>连通性测试</b>：一键执行 Direct vs Proxy 响应延迟对比。
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="516"></div>
+<ol>
+<li><b>WinGet (Windows 专属设置)</b>：
+<ul>
+<li><b>安装模式选择</b>：支持配置 winget 安装和升级的全局行为模式：静默模式 (<code>silent</code>)、交互模式 (<code>interactive</code>)、默认模式 (<code>default</code>)。
+</li>
+<li><b> winget.exe 路径</b>：支持自动探测系统 PATH 上的 winget 进程，也支持手动浏览定位自定义的 winget 绝对路径。
+</li>
+<li><b>实时诊断状态</b>：在设置页面内建 Diagnostics 控制台，可实时探知 winget 引擎是否可用、系统物理绝对路径、运行版本以及已启用的注册表源数量与可能上报的源配置错误。
+</li>
+</ul>
+</li>
+<li><b>Terminal (终端与控制台配置)</b>：
+<ul>
+<li><b>控制台模式 (Console Mode)</b>：支持用户在线自由切换控制台模式。可选 <code>Simulated Console</code>（经典的只读日志流模式，安全保底）与 <code>Real Terminal</code>（PTY 交互终端模式，默认启用）。
+</li>
+<li><b>默认 Shell 选择</b>：支持配置内置伪终端默认调起的 Shell 程序（内置 <code>cmd.exe</code>、<code>powershell.exe</code>、<code>pwsh.exe</code>，并支持自定义特定外部 Shell 绝对路径）。
+</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2 id="7-高级配置与环境变量参考">7. 高级配置与环境变量参考</h2>
+<p>通过设置系统环境变量，您可以进一步解锁 OmniPack 的潜在功能：</p>
+<table>
+<tr>
+<th>变量名</th>
+<th>描述</th>
+<th>默认行为</th>
+<th>备注</th>
+</tr>
+<tr>
+<td><code>OMNIPACK_LIVE_RELOAD</code></td>
+<td>启用样式的热重载</td>
+<td>关</td>
+<td>源码运行下修改 .qss 文件可即时生效</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
+<td>强制使用便携模式</td>
+<td>自动</td>
+<td>优先级高于系统路径自动判定</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_TRACE_SELECTION</code></td>
+<td>调试日志导出</td>
+<td>关</td>
+<td>将主界面所有的点击路径记录为 jsonl 文件</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
+<td>提权申请策略</td>
+<td>自动</td>
+<td>设置为 0 可停止自动发起的 UAC 申请</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
+<td>屏蔽 Qt 重复警告</td>
+<td>关</td>
+<td>帮助保持终端/日志简洁</td>
+</tr>
+</table>
+<hr>
+<h2 id="8-常见问题解答-faq">8. 常见问题解答 (FAQ)</h2>
+<p><b>Q: 某些npm应用已经发布新版本，但程序未能检测到</b><br>A: 很多npm的镜像源对nightly、preview等非正式版本的更新不及时，换用官方源即可。</p>
+<p><b>Q: 为什么“状态栏”中的统计数量和卡片中看到的不一致？</b><br>A: 状态栏统计的是背景线程中所有已识别环境的总和，而卡片中显示的可能是经过“搜索框”过滤后的结果。</p>
+<p><b>Q: 如何让我的 Python 环境显示在 Settings 列表最前面？</b><br>A: 在 Settings 对话框中，点击环境项左侧的拖拽手柄，将其移动到第一行并保存即可。</p>
+<p><b>Q: “控制台”显示更新失败，但包版本却变了？</b><br>A: 这可能是由于底层工具（如 npm）在某些网络环境下报告了非零返回码。您可以点击对应卡片的“刷新”按钮查看环境的真实最新状态。</p>
+<p><b>Q: 为什么我看不到 <code>Py</code> / <code>Nd</code> 运行时更新按钮？</b><br>A: 仅当检测到“同周期补丁可更新”时才显示该按钮。若当前已是最新补丁，或网络/源不可用导致暂时无法确认最新版本，按钮会隐藏。</p>
+<p><b>Q: <code>⇧</code> 和 <code>Py</code> / <code>Nd</code> 有什么区别？</b><br>A: <code>⇧</code> 只更新环境内的包（pip/npm dependencies）；<code>Py</code> / <code>Nd</code> 更新的是解释器或 Node 运行时本体。</p>
+<p><b>Q: (Admin) 状态是什么触发的？</b><br>A: 在 Windows 上以源码运行时，OmniPack 默认会自动请求管理员提权（可通过 <code>OMNIPACK_REQUIRE_ADMIN=0</code> 环境变量关闭）。提权成功后标题栏会显示 <code>(Admin)</code> 标记。打包发布版本则根据实际运行环境自动判断。</p>
+<p><b>Q: 为什么在 macOS 或 Linux 上我看不到 WinGet 选项卡或面板？</b><br>A: WinGet 是 Windows 系统的内置包管理器，因此 OmniPack 仅在 Windows 操作系统下动态注册并显示 WinGet 面板和设置选项。</p>
+<p><b>Q: WinGet 更新时提示需要管理员权限怎么办？</b><br>A: 升级系统全局应用（Machine 范围）通常需要写入 <code>C:\Program Files</code> 等系统敏感路径，这需要管理员特权。建议右键以管理员身份运行 OmniPack，或在系统提示时接受 UAC 提权请求。如果更新失败，OmniPack 会自动执行 Fallback，尝试以 <code>--scope user</code> 权限进行安装，最大程度保障部署成功。</p>
+<p><b>Q: 为什么集成终端里常常输出一些带有 <code>__OMNIPACK_OP_DONE_&lt;uuid&gt;__</code> 的字符串？</b><br>A: 这是 OmniPack 为了实现“界面操作与真实终端完美联动”而设计的高性能标记（Marker）系统。目前，底层已经升级为更稳健的<b>临时文件标记机制</b>（在系统临时目录生成 <code>.done</code> 文件以捕获退出码），从而彻底避免了正则拦截输出在某些复杂终端环境下的偶发抖动。如果您在终端中看到残留的 UUID 字符串，通常是早前复制粘贴的旧命令尚未清理，属正常现象，您可以安全地忽略或 <code>cls</code> / <code>clear</code> 清理。</p>
+<p><b>Q: 在集成终端中，除了执行包管理器的命令，我还可以执行其他普通命令吗？</b><br>A: 完全可以！因为它是一个完整、真实的系统 Shell 伪终端（PTY）。您可以把它当成普通的 Terminal 使用，比如键入 <code>git status</code>、<code>ls</code>、<code>dir</code> 或者是运行您的 Python 脚本，它都完美支持，并且同样具有高色彩 ANSI 渲染和 Tab 自动补全功能。</p>
+<p><b>Q: 我在设置中修改了终端默认 Shell，为什么没有立即变化？</b><br>A: 终端的 Shell 调起以及模式的切换（模拟/真实终端）由于涉及到底层 PTY 进程与线程的销毁与重新实例化，因此需要您<b>重新启动 OmniPack</b> 才会正式生效。</p>
+<hr>
+<p><i>OmniPack - 您手边最专业的全平台包管理专家。</i></p>
+</section>
     <!-- END OF CHINESE CONTENT -->
 
     <!-- START OF ENGLISH CONTENT -->
-    <section class="lang-en">
-        <h1 id="omnipack-用户指南-user-guide">OmniPack User Guide</h1>
-        <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
-        <a href="https://deepwiki.com/LeoOfGit/OmniPack"><img src="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==" alt="DeepWiki"></a>
-        <p>Welcome to <b>OmniPack</b>! May this program become your capable tool for managing Python virtual
-            environments, Node.js project dependencies, and the Windows package manager WinGet.</p>
-        <p>This project is frequently updated; some illustrations or descriptions in this document may be outdated. Please refer to the actual program for the definitive details.</p>
-            <hr>
-        <h2 id="目录">Table of Contents</h2>
-        <ol>
-            <li><a href="#1-full-interface-layout-analysis">Full Interface Layout Analysis</a>
-            </li>
-            <li><a href="#2-environment-management">Environment Management (Environments)</a>
-            </li>
-            <li><a href="#3-in-depth-python-uvpip-management">In-Depth Python (uv/pip) Management</a>
-            </li>
-            <li><a href="#4-nodejs-npm-project-management">Node.js (npm) Project Management</a>
-            </li>
-            <li><a href="#5-winget-system-package-management-windows-specific">WinGet System Package Management (Windows
-                    Specific)</a>
-            </li>
-            <li><a href="#6-settings-center">Settings Center</a>
-            </li>
-            <li><a href="#7-advanced-configuration-and-environment-variables-reference">Advanced Configuration and
-                    Environment Variables Reference</a>
-            </li>
-            <li><a href="#8-frequently-asked-questions-faq">Frequently Asked Questions (FAQ)</a>
-            </li>
-        </ol>
-        <hr>
-        <h2 id="1-界面布局全解析">1. Full Interface Layout Analysis</h2>
-        <p>OmniPack&#x27;s main interface is meticulously designed and divided into four core interaction areas.</p>
-        <h3 id="11-顶层工具栏-global-toolbar">1.1 Global Toolbar</h3>
-        <p>This is the command center for performing global searches, filtering, and batch operations.</p>
-        <ul>
-            <li><b>Selection Control (All/None)</b>: Quickly select all or deselect all currently visible packages in
-                the main interface.
-            </li>
-            <li><b>Search Box (Search)</b>: Filter package names displayed in each environment card in real time,
-                supporting fuzzy matching.
-            </li>
-            <li><b>Filter Outdated (Only Show Outdated)</b>: Hide all up-to-date packages with one click, allowing you
-                to focus on projects that need upgrading. The system intelligently evaluates the safety of each update:
-                packages with constraint conflicts (orange <code>⚠</code>) and build variant switches (blue
-                <code>🔀</code>) will not be automatically selected, but safe intermediate versions (blue
-                <code>🔒</code>) will be automatically selected.
-            </li>
-            <li><b>Refresh All (Refresh All)</b>: Rescan the local package lists of all configured environments and
-                query the latest versions in the cloud.
-            </li>
-            <li><b>Batch Update (Batch Update)</b>: Initiate parallel upgrade commands for all currently [checked]
-                packages that have [new versions in the cloud] (only affects packages, does not update the
-                interpreter/Node runtime).
-            </li>
-            <li><b>Batch Remove (Batch Remove)</b>: Initiate uninstall commands for all currently checked packages (a
-                confirmation dialog will appear).
-            </li>
-            <li><b>Settings (Settings)</b>: Jump directly to the environment configuration and system settings page.
-            </li>
-        </ul>
-        <h3 id="12-环境主体卡片-env-canvas">1.2 Environment Cards (Env Canvas)</h3>
-        <p>The left area displays each Python virtual environment or Node.js project in the form of a card.</p>
-        <ul>
-            <li><b>Environment Info</b>: The top of each card displays the environment alias, path, and runtime version;
-                when a patch update within the same cycle is detected, it shows <code>current -&gt; latest</code>.
-            </li>
-            <li><b>Action Buttons</b>:
-                <ul>
-                    <li><code>↻</code>: Refresh the current environment
-                    </li>
-                    <li><code>⇧</code>: Only update all upgradeable packages in the current environment
-                    </li>
-                    <li><code>Py</code> / <code>Nd</code>: Update the environment runtime itself (Python/Node)
-                    </li>
-                    <li><code>+</code>: Add packages
-                    </li>
-                    <li>In v14, right-clicking the card header allows you to <b>✏️ Rename Environment</b> or <b>⚙️ Edit Settings</b> (which launches the settings panel and automatically highlights/scrolls to the selected row).
-                    </li>
-                </ul>
-            </li>
-            <li><b>Package List</b>: List all packages installed in the current environment and their versions.
-            </li>
-        </ul>
-        <h3 id="13-集成伪终端与控制台-integrated-pty-terminal-live-console">1.3 Integrated PTY Terminal &amp; Live Console</h3>
-        <p>The right area is the core execution display center of OmniPack, reconstructed with a brand-new architecture
-            in V10, supporting two complementary display and interaction modes (dual console design):</p>
-        <ul>
-            <li><b>Interactive PTY Terminal (Real Terminal)</b>:
-                <ul>
-                    <li><b>Real-time Deep Interaction</b>: This is a genuine PTY terminal Shell (enabled by default). It
-                        not only streams the execution logs of underlying package management commands in real time but
-                        also accepts full keyboard input. This means in highly interactive scenarios, such as entering
-                        credentials during a <code>git clone</code> or typing <code>y/n</code> to confirm
-                        mid-installation, you can type directly in the terminal and press Enter. This completely
-                        resolves the process deadlocks common in previous &quot;simulated consoles&quot;.
-                    </li>
-                    <li><b>Rich ANSI Coloring</b>: Equipped with the <code>pyte</code> color rendering engine at the
-                        bottom, it perfectly parses ANSI escape sequences. This means <b>dynamic highly-colored text
-                            progress bars</b> or colored error stacks drawn by <code>uv</code>, <code>pip</code>, and
-                        <code>npm</code> in the terminal flow smoothly in the console, restoring a silky-smooth native
-                        terminal visual experience.
-                    </li>
-                    <li><b>Silent Environment &amp; Directory Sync (Active Sync)</b>: The terminal is deeply linked with
-                        the environment status on the left. Whenever you switch or activate an environment card on the
-                        left, the main program silently and seamlessly sends a <code>cd</code> command to change
-                        directories or calls to activate <code>venv</code>, achieving a smooth synchronization of
-                        &quot;wherever you click on the UI, the terminal follows.&quot;
-                    </li>
-                    <li><b>Containerized Operations &amp; UI Fast Refresh</b>: In PTY terminal mode, &quot;update&quot;,
-                        &quot;install&quot;, or &quot;remove&quot; actions triggered by panel buttons are converted
-                        directly into CLI commands written and run in the terminal window. A unique UUID Marker (tag) is
-                        automatically appended to the end of the command. The main program captures this Marker in the
-                        background to determine command completion and instantly performs a <b>Fast Refresh (incremental
-                            refresh)</b> of the environment, significantly reducing UI redraw lagging.
-                    </li>
-                    <li><b>Advanced Keyboard Shortcuts</b>: Perfectly intercepts Tab key command completion, up/down
-                        arrow keys for command history, <code>Ctrl+C</code> to forcibly terminate subtasks, and
-                        <code>Ctrl+V</code> to paste text from the system clipboard.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Read-Only Simulated Console (Simulated Console)</b>:
-                <ul>
-                    <li>If you switch the mode to a read-only simulated console in the settings, it serves as a safety
-                        backup, passively displaying the <code>stdout</code> and <code>stderr</code> of commands as rich
-                        text logs, and providing regex-based ANSI character stripping/filtering.
-                    </li>
-                    <li>Right-click support for common functions like &quot;Clear Console&quot;, &quot;Copy
-                        Selection&quot;, and &quot;Open Log File Directory&quot;.
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <h3 id="14-状态栏反馈-status-bar">1.4 Status Bar Feedback (Status Bar)</h3>
-        <p>Located at the very bottom of the window, providing real-time statistics and global function entry points.
-        </p>
-        <ul>
-            <li><b>Left Stats Area</b>: <code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>. Reflects the total
-                number of scanned environments, total packages, and outdated package stats in real time.
-            </li>
-            <li><b>Middle Status Area</b>: Displays the current operation being executed (e.g., &quot;Ready&quot;,
-                &quot;Scanning...&quot;, &quot;Installing...&quot;).
-            </li>
-            <li><b>Right Switching Area</b>:
-                <ul>
-                    <li><b>Python / Node.js / WinGet Buttons</b>: Used to quickly switch between different package
-                        management panels (the WinGet panel is visible only on Windows).
-                    </li>
-                    <li><b>💡 Guide Button</b>: Click to pop up this user guide window.
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <h3 id="15-全局文本可复制与包详情一键复制-v14-新增">1.5 Copyable Dialog Labels & Package Details Export (New in v14)</h3>
-        <p>To assist developers with diagnostics and data exporting, the main program introduces the following interactive improvements:</p>
-        <ul>
-            <li><b>Selectable Dialog Labels</b>: Injected a global Qt event filter. Text inside all <code>QMessageBox</code> and <code>QDialog</code> alerts is now selectable and copyable via keyboard (Ctrl+C).</li>
-            <li><b>Copy Package Details</b>: Added a <b>“Copy Details”</b> button in package configuration dialogs, enabling one-click export of Name, ID, Source, Versions, and Location to the clipboard.</li>
-        </ul>
-        <blockquote><b>Note</b>: If the program obtains administrator privileges, the <b>(Admin)</b> badge will be
-            displayed at the <b>very top title bar</b> of the window.</blockquote>
-        <div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="868"></div>
-        <hr>
-        <h2 id="2-环境管理">2. Environment Management</h2>
-        <h3 id="21-统一导入流程-unified-intake">2.1 Unified Intake Process</h3>
-        <p>In <b>Settings -&gt; Python/NPM Environments</b>, you can manage the lifecycle of your projects.</p>
-        <ul>
-            <li><b>Python Environment (Pip/uv)</b>:
-                <ul>
-                    <li><b>Detect System</b>: Scans PATH, the registry, and desktop/user directories for Python
-                        interpreters.
-                    </li>
-                    <li><b>Add Manually</b>: Supports pointing to a specific <code>python.exe</code> interpreter, or
-                        dragging in the project root directory containing <code>.venv</code> or <code>venv</code>
-                        directly.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Node.js Environment (NPM)</b>:
-                <ul>
-                    <li><b>Add Manually</b>: Supports pointing to a <code>package.json</code> file or any of its parent
-                        directories. OmniPack automatically traces back to the project root node and parses the project
-                        name.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Batch Paste (Batch Import)</b>: You can use search tools like Everything to copy multi-line text
-                containing multiple paths directly, then paste it into the input box. The built-in
-                <code>env_detector</code> engine will automatically perform deduplication, validation, and smart naming.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
-        <h3 id="22-环境操作说明">2.2 Environment Operations Instructions</h3>
-        <ul>
-            <li><b>Drag to Reorder</b>: Long-press the icon on a list item and drag up or down to adjust the preferred
-                order of environments in the main interface.
-            </li>
-            <li><b>Edit Environment</b>: Double-click any item to modify the display alias or correct path changes caused by moving folders. Additionally, you can right-click the environment card header in the main interface to quickly rename it (✏️) or edit settings (⚙️), which instantly highlights and scrolls to the selected row in the settings panel.
-            </li>
-        </ul>
-        <hr>
-        <h2 id="3-python-uvpip-深度管理">3. In-Depth Python (uv/pip) Management</h2>
-        <h3 id="31-极速-uv-引擎">3.1 Blazing-Fast uv Engine</h3>
-        <p>OmniPack natively integrates the first-class <a href="https://github.com/astral-sh/uv">uv</a> engine.</p>
-        <ul>
-            <li><b>Performance Advantage</b>: For complex dependency resolution and large-scale package installations,
-                uv is typically dozens of times faster than <code>pip</code> because it is written in Rust and has
-                highly efficient caching.
-            </li>
-            <li><b>Engine Update</b>: In the <code>Settings</code> -&gt; <code>Backend</code> settings, you can trigger
-                a <code>Check for Update</code> with one click to asynchronously check and update the <code>uv</code>
-                engine online, without reinstalling the program.
-            </li>
-        </ul>
-        <h3 id="36-实时文件系统联动-real-time-sync-v12-新增">3.6 Real-time File System Sync (Real-time Sync) (New in v12)</h3>
-        <p>OmniPack has a built-in <b>File System Watcher</b> that works out of the box without any configuration.</p>
-        <ul>
-            <li><b>Offline Operation Sync</b>: If you run <code>pip install xxx</code> or
-                <code>uv pip install xxx</code> directly in an external system terminal (like <code>cmd.exe</code>) or
-                in OmniPack&#x27;s built-in PTY terminal (the NPM panel watches <code>node_modules</code>), OmniPack
-                will <b>automatically</b> scan the physical changes in the <code>site-packages</code> /
-                <code>node_modules</code> directory 2 seconds after the command ends (regardless of success or failure)
-                and trigger an automatic refresh of the corresponding environment card.
-            </li>
-            <li><b>Seamless Multi-Terminal Collaboration</b>: This mechanism eliminates the tedious step of frequently
-                clicking the <code>↻</code> refresh button, achieving absolute real-time consistency between the UI
-                state and the physical disk state.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="576"></div>
-        <h3 id="32-依赖查询与依赖树">3.2 Dependency Querying &amp; Dependency Tree</h3>
-        <ul>
-            <li><b>Hierarchical Expansion</b>: Click the arrow in front of a package name to display the
-                sub-dependencies introduced by this package infinitely downwards (Dependency Tree).
-            </li>
-            <li><b>Top-level View</b>: By default, only packages you actively installed are shown, while passively
-                installed packages introduced by cascading relationships are hidden, greatly reducing visual noise.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="345"></div>
-        <h3 id="33-本地缓存驱动的包搜索">3.3 Local Cache-Driven Package Search</h3>
-        <ul>
-            <li><b>Instant Response</b>: OmniPack has a built-in data cache of over 500,000 popular PyPI packages. When
-                searching on the main interface or the &quot;Add Package&quot; dialog, the response speed is comparable
-                to local file search.
-            </li>
-            <li><b>Search Enhancement</b>: Supports filtering search results by version range.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
-        <h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python Runtime Patch Updates (Interpreter Body)</h3>
-        <ul>
-            <li><b>Display Logic</b>: Python virtual environment cards prioritize reading version metadata from
-                <code>pyvenv.cfg</code> to avoid display discrepancies after upgrading minor versions of system Python.
-            </li>
-            <li><b>Update Detection</b>: Detects the latest patch within the same <code>major.minor</code> cycle (e.g.,
-                <code>3.14.3 -&gt; 3.14.4</code>).
-            </li>
-            <li><b>Update Entry</b>: When an update is detected, the card displays a <code>Py</code> button. Clicking it
-                executes the interpreter/venv upgrade process, not a <code>pip</code> package upgrade.
-            </li>
-            <li><b>Semantic Isolation</b>: <code>Py</code> and <code>⇧</code> are independent; the former updates the
-                runtime, and the latter updates the packages.
-            </li>
-        </ul>
-        <h3 id="35-风险感知更新-risk-aware-updates">3.5 Risk-Aware Updates</h3>
-        <p>When you turn on the <b>&quot;Outdated&quot;</b> filter in the toolbar, not all upgradeable packages will be
-            automatically checked. The system will <b>intelligently intercept</b> the following two types of high-risk
-            updates:</p>
-        <h4 id="约束冲突-橙色-标识">Constraint Conflict (Orange ⚠ Badge)</h4>
-        <p>If a dependent of a package has set an upper version limit (e.g., <code>sympy</code> depends on
-            <code>mpmath&lt;1.4</code>), and the latest version exceeds this limit, then the package:</p>
-        <ul>
-            <li>Will not be automatically checked by <code>Outdated</code>
-            </li>
-            <li>Version text will display in orange-yellow: <code>1.3.0 ➜ 1.4.1 ⚠</code>
-            </li>
-            <li>Mouse hover tip: &quot;Latest version may break version constraints from: sympy&quot;
-            </li>
-            <li>Clicking the <code>⇧</code> button will pop up a confirmation dialog informing you of the specific
-                constraint source
-            </li>
-        </ul>
-        <h4 id="v12-智能安全升级-蓝色-标识-safe-intermediate-update">v12 Intelligent Safe Upgrade (Blue 🔒 Badge) (Safe
-            Intermediate Update)</h4>
-        <p>v12 introduces a more elegant version selection mechanism. If the latest version is blocked by a constraint,
-            the system automatically scans historical versions to <b>find the highest available version allowed within
-                the constraint range</b>:</p>
-        <ul>
-            <li>Version text will display in bright blue: <code>1.3.0 ➜ 1.3.5 🔒 (latest 1.4.1)</code>
-            </li>
-            <li>Mouse hover not only shows the conflicting constraint but also specifically tips &quot;Safe to update to
-                1.3.5&quot;
-            </li>
-            <li>The upgrade button turns blue and <b>does not require a secondary confirmation</b>; click to update
-                smoothly to 1.3.5
-            </li>
-            <li>This type of restricted package will be <b>automatically checked</b> by <code>Outdated</code>,
-                facilitating batch upgrades
-            </li>
-        </ul>
-        <h4 id="构建变体切换-蓝色-标识">Build Variant Switch (Blue 🔀 Badge)</h4>
-        <p>For packages with a local version identifier (e.g., <code>torchaudio 2.11.0.dev20260506+cu132</code>), when
-            the latest version does not have this identifier or has a different one:</p>
-        <ul>
-            <li>Will not be automatically checked by <code>Outdated</code>
-            </li>
-            <li>Version text will display in bright blue: <code>2.11.0.dev+cu132 ➜ 2.11.0 🔀</code>
-            </li>
-            <li>Mouse hover tip: &quot;Build variant may change: +cu132 → (none)&quot;
-            </li>
-            <li>Clicking the <code>⇧</code> button will pop up a confirmation dialog informing you that the build type
-                may change
-            </li>
-        </ul>
-        <blockquote><b>Manual Actions Unrestricted</b>: The interception above only targets the automatic checking
-            behavior of the <code>Outdated</code> filter. You can still manually check these packages, or click their
-            <code>⇧</code> buttons directly and confirm the risks to update.</blockquote>
-        <div class="image-wrap"><img src="./resources/VersionLimits.png" alt="版本限制可视化"></div>
-        <hr>
-        <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) Project Management</h2>
-        <h3 id="41-项目深度溯源">4.1 Deep Project Source Tracing</h3>
-        <p>When you provide OmniPack with any deep folder containing Node.js modules, it automatically determines the
-            true project root directory and precisely displays the locally installed module versions.</p>
-        <h3 id="42-在线搜索npm包">4.2 Online Search for NPM Packages</h3>
-        <ul>
-            <li><b>Online Search</b>: Search packages from the npm registry, supporting fuzzy matching.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="250"></div>
-        <h3 id="43-dist-tags-精准分发">4.3 Dist-Tags Precise Distribution</h3>
-        <p>OmniPack wraps NPM&#x27;s <code>Dist-Tags</code> mechanism in a GUI.</p>
-        <ul>
-            <li><b>Tag Switching</b>: When adding or updating packages, the interface neatly displays all remote release
-                channels (e.g., <code>latest</code>, <code>beta</code>, <code>next</code>, <code>lts</code>).
-            </li>
-            <li><b>One-click Update</b>: Click the corresponding tag card, and the system will automatically construct
-                and execute a precise command like <code>npm install lodash@beta</code>.
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
-        <h3 id="44-nodejs-运行时补丁更新">4.4 Node.js Runtime Patch Updates</h3>
-        <ul>
-            <li><b>Version Display</b>: The Node environment card displays the current Node version; if a patch update
-                within the same cycle is detected, it shows <code>current -&gt; latest</code>.
-            </li>
-            <li><b>Update Entry</b>: Displays the <code>Nd</code> button when an update is available to upgrade the Node
-                runtime.
-            </li>
-            <li><b>Note Difference</b>: <code>Nd</code> updates the Node runtime, while <code>⇧</code> updates npm
-                packages; they do not substitute each other.
-            </li>
-        </ul>
-        <hr>
-        <h2 id="5-winget-系统包管理-windows-特有">5. WinGet System Package Management (Windows Specific)</h2>
-        <p>Under Windows 10/11 operating systems, OmniPack automatically registers the <b>WinGet</b> package management
-            panel on the right side of the status bar. It enables unified management of desktop applications installed
-            on your system via the Microsoft Store, WinGet source, or local installers.</p>
-        <h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 Dual Scope Environment Automatic Detection</h3>
-        <p>Two virtual system environments will be displayed on the left side of the main interface:</p>
-        <ul>
-            <li><b>System (Machine)</b>: Displays software installed system-wide (corresponding to
-                <code>winget://machine</code>), usually located in the <code>Program Files</code> directory; updating
-                requires administrator privileges.
-            </li>
-            <li><b>User</b>: Displays software installed exclusively for the current user (corresponding to
-                <code>winget://user</code>), usually located in the user&#x27;s personal directory (e.g.,
-                <code>%USERPROFILE%\AppData</code>).
-            </li>
-            <li><b>Deduplication &amp; Smart Scope Determination (Package Redistribution)</b>:
-                <ul>
-                    <li>OmniPack has a built-in registry physical path audit mechanism. When scanning software, it reads
-                        the uninstallation path; if it detects that a system-wide reported software is actually
-                        physically installed in the user directory, it automatically categorizes it into the <b>User</b>
-                        virtual environment to ensure absolute accuracy of the information.
-                    </li>
-                    <li>If the same software is installed in both system and user scopes, a colored
-                        <code>[Also Installed In User/Machine]</code> badge will automatically be mounted on the card.
-                    </li>
-                </ul>
-            </li>
-        </ul>
-        <h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 Precise Management and Blocking Updates (Full Actions &amp;
-            Pinning)</h3>
-        <ul>
-            <li><b>Get Updates (Upgrades)</b>: If an update is available, the application card displays a <code>⇧</code>
-                button.
-            </li>
-            <li><b>Configuration &amp; Pinning (Blocking Pin)</b>:
-                <ul>
-                    <li>Clicking the <b>⚙ configuration button</b> on an application card pops up its dedicated
-                        configuration box.
-                    </li>
-                    <li>Supports setting a <b>blocking pin (winget blocking pin)</b>. After checking &quot;Ignore
-                        updates for this app (winget blocking pin)&quot;, the app will display a <code>[Pinned]</code>
-                        badge on the card and will not be automatically checked by the &quot;Outdated&quot; filter in
-                        the toolbar, preventing massive silent upgrades from breaking specific software versions.
-                    </li>
-                    <li>In the configuration box, you can also directly view the software&#x27;s <b>physical
-                            installation path (Uninstall Location)</b> and perform one-click selection and copying with
-                        the mouse, making it extremely convenient to locate the software&#x27;s root directory.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Abnormal Version Warning (⚠ Newer Badge)</b>:
-                <ul>
-                    <li>If you installed a version from the official website that is newer than the one registered in
-                        the WinGet cloud registry, the system will mount a <code>[⚠ Newer]</code> badge warning and
-                        prevent <code>Outdated</code> from automatically checking it, avoiding accidental downgrades.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Install New Package (Install)</b>:
-                <ul>
-                    <li>Clicking the <code>+</code> button on the card title bar allows you to enter any WinGet software
-                        ID (e.g., <code>Google.Chrome</code>) to download and install it silently or interactively.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Intelligent Scope Fallback Mechanism (Scope Fallback)</b>:
-                <ul>
-                    <li>If upgrading or installing a large software in the Machine scope fails due to file occupancy or
-                        write permission issues, OmniPack automatically performs a Fallback to attempt downloading and
-                        installing in the User scope with <code>--scope user</code>, significantly increasing tolerance
-                        for automatic software version updates.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Winget Runtime and Package Diagnostics</b> (New in v14):
-                <ul>
-                    <li><b>Winget Self-Upgrade (Wg Button)</b>: Shows the active <code>winget</code> version on environment cards. When a self-upgrade is available, a blinking <code>Wg</code> button appears at the header, allowing one-click upgrades.</li>
-                    <li><b>Architecture Suffix Appending</b>: Automatically extracts hardware architecture identifiers (e.g. <code>(x64)</code>, <code>(x86)</code>) from IDs and appends them to package names.</li>
-                    <li><b>Installer Type Badges</b>: Clearly labels installations as <code>[Win32]</code> (registry-based classic desktop apps) or <code>[MSIX]</code> (modern sandbox app packages) in package detail dialogs.</li>
-                </ul>
-            </li>
-        </ul>
-        <div class="image-wrap"><img src="../resources/Winget.png" alt="Winget 管理主界面" width="871"></div>
-        <hr>
-        <h2 id="6-设置中心-settings-center">6. Settings Center (Settings Center)</h2>
-        <p>The settings dialog is the background core of OmniPack, divided into six clear tabs by functionality (under
-            Windows):</p>
-        <ol>
-            <li><b>Python/NPM Environments</b>: Environment list maintenance area, supporting CRUD operations and
-                sorting.
-            </li>
-            <li><b>Sources (Registry/Mirrors)</b>:
-                <ul>
-                    <li><b>Follow System</b>: Respects the system&#x27;s original configuration.
-                    </li>
-                    <li><b>Official</b>: Use the official registry.
-                    </li>
-                    <li><b>Custom Preset</b>: Built-in top-tier mirrors like Tsinghua, Aliyun, Huawei, etc., switchable
-                        with one click.
-                    </li>
-                    <li><b>Independence</b>: Settings here only affect commands invoked by OmniPack and will not modify
-                        your system&#x27;s global configuration.
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="580"></div>
-        <ol>
-            <li><b>Backend (Core Engine &amp; Cache)</b>:
-                <ul>
-                    <li><b>uv Path Management</b>: Manually specify or automatically discover the <code>uv</code>
-                        interpreter.
-                    </li>
-                    <li><b>PyPI Cache Sync</b>: Provides a visualized synchronization log stream. Supports silently
-                        synchronizing tens of millions of records while the program is running, and can be paused or
-                        canceled at any time.
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="580"></div>
-        <ol>
-            <li><b>Proxy (Proxy Configuration)</b>:
-                <ul>
-                    <li><b>Protocol Separation</b>: Supports independent HTTP and HTTPS proxy settings. Background
-                        commands mostly use HTTPS, so filling both is recommended.
-                    </li>
-                    <li><b>Granular Control</b>: Individually select which domains (PyPI / NPM / GitHub) need to go
-                        through the proxy server.
-                    </li>
-                    <li><b>Connectivity Test</b>: Performs a one-click Direct vs Proxy response latency comparison.
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="580"></div>
-        <ol>
-            <li><b>WinGet (Windows Exclusive Settings)</b>:
-                <ul>
-                    <li><b>Installation Mode Option</b>: Supports configuring the global behavior mode for winget
-                        installation and upgrade: silent mode (<code>silent</code>), interactive mode
-                        (<code>interactive</code>), or default mode (<code>default</code>).
-                    </li>
-                    <li><b>winget.exe Path</b>: Supports auto-detecting the winget process on system PATH, and manual
-                        browsing to locate a custom absolute winget path.
-                    </li>
-                    <li><b>Real-time Diagnostic Status</b>: Built-in Diagnostics console in the settings page allows
-                        real-time checking of winget engine availability, physical absolute path in the system, running
-                        version, and the number of active registry sources as well as potential reported source
-                        configuration errors.
-                    </li>
-                </ul>
-            </li>
-            <li><b>Terminal (Terminal &amp; Console Configuration)</b>:
-                <ul>
-                    <li><b>Console Mode</b>: Allows users to freely switch console modes online. Options include
-                        <code>Simulated Console</code> (classic read-only log stream mode, safety backup) and
-                        <code>Real Terminal</code> (PTY interactive terminal mode, enabled by default).
-                    </li>
-                    <li><b>Default Shell Option</b>: Supports configuring the default Shell program invoked by the
-                        built-in pseudo-terminal (built-in <code>cmd.exe</code>, <code>powershell.exe</code>,
-                        <code>pwsh.exe</code>, and custom absolute paths to specific external Shells).
-                    </li>
-                </ul>
-            </li>
-        </ol>
-        <hr>
-        <h2 id="7-高级配置与环境变量参考">7. Advanced Configuration and Environment Variables Reference</h2>
-        <p>By setting system environment variables, you can further unlock OmniPack&#x27;s hidden potential:</p>
-        <table>
-            <tr>
-                <th>Variable Name</th>
-                <th>Description</th>
-                <th>Default Behavior</th>
-                <th>Remarks</th>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_LIVE_RELOAD</code></td>
-                <td>Enable style hot-reloading</td>
-                <td>Off</td>
-                <td>Modifications to .qss files take effect instantly when running from source code</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
-                <td>Force portable mode</td>
-                <td>Auto</td>
-                <td>Priority is higher than automatic system path determination</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_TRACE_SELECTION</code></td>
-                <td>Export debug logs</td>
-                <td>Off</td>
-                <td>Record all click paths on the main interface to a jsonl file</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
-                <td>Elevation request strategy</td>
-                <td>Auto</td>
-                <td>Set to 0 to stop automatically initiated UAC requests</td>
-            </tr>
-            <tr>
-                <td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
-                <td>Suppress duplicate Qt warnings</td>
-                <td>Off</td>
-                <td>Helps keep terminals/logs clean</td>
-            </tr>
-        </table>
-        <hr>
-        <h2 id="8-常见问题解答-faq">8. Frequently Asked Questions (FAQ)</h2>
-        <p><b>Q: Some npm packages have released new versions, but the program fails to detect them.</b><br>A: Many npm
-            mirror registries are slow to update non-official releases like nightly or preview. Switching to the
-            official registry will resolve this.</p>
-        <p><b>Q: Why is the statistical count in the &quot;Status Bar&quot; different from what I see in the
-                cards?</b><br>A: The status bar calculates the sum of all identified environments in the background
-            thread, whereas the cards display results that may have been filtered by the &quot;Search Box&quot;.</p>
-        <p><b>Q: How do I make my Python environment display at the top of the Settings list?</b><br>A: In the Settings
-            dialog, click the drag handle on the left side of the environment item, move it to the first row, and save.
-        </p>
-        <p><b>Q: The &quot;Console&quot; shows update failed, but the package version actually changed?</b><br>A: This
-            could happen because underlying tools (such as npm) report a non-zero exit code under certain network
-            conditions. You can click the &quot;Refresh&quot; button on the corresponding card to check the true, latest
-            status of the environment.</p>
-        <p><b>Q: Why can&#x27;t I see the <code>Py</code> / <code>Nd</code> runtime update buttons?</b><br>A: These
-            buttons are only displayed when a &quot;patch update within the same cycle&quot; is detected. If the current
-            version is already the latest patch, or if the latest version cannot be temporarily confirmed due to
-            network/source unavailability, the buttons will be hidden.</p>
-        <p><b>Q: What is the difference between <code>⇧</code> and <code>Py</code> / <code>Nd</code>?</b><br>A:
-            <code>⇧</code> only updates packages inside the environment (pip/npm dependencies); <code>Py</code> /
-            <code>Nd</code> updates the interpreter or Node runtime itself.</p>
-        <p><b>Q: What triggers the (Admin) status?</b><br>A: When running from source code on Windows, OmniPack
-            automatically requests administrator elevation by default (which can be turned off via the
-            <code>OMNIPACK_REQUIRE_ADMIN=0</code> environment variable). After successful elevation, the
-            <code>(Admin)</code> tag is displayed on the title bar. For packaged release builds, it is automatically
-            determined based on the actual runtime environment.</p>
-        <p><b>Q: Why can&#x27;t I see the WinGet tab or panel on macOS or Linux?</b><br>A: WinGet is a built-in package
-            manager for Windows, so OmniPack dynamically registers and displays the WinGet panel and settings options
-            only under the Windows operating system.</p>
-        <p><b>Q: What should I do if a WinGet update prompts for administrator privileges?</b><br>A: Upgrading
-            system-wide applications (Machine scope) typically requires writing to sensitive paths like
-            <code>C:\Program Files</code>, which demands administrator privileges. It is recommended to right-click and
-            run OmniPack as administrator, or accept the UAC elevation prompt when requested by the system. If the
-            update fails, OmniPack will automatically perform a Fallback to attempt installation with
-            <code>--scope user</code> privileges to maximize deployment success.</p>
-        <p><b>Q: Why does the integrated terminal often output strings containing
-                <code>__OMNIPACK_OP_DONE_&lt;uuid&gt;__</code>?</b><br>A: This is the high-performance Marker system
-            designed in earlier versions of OmniPack (v10/v11) to achieve a &quot;perfect link between UI operations and
-            the actual terminal&quot;. In the latest v12, the underlying mechanism has been upgraded to a more robust
-            <b>temporary file tagging mechanism</b> (generating <code>.done</code> files in the system temp directory to
-            capture exit codes), thereby completely eliminating occasional jitter in regex interception of output under
-            complex terminal environments. If you see leftover UUID strings in the terminal, it is usually because old
-            command output from previous copy-pasting has not been cleared yet. This is normal, and you can safely
-            ignore it or use <code>cls</code> / <code>clear</code> to clean it up.</p>
-        <p><b>Q: In the integrated terminal, can I execute other ordinary commands besides package manager
-                commands?</b><br>A: Absolutely! Because it is a complete, genuine system Shell pseudo-terminal (PTY).
-            You can use it as a regular Terminal, such as typing <code>git status</code>, <code>ls</code>,
-            <code>dir</code>, or running your Python scripts; it is fully supported and also features rich-color ANSI
-            rendering and Tab auto-completion.</p>
-        <p><b>Q: I modified the default terminal Shell in the settings, why didn&#x27;t it change immediately?</b><br>A:
-            Launching the terminal&#x27;s Shell and switching modes (simulated/real terminal) involve the destruction
-            and re-instantiation of underlying PTY processes and threads. Therefore, you need to <b>restart OmniPack</b>
-            for the changes to take effect.</p>
-        <hr>
-        <p><i>OmniPack - Your most professional multi-platform package management expert right at hand.</i></p>
-    </section>
+<section class="lang-en">
+<h1 id="omnipack-用户指南-user-guide">OmniPack User Guide</h1>
+<div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
+<p>Welcome to <b>OmniPack</b>! May this application become a helpful tool for managing your Python virtual environments, Node.js project dependencies, and Windows Package Manager (WinGet).</p>
+<p>Want to explore this project with interactive AI? 👉 <a href="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==">![DeepWiki</a>](https://deepwiki.com/LeoOfGit/OmniPack)</p>
+<p>This project is updated frequently. Some illustrations or descriptions in this document may be outdated, and the actual application shall prevail.</p>
+<hr>
+<h2 id="目录">Table of Contents</h2>
+<ol>
+<li><a href="#1-full-interface-layout-analysis">Full Interface Layout Analysis</a>
+</li>
+<li><a href="#2-environment-management">Environment Management (Environments)</a>
+</li>
+<li><a href="#3-in-depth-python-uvpip-management">In-Depth Python (uv/pip) Management</a>
+</li>
+<li><a href="#4-nodejs-npm-project-management">Node.js (npm) Project Management</a>
+</li>
+<li><a href="#5-winget-system-package-management-windows-specific">WinGet System Package Management (Windows Specific)</a>
+</li>
+<li><a href="#6-settings-center">Settings Center</a>
+</li>
+<li><a href="#7-advanced-configuration-and-environment-variables-reference">Advanced Configuration and Environment Variables Reference</a>
+</li>
+<li><a href="#8-frequently-asked-questions-faq">Frequently Asked Questions (FAQ)</a>
+</li>
+</ol>
+<hr>
+<h2 id="1-界面布局全解析">1. Full Interface Layout Analysis</h2>
+<p>OmniPack&#x27;s main interface is meticulously designed and divided into four core interaction areas.</p>
+<h3 id="11-顶层工具栏-global-toolbar">1.1 Global Toolbar</h3>
+<p>This is the command center for performing global searches, filtering, and batch operations.</p>
+<ul>
+<li><b>Selection Control (All/None)</b>: Quickly select all or deselect all visible packages in the current main interface.
+</li>
+<li><b>Search Box (Search)</b>: Filter package names displayed in each environment card in real time, supporting fuzzy matching.
+</li>
+<li><b>Outdated Filter (Only Show Outdated)</b>: One-click to hide all packages that are already at their latest version, allowing you to focus on projects that need upgrading. The system intelligently evaluates the safety of each update: packages with constraint conflicts (orange <code>\u26a0</code>) and build variant switches (blue <code>\ud83d\udd00</code>) will not be automatically selected, but safe intermediate versions (blue <code>\ud83d\udd12</code>) will be automatically selected.
+</li>
+<li><b>Refresh All (Refresh All)</b>: Rescan the local package lists of all configured environments and query the latest versions in the cloud.
+</li>
+<li><b>Batch Update (Batch Update)</b>: Initiate parallel upgrade commands for all currently [checked] packages that have [new versions in the cloud] (only affects packages, does not update the interpreter/Node runtime).
+</li>
+<li><b>Batch Remove (Batch Remove)</b>: Initiate uninstall commands for all currently checked packages (a confirmation dialog will appear).
+</li>
+<li><b>Settings (Settings)</b>: Jump directly to the environment configuration and system settings page.
+</li>
+</ul>
+<h3 id="12-环境主体卡片-env-canvas">1.2 Environment Cards (Env Canvas)</h3>
+<p>The left area displays each Python virtual environment or Node.js project as a card.</p>
+<ul>
+<li><b>Environment Info</b>: The top of each card displays the environment alias, path, and runtime version; when a patch update within the same cycle is detected, it shows <code>current -&gt; latest</code>.
+</li>
+<li><b>Action Buttons</b>:
+<ul>
+<li><code>↻</code>: Refresh the current environment
+</li>
+<li><code>⇧</code>: Only update all upgradeable packages in the current environment
+</li>
+<li><code>Py</code> / <code>Nd</code>: Update the environment runtime itself (Python/Node)
+</li>
+<li><code>+</code>: Add packages
+</li>
+<li><i>Right-click the card header to <b>\u270f\ufe0f Rename Environment</b> or <b>\u2699\ufe0f Edit Settings</b> (automatically launches the settings panel, highlights, and scrolls to the corresponding environment row).</i>\n
+</li>
+</ul>
+</li>
+<li><b>Package List</b>: List all packages installed in the current environment and their versions.
+</li>
+</ul>
+<h3 id="13-集成伪终端与控制台-integrated-pty-terminal-live-console">1.3 Integrated PTY Terminal &amp; Live Console</h3>
+<p>The right area is OmniPack&#x27;s core execution and display center, supporting two complementary display and interaction modes (dual-console design):</p>
+<ul>
+<li><b>Interactive PTY Terminal (Real Terminal)</b>:
+<ul>
+<li><b>Real-time Deep Interaction</b>: This is a real PTY terminal shell (enabled by default). It not only streams execution logs of underlying package management commands in real time but also accepts your full keyboard input. This means in highly interactive scenarios like typing account passwords for <code>git clone</code> or entering <code>y/n</code> to confirm during installations, you can type directly in the terminal and press Enter, completely resolving the deadlocks often caused by simulated consoles.
+</li>
+<li><b>Rich ANSI Coloring</b>: Equipped with the <code>pyte</code> color rendering engine at the bottom, it perfectly parses ANSI escape sequences. This means <b>dynamic highly-colored text progress bars</b> or colored error stacks drawn by <code>uv</code>, <code>pip</code>, and <code>npm</code> in the terminal flow smoothly in the console, restoring a silky-smooth native terminal visual experience.
+</li>
+<li><b>Silent Environment &amp; Directory Sync (Active Sync)</b>: The terminal is deeply linked with the environment status on the left. Whenever you switch or activate an environment card on the left, the main program silently and seamlessly sends a <code>cd</code> command to change directories or calls to activate <code>venv</code>, achieving a smooth synchronization of &quot;wherever you click on the UI, the terminal follows.&quot;
+</li>
+<li><b>Containerized Actions &amp; Fast UI Refresh</b>: In PTY terminal mode, package updates, installations, or uninstallations triggered by panel buttons are written directly as CLI commands into the terminal window. A unique UUID Marker is automatically appended to the end of each command. The main program intercepts this Marker in the background to determine command completion and immediately triggers an incremental <b>Fast Refresh</b> of the environment, significantly reducing UI redrawing lag.
+</li>
+<li><b>Advanced Keyboard Shortcuts</b>: Perfectly intercepts Tab key command completion, up/down arrow keys for command history, <code>Ctrl+C</code> to forcibly terminate subtasks, and <code>Ctrl+V</code> to paste text from the system clipboard.
+</li>
+</ul>
+</li>
+<li><b>Read-Only Simulated Console (Simulated Console)</b>:
+<ul>
+<li>If you switch the mode to a read-only simulated console in the settings, it serves as a safety backup, passively displaying the <code>stdout</code> and <code>stderr</code> of commands as rich text logs, and providing regex-based ANSI character stripping/filtering.
+</li>
+<li>Right-click support for common functions like &quot;Clear Console&quot;, &quot;Copy Selection&quot;, and &quot;Open Log File Directory&quot;.
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="14-状态栏反馈-status-bar">1.4 Status Bar Feedback (Status Bar)</h3>
+<p>Located at the very bottom of the window, providing real-time statistics and global function entry points.</p>
+<ul>
+<li><b>Left Stats Area</b>: <code>Envs: {n} | Packages: {m} ( {u} Outdated )</code>. Reflects the total number of scanned environments, total packages, and outdated package stats in real time.
+</li>
+<li><b>Middle Status Area</b>: Displays the current operation being executed (e.g., &quot;Ready&quot;, &quot;Scanning...&quot;, &quot;Installing...&quot;).
+</li>
+<li><b>Right Switching Area</b>:
+<ul>
+<li><b>Python / Node.js / WinGet Buttons</b>: Used to quickly switch between different package management panels (the WinGet panel is visible only on Windows).
+</li>
+<li><b>💡 Guide Button</b>: Click to pop up this user guide window.
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="15-全局文本可复制与包详情一键复制">1.5 Copyable Dialog Labels &amp; Package Details Export</h3>
+<p>To facilitate troubleshooting and data exporting for developers, the main program optimizes interactive details as follows:</p>
+<ul>
+<li><b>Copyable Dialog Labels</b>: A global event filter is registered. Text inside all popup <code>QMessageBox</code> and <code>QDialog</code> windows now supports mouse selection and keyboard copying (Ctrl+C), making it easy to capture error tracebacks and path info.
+</li>
+<li><b>One-click Package Details Copy</b>: A new <b>\&quot;Copy Details\&quot;</b> button is added in the package configuration/installation details dialog (opened by double-clicking a package card). Clicking it exports the package name, ID, source, installed version, latest available version, and installation path to the clipboard as formatted text.
+</li>
+</ul>
+<blockquote><b>Note</b>: If the program gains administrator privileges, the <b>(Admin)</b> indicator will be displayed on the <b>top title bar</b> of the window.</blockquote>
+<div class="image-wrap"><img src="../resources/Node.js.png" alt="Node.js 管理主界面" width="1042"></div>
+<hr>
+<h2 id="2-环境管理">2. Environment Management</h2>
+<h3 id="21-统一导入流程-unified-intake">2.1 Unified Intake</h3>
+<p>You can manage the project lifecycle in <b>Settings -&gt; Python/NPM Environments</b>.</p>
+<ul>
+<li><b>Python Environments (Pip/uv)</b>:
+<ul>
+<li><b>Detect System</b>: Scan PATH, registry, and desktop/user directories for Python interpreters.
+</li>
+<li><b>Add Manually</b>: Supports pointing to a specific <code>python.exe</code> interpreter or dragging in the root directory of a project containing <code>.venv</code> or <code>venv</code>.
+</li>
+</ul>
+</li>
+<li><b>Node.js Environments (NPM)</b>:
+<ul>
+<li><b>Add Manually</b>: Supports pointing to a <code>package.json</code> file or any of its parent directories. OmniPack automatically traces back to the project root and resolves the project name.
+</li>
+</ul>
+</li>
+<li><b>Batch Paste</b>: You can copy multi-line text containing multiple paths using search utilities like Everything, and paste them into the input box. The built-in <code>env_detector</code> engine automatically performs deduplication, validation, and smart naming.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Settings-Environments.png" alt="环境管理设置" width="584"></div>
+<h3 id="22-环境操作说明">2.2 Environment Operations</h3>
+<ul>
+<li><b>Drag-and-Drop Reordering</b>: Long-press the icon on list items and drag up or down to adjust the preferred display order in the main interface.
+</li>
+<li><b>Edit Environment</b>: Double-click any item to modify its display alias or correct path changes caused by moving folders. Right-clicking the card header of an environment on the main interface brings up options to rename (\u270f\ufe0f) or edit settings (\u2699\ufe0f) to highlight and jump directly to the settings panel.
+</li>
+</ul>
+<h3 id="23-运行环境引导与一键自愈-runtime-setup-guide-auto-setup">2.3 Runtime Setup Guide &amp; Auto-Setup</h3>
+<p>When the program launches for the first time, or when zero loaded or available runtime environments are detected in Pip, Npm, or WinGet panels, a beautifully styled \&quot;Runtime Setup Guide\&quot; component (<code>RuntimeSetupWidget</code>) automatically pops up at the bottom of the UI.</p>
+<ul>
+<li><b>Windows One-Click WinGet Setup</b>: If the WinGet package manager is missing or broken on Windows, the component runs a background PowerShell thread to fetch the latest release from official GitHub and install it alongside necessary <code>VCLibs</code> and <code>UI.Xaml</code> system dependencies.
+</li>
+<li><b>Cross-Platform Runtime Download &amp; Configuration (macOS/Linux)</b>:
+<ul>
+<li><b>Linux Automated Deployments</b>: If a Python environment is missing, the application installs it using the <code>uv</code> engine; for missing Node.js runtimes, it pulls the official Linux binary tarball tailored for the architecture, extracts it to the user directory, and automatically symlinks it to the local bin path.
+</li>
+<li><b>macOS Official Installer Execution</b>: For macOS systems, it supports downloading official <code>.pkg</code> packages and executing them using the interactive system GUI installer, pausing updates until completion.
+</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2 id="3-python-uvpip-深度管理">3. In-Depth Python (uv/pip) Management</h2>
+<h3 id="31-极速-uv-引擎">3.1 Blazing-Fast uv Engine</h3>
+<p>OmniPack natively integrates the first-class <a href="https://github.com/astral-sh/uv">uv</a> engine.</p>
+<ul>
+<li><b>Performance Advantage</b>: For complex dependency resolution and large-scale package installations, uv is typically dozens of times faster than <code>pip</code> because it is written in Rust and has highly efficient caching.
+</li>
+<li><b>Engine Update</b>: In the <code>Settings</code> -&gt; <code>Backend</code> settings, you can trigger a <code>Check for Update</code> with one click to asynchronously check and update the <code>uv</code> engine online, without reinstalling the program.
+</li>
+</ul>
+<h3 id="36-实时文件系统联动-real-time-sync">3.6 Real-Time File System Synchronization (Real-time Sync)</h3>
+<p>OmniPack features a built-in <b>directory watcher engine (File System Watcher)</b> that works out-of-the-box without manual configuration.</p>
+<ul>
+<li><b>Offline Sync</b>: If you run <code>pip install xxx</code> or <code>uv pip install xxx</code> directly in an external system terminal (e.g., <code>cmd.exe</code>) or OmniPack&#x27;s embedded PTY terminal (NPM panel watches <code>node_modules</code> instead), OmniPack automatically intercepts changes in the <code>site-packages</code>/<code>node_modules</code> directories 2 seconds after the command finishes and triggers an auto-refresh for the corresponding environment card.
+</li>
+<li><b>Seamless Multi-End Collaboration</b>: This mechanism eliminates the need to manually click the <code>\u21bb</code> refresh button repeatedly, ensuring the UI state is always in perfect synchronization with the physical disk.
+</li>
+</ul>
+<h4 id="361-虚拟环境升级文件锁冲突防御-file-lock-protection">3.6.1 Virtual Environment Upgrade File-Lock Protection (File-Lock Protection)</h4>
+<p>When upgrading a Python virtual environment via <code>python -m venv --upgrade</code>, if <code>python.exe</code> is occupied by PyCharm, VSCode, or other background Python processes, file copy actions will fail. OmniPack automatically detects and diagnoses such lock conflicts, prompting the user with clear diagnostics: \&quot;Virtual environment update partially failed: python.exe is locked by another process. Please close all programs using this environment and try again,\&quot; effectively preventing accidental development environment corruption.</p>
+<div class="image-wrap"><img src="../resources/Python.png" alt="Python 管理主界面" width="869"></div>
+<h3 id="32-依赖查询与依赖树">3.2 Dependency Queries &amp; Dependency Tree</h3>
+<ul>
+<li><b>Hierarchical Expansion</b>: Click the arrow in front of a package name to display its sub-dependencies infinitely down the tree (Dependency Tree).
+</li>
+<li><b>Top-Level View</b>: Displays only the packages you manually installed by default, hiding transitive dependencies to dramatically reduce visual noise.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/DepTree.png" alt="依赖树视图" width="565"></div>
+<h3 id="33-本地缓存驱动的包搜索">3.3 Local Cache-Driven Package Search</h3>
+<ul>
+<li><b>Instant Response</b>: OmniPack features a built-in data cache of over 500,000 popular PyPI packages. When searching in the main interface or the \&quot;Add Package\&quot; dialog, it responds instantly, comparable to local file search.
+</li>
+<li><b>Enhanced Search</b>: Supports filtering search results by version range.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchPyPI.png" alt="添加 Python 包" width="185"></div>
+<h3 id="34-python-运行时补丁更新-解释器本体">3.4 Python Runtime Patch Updates (Interpreter itself)</h3>
+<ul>
+<li><b>Display Logic</b>: Python virtual environment cards prioritize reading version metadata from <code>pyvenv.cfg</code>, avoiding display offsets when the system Python undergoes patch upgrades.
+</li>
+<li><b>Update Detection</b>: Checks for the latest patches within the same <code>major.minor</code> release cycle (e.g., <code>3.14.3 -&gt; 3.14.4</code>).
+</li>
+<li><b>Update Entry</b>: When an update is detected, the card displays a <code>Py</code> button. Clicking it executes the interpreter/venv upgrade process rather than a <code>pip</code> package upgrade.
+</li>
+<li><b>Semantic Isolation</b>: <code>Py</code> and <code>\u21e7</code> are isolated; the former updates the runtime itself, while the latter updates packages.
+</li>
+</ul>
+<h3 id="35-风险感知更新-risk-aware-updates">3.5 Risk-Aware Updates</h3>
+<p>When you check the <b>\&quot;Outdated\&quot;</b> filter in the toolbar, not all upgradeable packages will be checked automatically. The system intelligently intercepts two types of high-risk updates:</p>
+<h4 id="约束冲突-橙色-标识">Constraint Conflicts (Orange \u26a0 Indicator)</h4>
+<p>If a dependent package sets an upper version limit (e.g., <code>sympy</code> requires <code>mpmath&lt;1.4</code>), and the latest release exceeds this limit, then the package:</p>
+<ul>
+<li>Will not be checked automatically by <code>Outdated</code>
+</li>
+<li>Version text displays in orange: <code>1.3.0 \u279e 1.4.1 \u26a0</code>
+</li>
+<li>Tooltip on hover prompts: \&quot;Latest version may break version constraints from: sympy\&quot;
+</li>
+<li>Clicking the <code>\u21e7</code> button pops up a confirmation dialog detailing the specific constraint sources
+</li>
+</ul>
+<h4 id="智能安全升级-蓝色-标识-safe-intermediate-update">Safe Smart Upgrades (Blue \ud83d\udd12 Indicator) (Safe Intermediate Update)</h4>
+<p>The system introduces a more elegant version selection mechanism. If the latest version is blocked by constraints, the system automatically scans historical releases to <b>find the highest available version within the constraint range</b>:</p>
+<ul>
+<li>Version text displays in bright blue: <code>1.3.0 \u279e 1.3.5 \ud83d\udd12 (Latest 1.4.1)</code>
+</li>
+<li>Hovering over it not only shows conflict constraints but also specifically prompts \&quot;Can be safely updated to 1.3.5\&quot;
+</li>
+<li>The upgrade button turns blue and <b>does not require secondary confirmation</b>; click to update to 1.3.5 smoothly.
+</li>
+<li>This type of restricted package will be <b>checked automatically</b> by the <code>Outdated</code> filter, facilitating batch upgrades.
+</li>
+</ul>
+<h4 id="构建变体切换-蓝色-标识">Build Variant Switching (Blue \ud83d\udd00 Indicator)</h4>
+<p>For packages with local version suffixes (e.g., <code>torchaudio 2.11.0.dev20260506+cu132</code>), when the latest version does not have this suffix or has a different suffix:</p>
+<ul>
+<li>Will not be checked automatically by <code>Outdated</code>
+</li>
+<li>Version text displays in blue: <code>2.11.0.dev+cu132 \u279e 2.11.0 \ud83d\udd00</code>
+</li>
+<li>Tooltip on hover prompts: \&quot;Build variant may change: +cu132 \u2192 (none)\&quot;
+</li>
+<li>Clicking the <code>\u21e7</code> button pops up a confirmation dialog warning that the hardware build variant may change
+</li>
+</ul>
+<blockquote><b>Manual operations are unrestricted</b>: The interceptions above only affect auto-selection under the <code>Outdated</code> filter. You can still manually check these packages or directly click their <code>\u21e7</code> button and confirm risks to update.</blockquote>
+<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="583"></div>
+<hr>
+<h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) Project Management</h2>
+<h3 id="41-项目深度溯源">4.1 Deep Project Source Tracing</h3>
+<p>When you feed OmniPack any deep folder containing Node.js modules, it automatically resolves the true project root directory and accurately lists locally installed module versions.</p>
+<h3 id="42-在线搜索npm包">4.2 Online Search for NPM Packages</h3>
+<ul>
+<li><b>Online Search</b>: Search packages from the npm registry, supporting fuzzy matching.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SearchNodejs.png" alt="添加 NPM 包" width="224"></div>
+<h3 id="43-dist-tags-精准分发">4.3 Dist-Tags Precise Distribution</h3>
+<p>OmniPack wraps NPM&#x27;s <code>Dist-Tags</code> mechanism in a GUI.</p>
+<ul>
+<li><b>Tag Switching</b>: When adding or updating packages, the interface neatly displays all remote release channels (e.g., <code>latest</code>, <code>beta</code>, <code>next</code>, <code>lts</code>).
+</li>
+<li><b>One-click Update</b>: Click the corresponding tag card, and the system will automatically construct and execute a precise command like <code>npm install lodash@beta</code>.
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/SelectTag.png" alt="选择 NPM 标签" width="442"></div>
+<h3 id="44-nodejs-运行时补丁更新">4.4 Node.js Runtime Patch Updates</h3>
+<ul>
+<li><b>Version Display</b>: The Node environment card displays the current Node version; if a patch update within the same cycle is detected, it shows <code>current -&gt; latest</code>.
+</li>
+<li><b>Update Entry</b>: Displays the <code>Nd</code> button when an update is available to upgrade the Node runtime.
+</li>
+<li><b>Note Difference</b>: <code>Nd</code> updates the Node runtime, while <code>⇧</code> updates npm packages; they do not substitute each other.
+</li>
+</ul>
+<hr>
+<h2 id="5-winget-系统包管理-windows-特有">5. WinGet System Package Management (Windows Specific)</h2>
+<p>Under Windows 10/11 operating systems, OmniPack automatically registers the <b>WinGet</b> package management panel on the right side of the status bar. It enables unified management of desktop applications installed on your system via the Microsoft Store, WinGet source, or local installers.</p>
+<h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 Dual Scope Environment Automatic Detection</h3>
+<p>Two virtual system environments will be displayed on the left side of the main interface:</p>
+<ul>
+<li><b>System (Machine)</b>: Displays software installed system-wide (corresponding to <code>winget://machine</code>), usually located in the <code>Program Files</code> directory; updating requires administrator privileges.
+</li>
+<li><b>User</b>: Displays software installed exclusively for the current user (corresponding to <code>winget://user</code>), usually located in the user&#x27;s personal directory (e.g., <code>%USERPROFILE%\AppData</code>).
+</li>
+<li><b>Deduplication &amp; Smart Scope Determination (Package Redistribution)</b>:
+<ul>
+<li>OmniPack has a built-in registry physical path audit mechanism. When scanning software, it reads the uninstallation path; if it detects that a system-wide reported software is actually physically installed in the user directory, it automatically categorizes it into the <b>User</b> virtual environment to ensure absolute accuracy of the information.
+</li>
+<li>If the same software is installed in both system and user scopes, a colored <code>[Also Installed In User/Machine]</code> badge will automatically be mounted on the card.
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 Precise Management and Blocking Updates (Full Actions &amp; Pinning)</h3>
+<ul>
+<li><b>Get Updates (Upgrades)</b>: If an update is available, the application card displays a <code>⇧</code> button.
+</li>
+<li><b>Configuration &amp; Pinning (Blocking Pin)</b>:
+<ul>
+<li>Clicking the <b>⚙ configuration button</b> on an application card pops up its dedicated configuration box.
+</li>
+<li>Supports setting a <b>blocking pin (winget blocking pin)</b>. After checking &quot;Ignore updates for this app (winget blocking pin)&quot;, the app will display a <code>[Pinned]</code> badge on the card and will not be automatically checked by the &quot;Outdated&quot; filter in the toolbar, preventing massive silent upgrades from breaking specific software versions.
+</li>
+<li>In the configuration dialog, you can also inspect the <b>uninstall location path (Uninstall Location)</b> of the software directly and copy it with a single click, making it extremely easy to locate the software root.
+</li>
+</ul>
+</li>
+<li><b>Abnormal Version Warning (⚠ Newer Badge)</b>:
+<ul>
+<li>If you installed a version from the official website that is newer than the one registered in the WinGet cloud registry, the system will mount a <code>[⚠ Newer]</code> badge warning and prevent <code>Outdated</code> from automatically checking it, avoiding accidental downgrades.
+</li>
+</ul>
+</li>
+<li><b>Install New Package (Install)</b>:
+<ul>
+<li>Clicking the <code>+</code> button on the card title bar allows you to enter any WinGet software ID (e.g., <code>Google.Chrome</code>) to download and install it silently or interactively.
+</li>
+</ul>
+</li>
+<li><b>Intelligent Scope Fallback Mechanism (Scope Fallback)</b>:
+<ul>
+<li>If upgrading or installing a large software in the Machine scope fails due to file occupancy or write permission issues, OmniPack automatically performs a Fallback to attempt downloading and installing in the User scope with <code>--scope user</code>, significantly increasing tolerance for automatic software version updates.
+</li>
+</ul>
+</li>
+<li><b>WinGet Self-Upgrade &amp; Package Optimizations</b>:
+<ul>
+<li><b>WinGet Self-Upgrade (Wg Button)</b>: On the WinGet card, the main program reads and displays the current version of Winget (e.g., <code>Winget v1.9.25200</code>). If an update is detected, a flashing <b><code>Wg</code></b> button appears in the header; clicking it upgrades the package manager itself with one click.
+</li>
+<li><b>Appended Package Architectures</b>: The package name automatically appends architecture descriptors (e.g., <code>(x64)</code>, <code>(x86)</code>, <code>(arm64)</code>) resolved dynamically to avoid name collisions.
+</li>
+<li><b>App Type Badge</b>: The package configuration dialog and card display whether the application originates from <code>[Win32]</code> (classic registry installation) or <code>[MSIX]</code> (modern application package) based on ID features.
+</li>
+</ul>
+</li>
+</ul>
+<div class="image-wrap"><img src="../resources/Winget.png" alt="Winget 管理主界面" width="871"></div>
+<hr>
+<h2 id="6-设置中心-settings-center">6. Settings Center (Settings Center)</h2>
+<p>The settings dialog is the background core of OmniPack, divided into six clear tabs by functionality (under Windows):</p>
+<ol>
+<li><b>Python/NPM Environments</b>: Environment list maintenance area, supporting CRUD operations and sorting.
+</li>
+<li><b>Sources (Registry/Mirrors)</b>:
+<ul>
+<li><b>Follow System</b>: Respects the system&#x27;s original configuration.
+</li>
+<li><b>Official</b>: Use the official registry.
+</li>
+<li><b>Custom Preset</b>: Built-in top-tier mirrors like Tsinghua, Aliyun, Huawei, etc., switchable with one click.
+</li>
+<li><b>Independence</b>: Settings here only affect commands invoked by OmniPack and will not modify your system&#x27;s global configuration.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Sources.png" alt="镜像源设置" width="516"></div>
+<ol>
+<li><b>Backend (Core Engine &amp; Cache)</b>:
+<ul>
+<li><b>uv Path Management</b>: Manually specify or automatically discover the <code>uv</code> interpreter.
+</li>
+<li><b>PyPI Cache Sync</b>: Provides a visualized synchronization log stream. Supports silently synchronizing tens of millions of records while the program is running, and can be paused or canceled at any time.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Backend.png" alt="后端设置" width="516"></div>
+<ol>
+<li><b>Proxy (Proxy Configuration)</b>:
+<ul>
+<li><b>Protocol Separation</b>: Supports independent HTTP and HTTPS proxy settings. Since background commands mostly utilize HTTPS, it is recommended to configure both.
+</li>
+<li><b>Granular Control</b>: Individually select which domains (PyPI / NPM / GitHub) need to go through the proxy server.
+</li>
+<li><b>Connectivity Test</b>: Performs a one-click Direct vs Proxy response latency comparison.
+</li>
+</ul>
+</li>
+</ol>
+<div class="image-wrap"><img src="../resources/Settings-Proxy.png" alt="代理设置" width="516"></div>
+<ol>
+<li><b>WinGet (Windows Exclusive Settings)</b>:
+<ul>
+<li><b>Installation Mode Selection</b>: Supports setting global behavior modes for WinGet installation and upgrades: silent (<code>silent</code>), interactive (<code>interactive</code>), or default (<code>default</code>).
+</li>
+<li><b>winget.exe Path</b>: Supports auto-detecting the winget process on system PATH or manually browsing to locate a custom winget absolute path.
+</li>
+<li><b>Real-time Diagnostic Status</b>: Built-in Diagnostics console in the settings page allows real-time checking of winget engine availability, physical absolute path in the system, running version, and the number of active registry sources as well as potential reported source configuration errors.
+</li>
+</ul>
+</li>
+<li><b>Terminal (Terminal &amp; Console Configuration)</b>:
+<ul>
+<li><b>Console Mode</b>: Supports hot-switching console modes online. Users can select <code>Simulated Console</code> (classic read-only log stream for safety fallback) or <code>Real Terminal</code> (PTY interactive terminal mode, enabled by default).
+</li>
+<li><b>Default Shell Selection</b>: Supports setting the default Shell program launched by the internal pseudo-terminal (built-in <code>cmd.exe</code>, <code>powershell.exe</code>, <code>pwsh.exe</code>, or custom Shell binaries).
+</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2 id="7-高级配置与环境变量参考">7. Advanced Configuration and Environment Variables Reference</h2>
+<p>By setting system environment variables, you can further unlock OmniPack&#x27;s hidden potential:</p>
+<table>
+<tr>
+<th>Variable Name</th>
+<th>Description</th>
+<th>Default Behavior</th>
+<th>Remarks</th>
+</tr>
+<tr>
+<td><code>OMNIPACK_LIVE_RELOAD</code></td>
+<td>Enable style hot-reloading</td>
+<td>Off</td>
+<td>Modifications to .qss files take effect instantly when running from source code</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_PORTABLE_CONFIG</code></td>
+<td>Force portable mode</td>
+<td>Auto</td>
+<td>Priority is higher than automatic system path determination</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_TRACE_SELECTION</code></td>
+<td>Export debug logs</td>
+<td>Off</td>
+<td>Record all click paths on the main interface to a jsonl file</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_REQUIRE_ADMIN</code></td>
+<td>Elevation request strategy</td>
+<td>Auto</td>
+<td>Set to 0 to stop automatically initiated UAC requests</td>
+</tr>
+<tr>
+<td><code>OMNIPACK_SUPPRESS_QT_WARNINGS</code></td>
+<td>Suppress duplicate Qt warnings</td>
+<td>Off</td>
+<td>Helps keep terminals/logs clean</td>
+</tr>
+</table>
+<hr>
+<h2 id="8-常见问题解答-faq">8. Frequently Asked Questions (FAQ)</h2>
+<p><b>Q: Some npm packages have released new versions, but the program fails to detect them.</b><br>A: Many npm mirror registries are slow to update non-official releases like nightly or preview. Switching to the official registry will resolve this.</p>
+<p><b>Q: Why is the statistical count in the &quot;Status Bar&quot; different from what I see in the cards?</b><br>A: The status bar calculates the sum of all identified environments in the background thread, whereas the cards display results that may have been filtered by the &quot;Search Box&quot;.</p>
+<p><b>Q: How do I make my Python environment display at the top of the Settings list?</b><br>A: In the Settings dialog, click the drag handle on the left side of the environment item, move it to the first row, and save.</p>
+<p><b>Q: The &quot;Console&quot; shows update failed, but the package version actually changed?</b><br>A: This could happen because underlying tools (such as npm) report a non-zero exit code under certain network conditions. You can click the &quot;Refresh&quot; button on the corresponding card to check the true, latest status of the environment.</p>
+<p><b>Q: Why can&#x27;t I see the <code>Py</code> / <code>Nd</code> / <code>Wg</code> runtime update buttons?</b><br>A: The button is displayed only when a patch update within the same cycle is detected or WinGet self-upgrade is available. If you are already on the latest or the network is unavailable, the button hides.</p>
+<p><b>Q: What is the difference between <code>\u21e7</code> and <code>Py</code> / <code>Nd</code> / <code>Wg</code>?</b><br>A: <code>\u21e7</code> only updates development dependencies within the environment; <code>Py</code> / <code>Nd</code> / <code>Wg</code> upgrades the interpreter, Node runtime, or package manager itself.</p>
+<p><b>Q: What triggers the (Admin) status?</b><br>A: When running from source code on Windows, OmniPack requests administrator privileges by default. The <code>(Admin)</code> badge appears on the title bar upon elevation; freeze/package builds resolve elevation status dynamically.</p>
+<p><b>Q: Why can&#x27;t I see the WinGet tab or panel on macOS or Linux?</b><br>A: WinGet is a built-in package manager for Windows, so OmniPack dynamically registers and displays the WinGet panel and settings options only under the Windows operating system.</p>
+<p><b>Q: What should I do if WinGet updates request administrator privileges?</b><br>A: Upgrading system-wide global apps (Machine scope) typically requires elevation. It is recommended to run OmniPack as administrator or accept UAC prompts. If installation fails, OmniPack automatically triggers a Fallback to install in the User scope with <code>--scope user</code>.</p>
+<p><b>Q: Why does the integrated terminal output strings containing some Marker info?</b><br>A: This is to track task completion status inside PTY terminals. The new architecture has fully upgraded to an invisible, file-based physical marker mechanism, completely avoiding terminal output stream noise.</p>
+<p><b>Q: Can I run ordinary commands in the integrated terminal besides package manager operations?</b><br>A: Absolutely! It is a complete, real system Shell pseudo-terminal (PTY). You can use it as a normal terminal to run <code>git status</code>, <code>ls</code>, <code>dir</code>, or execute Python scripts, with full support for ANSI coloring and Tab autocompletion.</p>
+<p><b>Q: Why didn&#x27;t the default terminal Shell change immediately after I modified it in settings?</b><br>A: Switching default Shells or console modes requires rebuilding underlying PTY processes and threads, so it will only take effect after you <b>restart OmniPack</b>.</p>
+<hr>
+<p><i>OmniPack - Your most professional multi-platform package management expert right at hand.</i></p>
+</section>
     <!-- END OF ENGLISH CONTENT -->
 
     <script>
@@ -1312,5 +1144,4 @@
         switchLang(savedLang);
     </script>
 </body>
-
 </html>

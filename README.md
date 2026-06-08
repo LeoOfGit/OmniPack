@@ -33,15 +33,25 @@ OmniPack was born for this: **It's not a system app store; it's your environment
 
 ## ✨ Core Features
 
-### 🖥️ Built-in Interactive PTY Terminal (New in v10)
-Say goodbye to the "blind" read-only simulated console! OmniPack v10 features a full-fledged Pseudo-Terminal (PTY) engine integrated directly into the UI:
+### 🖥️ Built-in Interactive PTY Terminal
+Say goodbye to the "blind" read-only simulated console! OmniPack features a full-fledged Pseudo-Terminal (PTY) engine integrated directly into the UI:
 - **True PTY Integration**: Uses `pywinpty` on Windows and native `pty`/`os.fork()` on macOS/Linux to run real interactive shells with 0 MB size overhead.
 - **Rich ANSI Capabilities**: Streamed output is parsed by the lightweight `pyte` library, supporting full ANSI color palette mapping and dynamic progress bars (e.g. `uv` / `pip` / `npm` downloads).
 - **Silent Synchronization & Marker Interceptor**: Changing environments or working directories on the left instantly and silently switches directories (`cd`) or activates virtualenvs in the terminal. When performing package actions, OmniPack writes CLI commands to the terminal and monitors operation success via a unique UUID marker, triggering an incremental **Fast Refresh** on completion.
 - **Highly Customizable**: Choose your preferred default shell (`cmd.exe`, `powershell.exe`, `pwsh.exe`, or custom shell binaries) and switch console modes instantly under the new Terminal settings tab.
 
-### 🚀 High-Speed Engine: Native `uv` Power
-It's not just fast; it’s fast even in a GUI! OmniPack natively integrates [Astral sh](https://github.com/astral-sh/uv)'s acclaimed `uv` engine. Enjoy order-of-magnitude faster downloads and resolution compared to traditional pip.
+### 🐧 Cross-Platform Runtime Installers & WinGet Setup
+OmniPack handles runtime environment bootstrap across Windows, macOS, and Linux:
+- **macOS & Linux Support**: Seamlessly download and bootstrap Python and Node.js runtimes. Linux supports automated installation via `uv` (for Python) or tarball decompression and automatic path symlinking (for Node.js). macOS supports downloading official `.pkg` packages and running GUI installers interactively.
+- **System-Wide WinGet Setup (Windows)**: Automatically downloads and installs WinGet along with its required dependencies (VCLibs and UI.Xaml) on Windows using a background PowerShell worker, featuring full proxy support.
+- **Resilient Network API**: Queries are protected with a 3-pass retry pipeline and connection sleep offsets, ensuring robustness during weak network conditions.
+
+### ⛑️ Safe Update Intelligence: Constraint-Aware & Safe Intermediates
+OmniPack knows which updates are **safe** and guides you through risk-free upgrades.
+- **Safe Intermediate Recommendation**: When a package's latest version violates a version constraint, OmniPack automatically searches the version history to find the highest available version that *does* satisfy the constraint. Such packages are highlighted with a **blue** indicator and can be safely updated in one click.
+- **Constraint-Aware Auto-Selection**: When "Outdated" is checked, packages that have *no* safe update path are **not auto-selected**. A visual `⚠` indicator explains why. Hovering over it details which upstream packages are imposing which specific version limits.
+- **Real-time File System Sync**: Built-in directory watcher. Whether you run install commands in a system terminal or the embedded PTY, the UI auto-detects the changes and refreshes itself, keeping state perfectly in sync with the physical disk.
+- **Build Variant Detection**: Automatically recognizes PEP 440 local version suffixes (`+cu132`, `+cpu`, `+rocm5.6`). If updating would switch your package between different hardware builds (CUDA → CPU), a `🔀` indicator warns you.
 
 ### 🌳 Crystal Clear: Hierarchical Dependency Tree
 Break free from the command-line’s flat list black box.
@@ -51,16 +61,6 @@ Break free from the command-line’s flat list black box.
 
 ![OmniPack Python View](./resources/Python.png)
 
-### 🗂️ Zero-Friction Management: Batch Environment Import
-We know you have dozens of projects. Just select those folders in [Everything] or File Explorer, **Ctrl+C to copy paths**, and **Batch Paste** them into OmniPack with one click. Its detection engine automatically strips away `.venv` noise to extract clean project names.
-
-![OmniPack Batch Import](./resources/Settings-Environments.png)
-
-### 🎯 Ultimate Node.js Version Control
-More than just `npm install`. OmniPack dynamically pulls **Dist-Tags** from the cloud, allowing second-level switching and previewing between channels like `latest`, `beta`, or `rc`.
-
-![OmniPack Dependency Tree](./resources/SelectTag.png)
-
 ### 🪟 Windows Native WinGet Deep Integration (Windows Only)
 No need to launch a convoluted CLI or a cluttered third-party app store. OmniPack natively manages the built-in Windows Package Manager **WinGet**:
 - **Dual-Scope Scanning**: Separates system-wide global software (Machine scope) from user-specific software (User scope) for comprehensive app detection.
@@ -69,39 +69,22 @@ No need to launch a convoluted CLI or a cluttered third-party app store. OmniPac
 - **Ignore Updates with Blocking Pin**: Integrated with the native `winget pin` command. Toggle Blocking Pins on specific apps via a ⚙ button, showing a `[Pinned]` badge, and automatically skipping updates in the global "Outdated" filter.
 - **Intelligent Scope Fallback**: If an install or upgrade fails due to write permissions, locked folders, or path mismatch, OmniPack automatically attempts fallback installation with `--scope user` to ensure high success rates.
 
-### 🧭 Runtime Patch Awareness & Update
-OmniPack distinguishes **package updates** from **runtime updates**:
-- **Accurate runtime version display**: cards display Python/Node runtime version per environment, and Python venv cards prioritize `pyvenv.cfg` metadata to avoid being confused by a newly patched system interpreter.
-- **Patch update detection**: for Python (`3.14.x`) and Node (`25.x`), OmniPack checks the latest patch in the same cycle and shows `current -> latest` directly on cards.
-- **Dedicated runtime update action**: runtime update uses a separate card action (`Py` / `Nd`), while `⇧` remains **package update only**.
+### 🔒 Virtual Environment File-Lock Guard
+- **Silent File-Lock Diagnostics**: Detects if virtual environment upgrades (`python -m venv --upgrade`) fail due to locked executable files (`python.exe` occupied by IDEs, running scripts, or OmniPack itself). Intercepts console errors and warns the user with clear instructions, preventing environment corruption.
 
-### ✏️ Environment Renaming & Settings Editing (New in v14)
-Modify environment setups directly from the workspace view:
-- **ContextMenu Integration**: Right-click any Pip/Npm environment card header to select **"✏️ Rename Environment"** or **"⚙️ Edit Settings"**.
-- **Automatic Highlighting**: Selecting "Edit Settings" automatically opens the unified Settings Dialog and scrolls directly to focus on the selected environment row, shortening configuration workflows.
+### 🎨 Runtime Setup Guide UI
+- **Contextual Setup Prompts**: Displays a beautifully styled setup card (`RuntimeSetupWidget`) at the bottom of the scroll view when Pip, Npm, or WinGet panels have zero loaded environments, allowing users to trigger installation pipelines instantly.
 
-### 🚀 Winget Package Manager Self-Upgrade (New in v14)
-Audit and upgrade the Windows Package Manager (WinGet) executable itself:
-- **Version Display**: The exact version of the active `winget` binary (e.g. `Winget v1.9.25200`) is displayed directly on Machine/User cards.
-- **One-Click Upgrade**: If `Microsoft.AppInstaller` has an update available, a blinking **`Wg`** button and the upgrade path are shown. Clicking it prompts for confirmation and upgrades it via the interactive PTY console.
+### 🚀 High-Speed Engine: Native `uv` Power
+It's not just fast; it’s fast even in a GUI! OmniPack natively integrates Astral sh's acclaimed `uv` engine. Enjoy order-of-magnitude faster downloads and resolution compared to traditional pip.
 
-### 📋 Selectable Dialog Labels & Package Details Export (New in v14)
-- **Copyable Dialog Labels**: Injected a global Qt event filter making text labels inside all QMessageBox and QDialog windows selectable, facilitating error diagnostics.
-- **Copy Package Details**: Added a **"Copy Details"** button in package detail dialogs, allowing one-click export of Name, ID, Source, Versions, and Location to the system clipboard.
-
-### ⛑️ Safe Update Intelligence: Constraint-Aware & Safe Intermediates (Enhanced in v12)
-OmniPack knows which updates are **safe** and guides you through risk-free upgrades.
-- **Safe Intermediate Recommendation**: When a package's latest version violates a version constraint, OmniPack automatically searches the version history to find the highest available version that *does* satisfy the constraint. Such packages are highlighted with a **blue** indicator and can be safely updated in one click.
-- **Constraint-Aware Auto-Selection**: When "Outdated" is checked, packages that have *no* safe update path are **not auto-selected**. A visual `⚠` indicator explains why. Hovering over it details which upstream packages are imposing which specific version limits.
-- **Real-time File System Sync**: Built-in directory watcher. Whether you run install commands in a system terminal or the embedded PTY, the UI auto-detects the changes and refreshes itself, keeping state perfectly in sync with the physical disk.
-- **Build Variant Detection**: Automatically recognizes PEP 440 local version suffixes (`+cu132`, `+cpu`, `+rocm5.6`). If updating would switch your package between different hardware builds (CUDA → CPU), a `🔀` indicator warns you.
-
-![OmniPack Version Limits](./resources/VersionLimits.png)
-
-### ⚡ Compiler-Grade Performance: Smooth Native Experience
-Built with PySide6 and support for [Nuitka](https://nuitka.net/) compilation into a C++ level native single executable (`.exe` / ELF binary). It doesn't just respond instantly; it also supports one-click mirror source switching.
-
-![OmniPack Settings Sources](./resources/Settings-Sources.png)
+### 🛠️ Developer Experience & UI Polish (Secondary Features)
+- **Environment Renaming & Settings Editing**: Right-click any Pip/Npm environment card header to rename aliases or edit settings, with automatic line highlighting.
+- **Winget Package Manager Self-Upgrade**: Automatically displays the version of the `winget` binary and enables one-click upgrades via interactive PTY console.
+- **Zero-Friction Batch Environment Import**: Copy directories from File Explorer or Everything and paste them directly to bulk-import virtual environments.
+- **Copyable Dialog Labels & Package Details**: Injected a global event filter making QMessageBox and QDialog text copyable. Package configuration dialogs support one-click copy of name, ID, source, version, and location.
+- **Node.js Dist-Tags Switcher**: Secondary switching between NPM dist-tags (latest, beta, rc, etc.).
+- **Compiler-Grade Performance**: Supports compilation via Nuitka into a native single executable.
 
 ---
 

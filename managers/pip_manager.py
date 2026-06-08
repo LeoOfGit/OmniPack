@@ -85,7 +85,10 @@ def read_venv_cfg_version(py_exe: str) -> str:
                 key_norm = key.strip().lower()
                 if key_norm not in {"version", "version_info"}:
                     continue
-                parsed = parse_python_version(value.strip())
+                val_str = value.strip()
+                if not val_str.lower().startswith("python"):
+                    val_str = f"Python {val_str}"
+                parsed = parse_python_version(val_str)
                 if parsed:
                     return parsed
         # pyvenv.cfg exists but has no version/version_info key
@@ -836,7 +839,9 @@ class RuntimeUpdateWorker(BaseCmdWorker):
                 "system",
             )
 
-            commands, reason = build_python_runtime_update_command(self.env.type, self.env.path, cycle)
+            commands, reason = build_python_runtime_update_command(
+                self.env.type, self.env.path, cycle, self.target_version
+            )
             if not commands:
                 self.success = False
                 self.result_message = reason or "No runnable command for Python runtime update."
@@ -852,6 +857,19 @@ class RuntimeUpdateWorker(BaseCmdWorker):
                         self._log("Step 2/2: Upgrading virtual environment...", "system")
 
                 result = self._run_command(cmd, capture_output=True)
+
+                # Detect silent file-lock failures during venv upgrade
+                if "venv" in cmd and "--upgrade" in cmd:
+                    output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+                    if "Unable to copy" in output and "python.exe" in output:
+                        self.success = False
+                        self.result_message = (
+                            "Virtual environment update partially failed: 'python.exe' is locked by another process "
+                            "(e.g., your IDE, a running script, or OmniPack itself). "
+                            "Please close all programs using this environment and try again."
+                        )
+                        self._log(f"✗ {self.result_message}", "error")
+                        return
 
                 if not self.success:
                     if i == 0 and multi_step:

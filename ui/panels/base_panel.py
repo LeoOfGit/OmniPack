@@ -271,12 +271,12 @@ class BasePanel(QWidget):
         self.selection_checkbox.blockSignals(False)
 
     def _clear_env_card_widgets(self):
-        """Clear all env cards while keeping the add button and trailing stretch item."""
+        """Clear all env cards while keeping the add button, setup widget, and trailing stretch item."""
         to_delete = []
         for i in range(self.scroll_layout.count()):
             item = self.scroll_layout.itemAt(i)
             widget = item.widget()
-            if widget and widget != getattr(self, "add_env_btn", None):
+            if widget and widget != getattr(self, "add_env_btn", None) and widget != getattr(self, "setup_widget", None):
                 to_delete.append(widget)
         for w in to_delete:
             self.scroll_layout.removeWidget(w)

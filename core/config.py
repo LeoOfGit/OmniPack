@@ -40,6 +40,9 @@ class AppConfig:
     pip_scanned_once: bool = False
     npm_scanned_once: bool = False
 
+    # Debug / Testing
+    force_show_setup: bool = False
+
 
 class ConfigManager:
     def __init__(self):
@@ -73,6 +76,7 @@ class ConfigManager:
                 console_timestamp_enabled=data.get("console_timestamp_enabled", False),
                 console_mode=data.get("console_mode", "real_terminal"),
                 terminal_settings=data.get("terminal_settings", {}),
+                force_show_setup=data.get("force_show_setup", False),
             )
         except Exception as e:
             import time
