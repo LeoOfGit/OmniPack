@@ -279,12 +279,16 @@ class BaseEnvCard(QFrame):
         self._pkgs_loaded = True
         
         # Determine top-level packages
-        top_level_pkgs = [p for p in self.env.packages if getattr(p, "is_top_level", True) and not getattr(p, "is_missing", False)]
+        is_winget = getattr(self.env, "type", "") == "winget"
+        top_level_pkgs = [
+            p for p in self.env.packages 
+            if getattr(p, "is_top_level", True) and (is_winget or not getattr(p, "is_missing", False))
+        ]
         top_level_pkgs.sort(key=lambda p: (not p.has_update, p.name.lower()))
 
         if not top_level_pkgs:
             top_level_pkgs = sorted(
-                [p for p in self.env.packages if not getattr(p, "is_missing", False)],
+                [p for p in self.env.packages if (is_winget or not getattr(p, "is_missing", False))],
                 key=lambda p: (not p.has_update, p.name.lower())
             )
 
@@ -314,9 +318,13 @@ class BaseEnvCard(QFrame):
             self._summary_lbl.setText(f"  📊 {' · '.join(summary_parts)}")
             
     def update_summary_label(self):
-        top_level_pkgs = [p for p in self.env.packages if getattr(p, "is_top_level", True) and not getattr(p, "is_missing", False)]
+        is_winget = getattr(self.env, "type", "") == "winget"
+        top_level_pkgs = [
+            p for p in self.env.packages 
+            if getattr(p, "is_top_level", True) and (is_winget or not getattr(p, "is_missing", False))
+        ]
         if not top_level_pkgs:
-            top_level_pkgs = [p for p in self.env.packages if not getattr(p, "is_missing", False)]
+            top_level_pkgs = [p for p in self.env.packages if (is_winget or not getattr(p, "is_missing", False))]
         self._add_summary_label(top_level_pkgs)
 
 

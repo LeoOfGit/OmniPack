@@ -142,20 +142,41 @@ class PackageCard(QFrame):
 
         # Name
         display_name = pkg.metadata.get("display_name", pkg.name) if pkg.metadata else pkg.name
-        name_lbl = QLabel(display_name)
+        name_lbl = QLabel()
         name_lbl.setObjectName("PkgNameMissing" if pkg.is_missing else "PkgName")
         
         location = pkg.metadata.get("location") if pkg.metadata else None
         install_path = pkg.metadata.get("install_path") if pkg.metadata else None
+        env_type = str(getattr(self.env, "type", "") or "").lower() if self.env else ""
         
+        if env_type == "system" and location == "user":
+            name_lbl.setText(f"{display_name} <span style='color: #42A5F5; font-weight: bold;'>[user]</span>")
+        elif env_type == "system" and location == "system":
+            name_lbl.setText(f"{display_name} <span style='color: #FF9800; font-weight: bold;'>[sys]</span>")
+        elif env_type == "winget":
+            if location == "user":
+                name_lbl.setText(f"{display_name} <span style='color: #42A5F5; font-weight: bold;'>[user]</span>")
+            elif location == "system":
+                name_lbl.setText(f"{display_name} <span style='color: #FF9800; font-weight: bold;'>[sys]</span>")
+            elif location == "system_and_user":
+                name_lbl.setText(f"{display_name} <span style='color: #FF9800; font-weight: bold;'>[sys]</span> <span style='color: #42A5F5; font-weight: bold;'>[user]</span>")
+            else:
+                name_lbl.setText(display_name)
+        else:
+            name_lbl.setText(display_name)
+            
         if location == "user":
-            name_lbl.setStyleSheet("color: #ffb703; font-weight: bold;")
-            tooltip_text = "Installed in User site-packages"
+            tooltip_text = "Installed in User site-packages" if env_type != "winget" else "Installed in User scope"
             if install_path:
                 tooltip_text += f"\nPath: {install_path}"
             name_lbl.setToolTip(tooltip_text)
         elif location == "system":
-            tooltip_text = "Installed in System site-packages"
+            tooltip_text = "Installed in System site-packages" if env_type != "winget" else "Installed in Machine scope"
+            if install_path:
+                tooltip_text += f"\nPath: {install_path}"
+            name_lbl.setToolTip(tooltip_text)
+        elif location == "system_and_user":
+            tooltip_text = "Installed in Machine and User scopes"
             if install_path:
                 tooltip_text += f"\nPath: {install_path}"
             name_lbl.setToolTip(tooltip_text)
@@ -236,13 +257,22 @@ class PackageCard(QFrame):
 
         # Action Buttons
         if pkg.is_missing:
-            # Install button for missing deps
-            self.action_btn = QPushButton("+")
-            self.action_btn.setObjectName("ActionBtnInstall")
-            self.action_btn.setCursor(Qt.PointingHandCursor)
-            self.action_btn.setToolTip(f"Install {pkg.name}")
-            self.action_btn.clicked.connect(lambda: self.install_requested.emit(pkg.name))
-            row_layout.addWidget(self.action_btn)
+            # Install/Register button
+            if env_type == "winget" and location == "system":
+                self.action_btn = QPushButton("±")
+                self.action_btn.setObjectName("ActionBtnCompound")
+                self.action_btn.setStyleSheet("color: #FF9800; font-weight: bold; font-size: 11pt;")
+                self.action_btn.setCursor(Qt.PointingHandCursor)
+                self.action_btn.setToolTip("Click to select action (Register for user or Uninstall from system)")
+                self.action_btn.clicked.connect(self._on_compound_btn_clicked)
+                row_layout.addWidget(self.action_btn)
+            else:
+                self.action_btn = QPushButton("+")
+                self.action_btn.setObjectName("ActionBtnInstall")
+                self.action_btn.setCursor(Qt.PointingHandCursor)
+                self.action_btn.setToolTip(f"Install {pkg.name}")
+                self.action_btn.clicked.connect(lambda: self.install_requested.emit(self._action_target()))
+                row_layout.addWidget(self.action_btn)
         else:
             supports_config = bool((pkg.metadata or {}).get("supports_config")) or (pkg.metadata and "channels_available" in pkg.metadata)
             if supports_config:
@@ -302,11 +332,18 @@ class PackageCard(QFrame):
                 row_layout.addWidget(spacer)
 
             # Remove Button
+            non_removable = bool((pkg.metadata or {}).get("non_removable", False))
             rm_btn = QPushButton("-")
             rm_btn.setObjectName("ActionBtnRemove")
-            rm_btn.setCursor(Qt.PointingHandCursor)
-            rm_btn.setToolTip(f"Remove {pkg.name}")
-            rm_btn.clicked.connect(lambda: self.remove_requested.emit(self._action_target()))
+            
+            if env_type == "winget" and non_removable:
+                rm_btn.setEnabled(False)
+                rm_btn.setToolTip("This is a system protected application and cannot be uninstalled.")
+            else:
+                rm_btn.setCursor(Qt.PointingHandCursor)
+                rm_btn.setToolTip(f"Remove {pkg.name}")
+                rm_btn.clicked.connect(lambda: self.remove_requested.emit(self._action_target()))
+                
             row_layout.addWidget(rm_btn)
 
         # Removed main_layout.addWidget(row_widget)
@@ -376,9 +413,73 @@ class PackageCard(QFrame):
         metadata = getattr(self.pkg, "metadata", {}) or {}
         base_target = str(metadata.get("target_id", self.pkg.name))
         location = metadata.get("location")
+        version = str(self.pkg.version).strip()
+        
         if location:
-            return f"{base_target}:{location}"
-        return base_target
+            # If location is a physical path (e.g. C:\...), resolve it to a scope
+            if "\\" in location or "/" in location or ":" in location:
+                import os
+                user_profile = os.environ.get("USERPROFILE", "").lower()
+                if user_profile and location.lower().startswith(user_profile):
+                    location = "user"
+                elif "c:\\users\\" in location.lower():
+                    location = "user"
+                else:
+                    location = "system"
+        
+        parts = [base_target]
+        if location:
+            parts.append(location)
+            if version:
+                parts.append(version)
+        elif version:
+            parts.append("")  # empty location placeholder
+            parts.append(version)
+            
+        return ":".join(parts)
+
+    def _on_compound_btn_clicked(self):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1e1e24;
+                border: 1px solid #33333f;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+                color: #e0e0e0;
+            }
+            QMenu::item:selected {
+                background-color: #2a2a35;
+                color: #ffffff;
+            }
+        """)
+        
+        act_register = QAction("➕ Register for Current User", menu)
+        pkg_id = self.pkg.metadata.get("package_id", self.pkg.name)
+        act_register.triggered.connect(lambda: self.install_requested.emit(f"{pkg_id}:user"))
+        menu.addAction(act_register)
+        
+        non_removable = bool((self.pkg.metadata or {}).get("non_removable", False))
+        act_uninstall = QAction("❌ Uninstall from Machine (UAC)", menu)
+        if non_removable:
+            act_uninstall.setEnabled(False)
+            act_uninstall.setText("❌ Uninstall from Machine (System Protected)")
+        else:
+            act_uninstall.triggered.connect(lambda: self.remove_requested.emit(self._action_target()))
+        menu.addAction(act_uninstall)
+        
+        menu.addSeparator()
+        act_config = QAction("⚙ View Details / Configure", menu)
+        act_config.triggered.connect(lambda: self.config_requested.emit(self._action_target()))
+        menu.addAction(act_config)
+        
+        pos = self.action_btn.mapToGlobal(self.action_btn.rect().bottomLeft())
+        menu.exec(pos)
 
     def _toggle_children(self):
         """Toggle expand/collapse of child dependencies."""

@@ -63,8 +63,9 @@ OmniPack 能智能评估每个更新的安全性，并引导用户进行风险�
 
 ### 🪟 Windows 内置 WinGet 深度集成 (Windows 特有)
 无需打开复杂的命令行或第三方应用商店，OmniPack 原生纳管 Windows 内置包管理器 **WinGet**：
-- **双 Scope 独立扫描**：智能区分系统全局安装 (Machine) 与当前用户专属安装 (User) 的桌面应用程序。
-- **物理路径智能分配与去重**：自动读取 Windows 注册表并审计物理安装路径（如 `%USERPROFILE%`），将物理定位在用户目录下的软件智能重分配到 User 范围，消除重叠；若在双端同时存在，自动挂载 `[Also Installed In User/Machine]` 徽章避免重复。
+- **统一的应用管理与 Scope 智能标记**：合并原本独立的 Machine 与 User 环境卡片为统一的环境卡片，通过审计物理安装路径智能标注 `[sys]`（系统级）与 `[user]`（用户级）标签，当双端同时存在时并列展示双重标记。
+- **UWP/MSIX 备置包离线感知与一键重注册**：支持离线解析注册表与 WindowsApps 清单，感知系统已备置（Staged）但当前用户未注册的 UWP 应用，在 UI 中以 Missing 并标注 `[Staged]` 形式展现，并提供一键后台注册安装（Add-AppxPackage）。
+- **不可移除包安全拦截与经典 Win32 智能去重 (ARP Deduplication)**：自动探测并拦截系统核心受保护应用（如 App Installer, Edge, Store 等）的卸载按钮，同时基于 GUID 与哈希去重逻辑，完美消除传统注册表别名产生的重复条目。
 - **命令行等宽解析**：针对 WinGet 繁琐的控制台本地化表格输出，自研基于东亚宽字符宽度 padding 的等宽解析引擎，彻底解决空值列与列错位漂移的问题。
 - **锁定更新 (Blocking Pin)**：原生支持 `winget pin` 指令。可在 UI 中一键对特定应用开启 Blocking Pin，卡片展示 `[Pinned]` 徽章并在全局 "Outdated" 时阻止自动勾选，保护系统特定工具版本。
 - **智能 Scope 自动回退 (Scope Fallback)**：在升级或安装因目录占用、特权写入受阻时，后台自动 fallback 回退执行 `--scope user` 权限进行补救重试，最大程度保障部署成功。

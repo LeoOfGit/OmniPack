@@ -198,10 +198,10 @@ def parse_winget_table(output: str, mode: str = "") -> list[dict]:
     # If the column content is exactly the same width as the header, Winget may pad with only 1 space.
     # Therefore, we simply split by any whitespace for these modes to avoid merging columns like "Available Source".
     if mode in ("installed", "search"):
-        raw_matches = list(re.finditer(r"[^\s\x00]+", norm_header))
+        raw_matches = list(re.finditer(r"[^\s]+", norm_header))
     else:
         # Fallback for modes like "pin" where headers (e.g. "Pin type") contain spaces.
-        raw_matches = list(re.finditer(r"(?!\s)[^\s\x00].*?(?=\s{2,}|\Z)", norm_header))
+        raw_matches = list(re.finditer(r"(?!\s)[^\s].*?(?=\s{2,}|\Z)", norm_header))
         
     # Filter out spinner artifacts (e.g., `-`, `\`, `|`, `/`) by requiring at least one word character.
     col_matches = [m for m in raw_matches if re.search(r'\w', m.group(0))]
@@ -504,9 +504,17 @@ def _get_uninstall_map():
     return res
 
 def find_uninstall_location(package_name: str, package_id: str = "") -> str:
+    id_lower = str(package_id or "").strip().lower()
+    
+    # Check for UWP packages first to retrieve their dynamic WindowsApps staged/registered path
+    is_uwp = id_lower.startswith("msix\\") or id_lower == "microsoft.appinstaller"
+    if is_uwp:
+        manifest = find_uwp_manifest_path(package_id)
+        if manifest:
+            return os.path.dirname(manifest)
+
     un_map = _get_uninstall_map()
     name_lower = str(package_name or "").strip().lower()
-    id_lower = str(package_id or "").strip().lower()
     
     if name_lower in un_map:
         return un_map[name_lower]
@@ -555,3 +563,324 @@ def get_winget_version(winget_path: str = "") -> str:
     except Exception:
         pass
     return ""
+
+
+_NON_REMOVABLE_UWP_CACHE = None
+
+CORE_PROTECTED_UWP = {
+    "microsoft.windowsstore",
+    "microsoft.desktopappinstaller",
+    "microsoft.appinstaller",
+    "microsoft.microsoftedge",
+    "microsoft.microsoftedge.stable",
+    "microsoft.windows.shellexperiencehost",
+    "microsoft.windows.startmenuexperiencehost",
+    "windows.immersivecontrolpanel",
+    "microsoft.accountscontrol",
+    "microsoft.aad.brokerplugin",
+    "microsoft.bioenrollment",
+    "microsoft.creddialoghost",
+    "microsoft.windows.contentdeliverymanager",
+}
+
+def get_non_removable_uwp_packages() -> set:
+    """Query HKLM registry to read all system-protected, non-removable UWP packages without admin rights."""
+    global _NON_REMOVABLE_UWP_CACHE
+    if _NON_REMOVABLE_UWP_CACHE is not None:
+        return _NON_REMOVABLE_UWP_CACHE
+    
+    res = set()
+    registry_success = False
+    
+    try:
+        import winreg
+        path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications"
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path, access=winreg.KEY_READ)
+        idx = 0
+        while True:
+            try:
+                subkey_name = winreg.EnumKey(key, idx)
+                # subkey_name is PackageFullName like Microsoft.WindowsStore_22403.1401.9.0_x64__8wekyb3d8bbwe
+                with winreg.OpenKey(key, subkey_name, access=winreg.KEY_READ) as sub:
+                    try:
+                        non_rem, _ = winreg.QueryValueEx(sub, "NonRemovable")
+                        if non_rem == 1:
+                            parts = subkey_name.split("_")
+                            if parts:
+                                res.add(parts[0].lower())
+                    except OSError:
+                        pass
+                idx += 1
+            except OSError:
+                break
+        winreg.CloseKey(key)
+        registry_success = True
+    except Exception:
+        pass
+        
+    # Fallback to hardcoded list if registry query couldn't be executed at all or returned empty
+    if not registry_success or not res:
+        res = set(CORE_PROTECTED_UWP)
+        
+    _NON_REMOVABLE_UWP_CACHE = res
+    return res
+
+
+UWP_FRIENDLY_NAMES = {
+    "microsoft.windowsstore": "Microsoft Store",
+    "microsoft.windowscamera": "Windows Camera",
+    "microsoft.windows.photos": "Microsoft Photos",
+    "microsoft.paint": "Paint",
+    "microsoft.windowscalculator": "Windows Calculator",
+    "microsoft.screensketch": "Snipping Tool",
+    "microsoft.microsoftstickynotes": "Microsoft Sticky Notes",
+    "microsoft.xboxgamingoverlay": "Game Bar",
+    "microsoft.xboxspeechtotextoverlay": "Game Speech Window",
+    "microsoft.yourphone": "Phone Link",
+    "microsoft.todos": "Microsoft To Do",
+    "microsoft.powerautomatedesktop": "Power Automate",
+    "microsoft.people": "Microsoft People",
+    "microsoft.gethelp": "Get Help",
+    "microsoft.gamingapp": "Xbox",
+    "microsoft.bingweather": "Weather",
+    "microsoft.bingnews": "News",
+    "microsoft.copilot": "Microsoft Copilot",
+    "microsoft.desktopappinstaller": "App Installer",
+    "microsoft.windowsappruntime.cbs.1.8": "Windows App Runtime 1.8",
+    "microsoft.windowsappruntime.cbs.1.6": "Windows App Runtime 1.6",
+    "microsoft.windows.devhome": "Dev Home",
+    "clipchamp.clipchamp": "Clipchamp",
+    "msteams": "Microsoft Teams",
+    "microsoft.zunevideo": "Movies & TV",
+    "microsoft.zunemusic": "Media Player",
+    "microsoft.windowsfeedbackhub": "Feedback Hub",
+    "microsoft.windowsmaps": "Windows Maps",
+    "microsoft.skypeapp": "Skype",
+    "microsoft.onenote": "OneNote",
+    "microsoft.office.onenote": "OneNote for Windows 10",
+    "microsoft.3dbuilder": "3D Builder",
+    "microsoft.microsoftsolitairecollection": "Microsoft Solitaire Collection",
+}
+
+CONSUMER_UWP_WHITELIST = set(UWP_FRIENDLY_NAMES.keys())
+
+
+def detect_uwp_package_info(pkg_base_name: str, manifest_path: Optional[str]) -> tuple[bool, Optional[str]]:
+    """Determine if a UWP package is a user-facing application and get its DisplayName.
+    Returns (is_user_facing_app, display_name)."""
+    import xml.etree.ElementTree as ET
+    
+    base_lower = pkg_base_name.lower()
+    
+    # Fallback/whitelist values
+    fallback_name = UWP_FRIENDLY_NAMES.get(base_lower)
+    is_whitelisted = base_lower in CONSUMER_UWP_WHITELIST
+    
+    if not manifest_path or not os.path.exists(manifest_path):
+        return is_whitelisted, fallback_name
+        
+    manifest_lower = manifest_path.lower()
+    if manifest_lower.startswith("c:\\windows") or "\\systemapps\\" in manifest_lower:
+        return False, fallback_name
+
+    try:
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        ns = root.tag.split('}')[0] + '}' if '}' in root.tag else ''
+        
+        is_app = False
+        display_name = None
+        
+        if "Bundle" in root.tag:
+            packages_elem = root.find(f"./{ns}Packages")
+            if packages_elem is not None:
+                packages = packages_elem.findall(f"./{ns}Package")
+                for p in packages:
+                    if p.attrib.get('Type') == 'application':
+                        is_app = True
+                        break
+        else:
+            apps_elem = root.find(f"./{ns}Applications")
+            if apps_elem is not None:
+                apps = apps_elem.findall(f"./{ns}Application")
+                if len(apps) > 0:
+                    is_app = True
+
+        # Try to read DisplayName from manifest
+        props = root.find(f"./{ns}Properties")
+        if props is not None:
+            disp_elem = props.find(f"./{ns}DisplayName")
+            if disp_elem is not None and disp_elem.text:
+                text = disp_elem.text.strip()
+                if text and not text.startswith("ms-resource:"):
+                    display_name = text
+
+        # Final decision on is_app
+        final_is_app = is_app or is_whitelisted
+        
+        # Determine display name: use manifest plain text name, or fallback, or format base name
+        final_name = display_name or fallback_name
+        if not final_name:
+            # Capitalize base name words nicely: e.g. "microsoft.windowscamera" -> "Windows Camera"
+            clean_base = pkg_base_name
+            if clean_base.lower().startswith("microsoft."):
+                clean_base = clean_base[10:]
+            words = clean_base.replace(".", " ").replace("_", " ").split()
+            final_name = " ".join(w.capitalize() for w in words)
+            
+        return final_is_app, final_name
+    except Exception:
+        return is_whitelisted, fallback_name
+
+
+_UWP_REG_PATHS = [
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\InboxApplications",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Staged",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Frameworks",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\ResourcePackages",
+]
+
+
+def get_provisioned_uwp_packages(include_all: bool = False) -> dict:
+    """Read all provisioned/staged UWP applications from HKLM registry to persist [sys] state even after user unregistration."""
+    res = {}
+    
+    # Pre-seed res with friendly names of default consumer packages as fallback
+    for base_lower, friendly_name in UWP_FRIENDLY_NAMES.items():
+        winget_id = f"MSIX\\{base_lower}"
+        res[winget_id.lower()] = {
+            "name": friendly_name,
+            "source": "msstore"
+        }
+        
+    try:
+        import winreg
+    except ImportError:
+        return res
+        
+    # Build a lookup map of base_name -> manifest_path in one pass
+    manifest_map = {}
+    path_apps = r"C:\Program Files\WindowsApps"
+    
+    for reg_path in _UWP_REG_PATHS:
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path, access=winreg.KEY_READ)
+            idx = 0
+            while True:
+                try:
+                    subkey_name = winreg.EnumKey(key, idx)
+                    subkey_lower = subkey_name.lower()
+                    parts = subkey_lower.split("_")
+                    if parts:
+                        base = parts[0]
+                        path_val = None
+                        try:
+                            with winreg.OpenKey(key, subkey_name, access=winreg.KEY_READ) as sub:
+                                path_val, _ = winreg.QueryValueEx(sub, "Path")
+                        except OSError:
+                            pass
+                            
+                        if path_val:
+                            manifest_map[base] = path_val
+                        elif base not in manifest_map:
+                            # Construct path
+                            constructed = os.path.join(path_apps, subkey_name, "AppxManifest.xml")
+                            manifest_map[base] = constructed
+                    idx += 1
+                except OSError:
+                    break
+            winreg.CloseKey(key)
+        except OSError:
+            pass
+
+    # Now for each base, detect info
+    for base, manifest_path in manifest_map.items():
+        is_app, disp_name = detect_uwp_package_info(base, manifest_path)
+        if include_all or is_app:
+            winget_id = f"MSIX\\{base}"
+            res[winget_id.lower()] = {
+                "name": disp_name or UWP_FRIENDLY_NAMES.get(base, base),
+                "source": "msstore"
+            }
+            
+    return res
+
+
+def find_uwp_manifest_path(pkg_id: str) -> Optional[str]:
+    """Find the AppxManifest.xml absolute path for a staged UWP package by its ID."""
+    clean_id = str(pkg_id or "").strip().lower()
+    if clean_id.startswith("msix\\"):
+        clean_id = clean_id[5:]
+    if clean_id == "microsoft.appinstaller":
+        clean_id = "microsoft.desktopappinstaller"
+    
+    # Extract base name to do a case-insensitive prefix match (e.g. "microsoft.windowscamera")
+    base_name = clean_id.split("_")[0]
+    path_apps = r"C:\Program Files\WindowsApps"
+    
+    # Strategy 1: Attempt direct WindowsApps folder scanning (if running elevated/accessible)
+    try:
+        if os.path.exists(path_apps):
+            for entry in os.listdir(path_apps):
+                entry_lower = entry.lower()
+                if entry_lower.startswith(base_name + "_") or entry_lower == base_name:
+                    manifest = os.path.join(path_apps, entry, "AppxManifest.xml")
+                    if os.path.exists(manifest):
+                        return manifest
+    except Exception:
+        pass
+        
+    # Strategy 2: Extract PackageFullName from registry (readable by non-admins)
+    import winreg
+    for reg_path in _UWP_REG_PATHS:
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path, access=winreg.KEY_READ)
+            idx = 0
+            while True:
+                try:
+                    subkey_name = winreg.EnumKey(key, idx)
+                    subkey_lower = subkey_name.lower()
+                    if subkey_lower.startswith(base_name + "_") or subkey_lower.split("_")[0] == base_name:
+                        # Try to read the "Path" value inside the subkey first
+                        try:
+                            with winreg.OpenKey(key, subkey_name, access=winreg.KEY_READ) as sub:
+                                path_val, _ = winreg.QueryValueEx(sub, "Path")
+                                if path_val:
+                                    if path_val.lower().endswith(".xml"):
+                                        return path_val
+                                    else:
+                                        return os.path.join(path_val, "AppxManifest.xml")
+                        except OSError:
+                            pass
+                        
+                        # Fallback to hardcoded C:\Program Files\WindowsApps path
+                        manifest = os.path.join(path_apps, subkey_name, "AppxManifest.xml")
+                        # Even if exists check fails due to permissions, return it since PowerShell has access
+                        return manifest
+                    idx += 1
+                except OSError:
+                    break
+            winreg.CloseKey(key)
+        except Exception:
+            pass
+            
+    # Strategy 3: Query using PowerShell Get-AppxProvisionedPackage (non-elevated fallback)
+    import subprocess
+    try:
+        keyword = base_name.split(".")[-1]
+        cmd = [
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+            f"Get-AppxProvisionedPackage -Online | Where-Object {{$_.DisplayName -like '*{keyword}*' -or $_.PackageName -like '*{keyword}*'}} | Select-Object -ExpandProperty InstallLocation"
+        ]
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        if out:
+            lines = [line.strip() for line in out.splitlines() if line.strip()]
+            if lines:
+                manifest = os.path.join(lines[0], "AppxManifest.xml")
+                return manifest
+    except Exception:
+        pass
+        
+    return None
+

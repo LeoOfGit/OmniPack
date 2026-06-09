@@ -63,8 +63,9 @@ Break free from the command-line’s flat list black box.
 
 ### 🪟 Windows Native WinGet Deep Integration (Windows Only)
 No need to launch a convoluted CLI or a cluttered third-party app store. OmniPack natively manages the built-in Windows Package Manager **WinGet**:
-- **Dual-Scope Scanning**: Separates system-wide global software (Machine scope) from user-specific software (User scope) for comprehensive app detection.
-- **Smart Path Redistribution & De-duplication**: Automatically parses Windows registry and audits physical install paths (e.g. `%USERPROFILE%`). User-installed apps are intelligently relocated from Machine to User scopes to eliminate overlap; double-installed apps display a `[Also Installed In User/Machine]` badge.
+- **Unified App Management & Scope Tagging**: Merges separate Machine and User environment cards into a single "Applications" environment, dynamically auditing physical install paths to display `[sys]` (system) and `[user]` (user) badges directly on package cards (or both when co-existing).
+- **Staged UWP/MSIX App Detection & Local Re-registration**: Offline scans the registry and `AppxManifest.xml` manifests to detect system-provisioned (Staged) but unregistered UWP applications, listing them as missing with a `[Staged]` tag and providing one-click background user-scope registration (`Add-AppxPackage`).
+- **Non-Removable Safeguards & Win32 ARP Deduplication**: Automatically locks uninstall actions for critical protected system apps (like App Installer, Microsoft Store, and Edge) and uses GUID validations alongside name/version hashing to eliminate duplicate Win32 entries from overlapping registry paths.
 - **Fixed-Width Column Slicing Console Parser**: Built with an East-Asian character-rendering width-padding calculation engine, making the table parser completely immune to column merging, empty values, or language-specific localized formatting.
 - **Ignore Updates with Blocking Pin**: Integrated with the native `winget pin` command. Toggle Blocking Pins on specific apps via a ⚙ button, showing a `[Pinned]` badge, and automatically skipping updates in the global "Outdated" filter.
 - **Intelligent Scope Fallback**: If an install or upgrade fails due to write permissions, locked folders, or path mismatch, OmniPack automatically attempts fallback installation with `--scope user` to ensure high success rates.

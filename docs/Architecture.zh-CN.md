@@ -8,7 +8,7 @@
 2. **环境中心化 (Environment-Centric)**：所有的包管理逻辑均围绕“环境”展开。
    - **Python (Pip)**：管理系统 Python 环境和用户定义的虚拟环境 (venv)。
    - **NPM (Node)**：管理全局环境 (Global) 和用户定义的项目环境 (Local Projects)。
-   - **WinGet (Windows)**：管理 Windows 操作系统的全局应用 (Machine) 和用户应用 (User)。
+   - **WinGet (Windows)**：管理 Windows 操作系统的应用程序（合并为统一环境展示，支持系统级与用户级 Scope 标记与混合纳管）。
 3. **架构对称性与环境大一统 (Symmetry & Unification)**：Pip、NPM 与 WinGet 模块在代码结构、逻辑流、数据模型和 UI 表现上必须保持高度对称。
    - **命名规范**: 遵循 `Subsystem -> Manager -> Panel -> Card` 的命名链路。
    - **环境同权**: 所有自动发现或手动添加的环境在配置文件中均作为等价项处理。程序仅在首次启动时推荐环境。用户拥有对所有环境（包括自动扫描出的）进行重命名、排序和永久删除的绝对权力。
@@ -54,7 +54,7 @@
 ### /managers - 业务逻辑执行引擎
 - `managers/pip_manager.py`、`managers/npm_manager.py` & `managers/winget_manager.py` - 子系统特定业务实现。提供异步扫描、命令生成与 Worker 通信。
   - `pip_manager.py` 支持 user site-packages 的双路径并发扫描、无管理员特权 Fallback 降级，以及 **虚拟环境升级文件锁冲突防御**（检测 `python.exe` 锁定并抛出精准提示）。
-  - `winget_manager.py` 实现了包管理器自身（App Installer）升级可用性检测、系统及用户 Scope 包去重和架构标识提取。
+  - `winget_manager.py` 实现了包管理器自身（App Installer）升级检测、经典 Win32 软件智能去重、系统受保护应用（不可卸载）识别，以及 UWP 备置（Staged）应用的离线发现与提取。
 - `managers/base_worker.py` - **共享 Worker 核心**。封装 QThread 的通用逻辑，处理 stdout/stderr 流拦截、ANSI 染色解析和进度状态上报。
 
 ### /ui - 图形界面组件

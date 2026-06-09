@@ -314,36 +314,7 @@ class WingetPanel(BasePanel):
         self._emit_status_counts(self.winget_mgr.environments)
 
     def _refresh_duplicate_markers(self):
-        package_scopes = {}
-        for env in self.winget_mgr.environments:
-            env_scope = str(getattr(env, "type", "") or "").lower()
-            for pkg in getattr(env, "packages", []) or []:
-                metadata = getattr(pkg, "metadata", {}) or {}
-                package_id = str(metadata.get("package_id", "") or metadata.get("target_id", "") or pkg.name).strip().lower()
-                if package_id:
-                    package_scopes.setdefault(package_id, set()).add(env_scope)
-
-        for env in self.winget_mgr.environments:
-            env_scope = str(getattr(env, "type", "") or "").lower()
-            other_scope = "user" if env_scope == "machine" else "machine"
-            for pkg in getattr(env, "packages", []) or []:
-                metadata = getattr(pkg, "metadata", {}) or {}
-                package_id = str(metadata.get("package_id", "") or metadata.get("target_id", "") or pkg.name).strip().lower()
-                badges = [
-                    badge for badge in metadata.get("badges", [])
-                    if "[Also Installed In " not in str(badge)
-                ]
-                scopes = package_scopes.get(package_id, set())
-                if env_scope in scopes and other_scope in scopes:
-                    label = "User" if other_scope == "user" else "Machine"
-                    badges.append({
-                        "text": f"[Also Installed In {label}]",
-                        "tooltip": f"This package also appears in the {label.lower()} scope.",
-                    })
-                    metadata["duplicate_scope"] = other_scope
-                else:
-                    metadata["duplicate_scope"] = ""
-                metadata["badges"] = badges
+        pass
 
     def _get_env(self, env_path: str):
         return self._find_env_by_path(self.winget_mgr.environments, env_path)
@@ -352,7 +323,13 @@ class WingetPanel(BasePanel):
         target = str(target or "").strip()
         if not env or not target:
             return None
-        target_norm = target.lower()
+        
+        parts = target.split(":")
+        clean_target = parts[0]
+        location = parts[1] if len(parts) > 1 else None
+        version = parts[2] if len(parts) > 2 else None
+        
+        target_norm = clean_target.lower()
         for pkg in getattr(env, "packages", []):
             metadata = getattr(pkg, "metadata", {}) or {}
             candidates = {
@@ -362,6 +339,25 @@ class WingetPanel(BasePanel):
             }
             candidates.discard("")
             if target_norm in candidates:
+                # Match version if specified
+                if version and str(pkg.version).strip() != version:
+                    continue
+                # Match location scope if specified
+                if location and location in {"user", "system"}:
+                    pkg_loc = metadata.get("location")
+                    if pkg_loc:
+                        pkg_scope = pkg_loc
+                        if "\\" in pkg_loc or "/" in pkg_loc or ":" in pkg_loc:
+                            import os
+                            user_profile = os.environ.get("USERPROFILE", "").lower()
+                            if user_profile and pkg_loc.lower().startswith(user_profile):
+                                pkg_scope = "user"
+                            elif "c:\\users\\" in pkg_loc.lower():
+                                pkg_scope = "user"
+                            else:
+                                pkg_scope = "system"
+                        if pkg_scope != location:
+                            continue
                 return pkg
         return None
 
@@ -499,33 +495,44 @@ class WingetPanel(BasePanel):
             return
 
         metadata = getattr(pkg, "metadata", {}) or {}
+        if getattr(pkg, "is_missing", False):
+            metadata["pin_state_known"] = True
+            metadata["pinned_blocking"] = False
+
         if metadata.get("pin_state_known", False):
             self._open_package_config_dialog(env, pkg)
             return
 
-        self._pin_refresh_targets.add((env.path, str(metadata.get("package_id", "")).strip() or pkg.name))
+        pkg_id = str(metadata.get("package_id", "")).strip() or pkg.name
+        self._pin_refresh_targets.add((env.path, package_target))
         self._log(f"Querying pin state for {pkg.name}...", "system")
-        self.winget_mgr.query_pin_state(env, str(metadata.get("package_id", "")).strip() or pkg.name)
+        self.winget_mgr.query_pin_state(env, pkg_id)
 
     def _on_pin_state_ready(self, env_path: str, package_id: str, is_pinned: bool):
         env = self._get_env(env_path)
-        pkg = self._find_package(env, package_id)
-        if not env or not pkg:
+        if not env:
             return
-        metadata = getattr(pkg, "metadata", {}) or {}
-        metadata["pin_state_known"] = True
-        metadata["pinned_blocking"] = is_pinned
-        metadata["can_update"] = not is_pinned
-        metadata["update_blocked_reason"] = "Pinned by winget" if is_pinned else ""
-        badges = [badge for badge in metadata.get("badges", []) if "[Pinned]" not in str(badge)]
-        if is_pinned:
-            badges.append({"text": "[Pinned]", "tooltip": "Update is blocked by a winget pin."})
-        metadata["badges"] = badges
 
-        target = (env.path, package_id)
-        if target in self._pin_refresh_targets:
-            self._pin_refresh_targets.discard(target)
-            self._open_package_config_dialog(env, pkg)
+        # Find all pending targets for this package_id and open their dialogs
+        for target in list(self._pin_refresh_targets):
+            t_env_path, t_pkg_target = target
+            if t_env_path == env_path:
+                t_pkg_id = t_pkg_target.split(":", 1)[0]
+                if t_pkg_id.lower() == package_id.lower():
+                    self._pin_refresh_targets.discard(target)
+                    pkg = self._find_package(env, t_pkg_target)
+                    if pkg:
+                        metadata = getattr(pkg, "metadata", {}) or {}
+                        metadata["pin_state_known"] = True
+                        metadata["pinned_blocking"] = is_pinned
+                        metadata["can_update"] = not is_pinned
+                        metadata["update_blocked_reason"] = "Pinned by winget" if is_pinned else ""
+                        badges = [badge for badge in metadata.get("badges", []) if "[Pinned]" not in str(badge)]
+                        if is_pinned:
+                            badges.append({"text": "[Pinned]", "tooltip": "Update is blocked by a winget pin."})
+                        metadata["badges"] = badges
+
+                        self._open_package_config_dialog(env, pkg)
 
     @staticmethod
     def _find_uninstall_location(package_name: str, package_id: str = "") -> str:
@@ -549,7 +556,8 @@ class WingetPanel(BasePanel):
         form.addRow("Name:", QLabel(pkg.name))
         form.addRow("ID:", QLabel(package_id))
         form.addRow("Source:", QLabel(source_name))
-        form.addRow("Installed:", QLabel(pkg.version))
+        inst_ver = "Not Installed" if getattr(pkg, "is_missing", False) else pkg.version
+        form.addRow("Installed:", QLabel(inst_ver))
         form.addRow("Available:", QLabel(pkg.latest_version or "-"))
         if install_location:
             loc_lbl = QLabel(install_location)
@@ -570,6 +578,9 @@ class WingetPanel(BasePanel):
 
         pin_check = QCheckBox("Ignore updates for this application (winget blocking pin)")
         pin_check.setChecked(is_pinned)
+        if getattr(pkg, "is_missing", False):
+            pin_check.setEnabled(False)
+            pin_check.setToolTip("Cannot ignore updates for an application that is not installed.")
         layout.addWidget(pin_check)
 
         if is_pinned and pkg.latest_version:
@@ -587,7 +598,7 @@ class WingetPanel(BasePanel):
                 f"Name: {pkg.name}",
                 f"ID: {package_id}",
                 f"Source: {source_name}",
-                f"Installed: {pkg.version}",
+                f"Installed: {inst_ver}",
                 f"Available: {pkg.latest_version or '-'}"
             ]
             if install_location:

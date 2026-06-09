@@ -32,7 +32,6 @@ def _winget_settings_snapshot(config_mgr) -> dict:
         "winget_path": str(settings.get("winget_path", "") or "").strip(),
     }
 
-
 class WingetScanWorker(BaseCmdWorker):
     env_scanned = Signal(Environment)
 
@@ -145,9 +144,48 @@ class WingetScanWorker(BaseCmdWorker):
             else:
                 self.env.runtime_has_update = False
 
+            from core.winget_helpers import get_non_removable_uwp_packages, get_provisioned_uwp_packages
+            provisioned_map = get_provisioned_uwp_packages(include_all=False)
+            all_staged_map = get_provisioned_uwp_packages(include_all=True)
+            non_rem_sets = get_non_removable_uwp_packages()
+
             packages = []
             package_map = {}
             seen_keys = set()
+            user_profile = os.environ.get("USERPROFILE", "").lower()
+            scanned_uwp_ids = set()
+            installed_uwp_families = set()
+            installed_uwp_details = {}
+            installed_uwp_non_removable = set()
+            seen_arp_keys = set()
+            try:
+                import subprocess
+                cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Get-AppxPackage | ForEach-Object { '{0};{1};{2};{3}' -f $_.PackageFamilyName, $_.NonRemovable, $_.Version, $_.InstallLocation }"]
+                out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+                for line in out.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if ";" in line:
+                        parts = line.split(";")
+                        if len(parts) >= 4:
+                            family = parts[0].strip().lower()
+                            non_rem_val = parts[1].strip().lower()
+                            ver_val = parts[2].strip()
+                            loc_val = parts[3].strip()
+                            if family:
+                                installed_uwp_families.add(family)
+                                installed_uwp_details[family] = {
+                                    "version": ver_val,
+                                    "location": loc_val,
+                                    "non_removable": non_rem_val in ("true", "1")
+                                }
+                                if non_rem_val in ("true", "1"):
+                                    installed_uwp_non_removable.add(family)
+            except Exception:
+                pass
+
+
             for row in installed_rows:
                 pkg_name = str(row.get("name", "")).strip()
                 pkg_id = str(row.get("id", "")).strip()
@@ -223,18 +261,104 @@ class WingetScanWorker(BaseCmdWorker):
                 if newer_than_server:
                     badges.append({"text": "[⚠ Newer]", "tooltip": "Installed version is newer than the winget registry. Downgrading is not recommended."})
 
-                # Distinguish MSIX vs traditional Registry (Win32) installations
-                if pkg_id.upper().startswith("MSIX\\"):
+                # Determine scope / location (system vs user)
+                loc = find_uninstall_location(pkg_name, pkg_id)
+                
+                # ARP Deduplication: prevent showing duplicate classic Win32 apps due to registry aliases
+                is_arp = pkg_id.upper().startswith("ARP\\") or not source_name
+                if is_arp:
+                    import re
+                    # Look for GUID in ID or Location
+                    guid_match = re.search(r'\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}', pkg_id + "|" + loc)
+                    guid = guid_match.group(0).lower() if guid_match else None
+                    if guid:
+                        arp_dedup_key = f"guid:{guid}"
+                    else:
+                        clean_name = pkg_name.lower().replace(" (x64)", "").replace(" (x86)", "").replace(" (arm64)", "").strip()
+                        arp_dedup_key = f"name:{clean_name}|ver:{current_version}"
+                    
+                    if arp_dedup_key in seen_arp_keys:
+                        continue
+                    seen_arp_keys.add(arp_dedup_key)
+
+                location = "system"
+                
+                # Check if UWP / MSIX
+                is_uwp = pkg_id.upper().startswith("MSIX\\") or pkg_id.lower() == "microsoft.appinstaller"
+                if is_uwp:
                     badges.append({"text": "[MSIX]", "tooltip": "Modern App Package (MSIX/Appx)"})
-                elif pkg_id.upper().startswith("ARP\\"):
-                    badges.append({"text": "[Win32]", "tooltip": "Classic Desktop App (Registry)"})
+                    
+                    pkg_id_lower = pkg_id.lower()
+                    if pkg_id_lower.startswith("msix\\"):
+                        parts = pkg_id_lower[5:].split("_")
+                        base_name = parts[0] if parts else ""
+                    else:
+                        base_name = pkg_id_lower
+                        
+                    if base_name == "microsoft.appinstaller":
+                        base_name = "microsoft.desktopappinstaller"
+                        
+                    match_key = f"msix\\{base_name}"
+                    
+                    scanned_uwp_ids.add(match_key)
+                    
+                    if (pkg_id_lower in all_staged_map) or (match_key in all_staged_map):
+                        # UWP registered for user AND provisioned in system HKLM
+                        location = "system_and_user"
+                    else:
+                        location = "user"
+                else:
+                    if pkg_id.upper().startswith("ARP\\"):
+                        badges.append({"text": "[Win32]", "tooltip": "Classic Desktop App (Registry)"})
+                    
+                    # Traditional apps location check
+                    if loc:
+                        loc_lower = loc.lower()
+                        if "\\package cache\\" in loc_lower:
+                            location = "system"
+                        elif user_profile and loc_lower.startswith(user_profile):
+                            location = "user"
+                        elif loc_lower.startswith("c:\\users\\"):
+                            location = "user"
+                        else:
+                            location = "system"
+
+                # Check if it is Python and physically in Program Files, treat it as a system installation
+                is_system_python = False
+                if "python.python.3.13" in pkg_id.lower() and os.path.exists("C:\\Program Files\\Python313"):
+                    is_system_python = True
+                elif "python.python.3.14" in pkg_id.lower() and os.path.exists("C:\\Program Files\\Python314"):
+                    is_system_python = True
+                if is_system_python:
+                    location = "system"
+
+                non_removable = False
+                pkg_id_lower = pkg_id.lower()
+                if is_uwp:
+                    parts = pkg_id_lower[5:].split("_")
+                    clean_id = parts[0] if parts else pkg_id_lower[5:]
+                    family_lower = pkg_id_lower[5:]
+                    
+                    if (clean_id in non_rem_sets or 
+                        family_lower in installed_uwp_non_removable or 
+                        clean_id in installed_uwp_non_removable):
+                        non_removable = True
+                else:
+                    clean_id = pkg_id_lower
+                    if clean_id in non_rem_sets:
+                        non_removable = True
+                
+                # Fallback check for winget core management packages
+                if any(core_id in pkg_id_lower for core_id in {"microsoft.appinstaller", "microsoft.desktopappinstaller"}):
+                    non_removable = True
 
                 metadata = {
                     "manager": "winget",
                     "target_id": pkg_id or pkg_name,
                     "package_id": pkg_id,
-                    "scope": self.env.type,
-                    "installed_scope": self.env.type,
+                    "scope": location,
+                    "installed_scope": location,
+                    "location": location,
                     "source": source_name,
                     "display_name": f"{prefix_html} {pkg_name or pkg_id}",
                     "search_text": " ".join(part for part in [prefix_code, pkg_id, source_name, current_version, latest_version] if part),
@@ -245,6 +369,7 @@ class WingetScanWorker(BaseCmdWorker):
                     "pinned_blocking": has_blocking_pin,
                     "pin_state_known": has_blocking_pin,
                     "newer_than_server": newer_than_server,
+                    "non_removable": non_removable,
                 }
                 description_parts = []
                 if pkg_id:
@@ -263,6 +388,120 @@ class WingetScanWorker(BaseCmdWorker):
                 )
                 packages.append(pkg)
                 package_map[pkg.norm_name] = pkg
+
+            # Inject provisioned UWP applications that remain on the system (both installed and staged)
+            for cached_id, cached_info in provisioned_map.items():
+                if cached_id in scanned_uwp_ids:
+                    # Already handled in winget list
+                    continue
+                    
+                basename = cached_id[5:] if cached_id.startswith("msix\\") else cached_id
+                
+                # Check if it is currently registered (installed) for the user
+                is_installed = False
+                matched_family = None
+                for family in installed_uwp_families:
+                    if family.startswith(basename + "_") or family == basename:
+                        is_installed = True
+                        matched_family = family
+                        break
+                        
+                name = cached_info["name"]
+                source_name = cached_info["source"]
+                s_lower = str(source_name or "").strip().lower()
+                if s_lower == "winget":
+                    prefix_code = "[w]"
+                    prefix_html = '<span style="color: #29b6f6; font-weight: bold;">[W]</span>'
+                elif s_lower == "msstore":
+                    prefix_code = "[s]"
+                    prefix_html = '<span style="color: #66bb6a; font-weight: bold;">[S]</span>'
+                else:
+                    prefix_code = "[l]"
+                    prefix_html = '<span style="color: #ffa726; font-weight: bold;">[L]</span>'
+                
+                if is_installed:
+                    # It is installed, but winget list missed it. Add it as installed.
+                    details = installed_uwp_details.get(matched_family, {})
+                    version = details.get("version", "") or "?"
+                    loc = details.get("location", "")
+                    non_removable = details.get("non_removable", False)
+                    
+                    # If loc is empty, fallback to finding it
+                    if not loc:
+                        from core.winget_helpers import find_uwp_manifest_path
+                        manifest = find_uwp_manifest_path(cached_id)
+                        if manifest:
+                            loc = os.path.dirname(manifest)
+                    
+                    badges = [{"text": "[MSIX]", "tooltip": "Modern App Package (MSIX/Appx)"}]
+                    if source_name and not is_default_source(source_name):
+                        badges.append({"text": f"[{source_name}]", "tooltip": f"Source: {source_name}"})
+
+                    metadata = {
+                        "manager": "winget",
+                        "target_id": cached_id,
+                        "package_id": cached_id,
+                        "scope": "system",
+                        "installed_scope": "system",
+                        "location": loc or "system",
+                        "source": source_name,
+                        "display_name": f"{prefix_html} {name}",
+                        "search_text": " ".join(part for part in [prefix_code, cached_id, source_name, version] if part),
+                        "badges": badges,
+                        "supports_config": True,
+                        "can_update": False,
+                        "newer_than_server": False,
+                        "non_removable": non_removable,
+                    }
+                    
+                    pkg = Package(
+                        name=name,
+                        version=version,
+                        latest_version="",
+                        description=cached_id,
+                        has_update=False,
+                        is_missing=False,
+                        metadata=metadata,
+                    )
+                    packages.append(pkg)
+                    package_map[pkg.norm_name] = pkg
+                else:
+                    # Not installed (Staged state)
+                    badges = [
+                        {"text": "[MSIX]", "tooltip": "Modern App Package (MSIX/Appx)"},
+                        {"text": "[Staged]", "tooltip": "Provisioned in system but not registered for you."}
+                    ]
+                    if source_name and not is_default_source(source_name):
+                        badges.append({"text": f"[{source_name}]", "tooltip": f"Source: {source_name}"})
+
+                    metadata = {
+                        "manager": "winget",
+                        "target_id": cached_id,
+                        "package_id": cached_id,
+                        "scope": "system",
+                        "installed_scope": "system",
+                        "location": "system",
+                        "source": source_name,
+                        "display_name": f"{prefix_html} {name}",
+                        "search_text": " ".join(part for part in [prefix_code, cached_id, source_name] if part),
+                        "badges": badges,
+                        "supports_config": False,
+                        "can_update": False,
+                        "newer_than_server": False,
+                        "non_removable": False,
+                    }
+                    
+                    pkg = Package(
+                        name=name,
+                        version="",
+                        latest_version="",
+                        description=cached_id,
+                        has_update=False,
+                        is_missing=True,
+                        metadata=metadata,
+                    )
+                    packages.append(pkg)
+                    package_map[pkg.norm_name] = pkg
 
             packages.sort(key=lambda item: (not item.has_update, item.name.lower()))
             self.env.raw_packages = list(packages)
@@ -414,27 +653,18 @@ class WingetManager(PackageManager):
             self.environments = []
             return
         old_envs = {env.path: env for env in self.environments}
-        machine_env = old_envs.get("winget://machine") or Environment(
-            path="winget://machine",
-            name="System",
-            type="machine",
+        all_env = old_envs.get("winget://all") or Environment(
+            path="winget://all",
+            name="Applications",
+            type="winget",
         )
-        machine_env.runtime_name = "winget"
-        machine_env.tags = ["system", "winget", "scope:machine"]
-
-        user_env = old_envs.get("winget://user") or Environment(
-            path="winget://user",
-            name="User",
-            type="user",
-        )
-        user_env.runtime_name = "winget"
-        user_env.tags = ["system", "winget", "scope:user"]
+        all_env.runtime_name = "winget"
+        all_env.tags = ["system", "winget"]
         
         winget_ver = get_winget_version(self._current_settings().get("winget_path", ""))
-        machine_env.runtime_version = winget_ver
-        user_env.runtime_version = winget_ver
+        all_env.runtime_version = winget_ver
         
-        self.environments = [machine_env, user_env]
+        self.environments = [all_env]
 
     def reload_envs(self):
         self._load_envs()
@@ -456,136 +686,37 @@ class WingetManager(PackageManager):
 
     @staticmethod
     def _resolve_scope(env: Environment, package_spec: dict, fallback_scope: str = "all") -> str:
-        installed_scope = str(package_spec.get("installed_scope", "")).strip().lower()
-        if installed_scope in {"user", "machine"}:
-            return installed_scope
+        pkg_id = str(package_spec.get("package_id", "")).strip().lower()
+        is_uwp = pkg_id.startswith("msix\\")
+        
+        inst_scope = str(package_spec.get("installed_scope", "")).strip().lower()
         spec_scope = str(package_spec.get("scope", "")).strip().lower()
+        
+        # 1. If explicitly requesting system/machine scope
+        if inst_scope in {"system", "machine"} or spec_scope in {"system", "machine"}:
+            return "machine"
+            
+        # 2. For UWP packages, default to 'user' scope for user registration/unregistration
+        if is_uwp:
+            return "user"
+            
+        # 3. Traditional Win32 environment-based checks
+        if inst_scope in {"user", "machine"}:
+            return inst_scope
         if spec_scope in {"user", "machine"}:
             return spec_scope
+            
         env_scope = str(getattr(env, "type", "") or "").strip().lower()
         if env_scope in {"user", "machine"}:
             return env_scope
         return fallback_scope
-
-    def _redistribute_packages(self) -> bool:
-        machine_env = next((e for e in self.environments if e.path == "winget://machine"), None)
-        user_env = next((e for e in self.environments if e.path == "winget://user"), None)
-        if not machine_env or not user_env:
-            return False
-
-        # Reset environments to their raw scanned packages if available, otherwise use their current packages.
-        # This prevents packages from being permanently lost when one environment's scan finishes and overwrites its list.
-        if hasattr(machine_env, "raw_packages"):
-            machine_env.packages = list(machine_env.raw_packages)
-            machine_env.dep_graph = dict(machine_env.raw_dep_graph)
-        
-        if hasattr(user_env, "raw_packages"):
-            user_env.packages = list(user_env.raw_packages)
-            user_env.dep_graph = dict(user_env.raw_dep_graph)
-
-        moved = False
-        user_profile = os.environ.get("USERPROFILE", "").lower()
-
-        # 1. Relocate machine packages to user if they reside in user folders
-        to_move_to_user = []
-        for pkg in machine_env.packages:
-            pkg_id = pkg.metadata.get("package_id", "")
-            loc = find_uninstall_location(pkg.name, pkg_id)
-            is_user = False
-            if loc:
-                loc_lower = loc.lower()
-                if "\\package cache\\" in loc_lower:
-                    is_user = False
-                elif user_profile and loc_lower.startswith(user_profile):
-                    is_user = True
-                elif loc_lower.startswith("c:\\users\\"):
-                    is_user = True
-            
-            if is_user:
-                to_move_to_user.append(pkg)
-
-        if to_move_to_user:
-            for pkg in to_move_to_user:
-                if pkg in machine_env.packages:
-                    machine_env.packages.remove(pkg)
-                if pkg.norm_name in machine_env.dep_graph:
-                    del machine_env.dep_graph[pkg.norm_name]
-
-                pkg.metadata["scope"] = "user"
-                
-                if pkg.norm_name not in user_env.dep_graph:
-                    user_env.packages.append(pkg)
-                    user_env.dep_graph[pkg.norm_name] = pkg
-                else:
-                    existing = user_env.dep_graph[pkg.norm_name]
-                    existing.has_update = pkg.has_update or existing.has_update
-                    existing.latest_version = pkg.latest_version or existing.latest_version
-                    existing.metadata["scope"] = "user"
-                moved = True
-
-        # 2. Relocate user packages to machine if they reside in system folders
-        to_move_to_machine = []
-        for pkg in user_env.packages:
-            pkg_id = str(pkg.metadata.get("package_id", "")).strip()
-            # If it is Python and physically in Program Files, treat it as a system installation
-            is_system_python = False
-            if "python.python.3.13" in pkg_id.lower() and os.path.exists("C:\\Program Files\\Python313"):
-                is_system_python = True
-            elif "python.python.3.14" in pkg_id.lower() and os.path.exists("C:\\Program Files\\Python314"):
-                is_system_python = True
-
-            loc = find_uninstall_location(pkg.name, pkg_id)
-            is_machine = False
-            if loc:
-                loc_lower = loc.lower()
-                # Check for standard System Program Files location
-                if loc_lower.startswith("c:\\program files"):
-                    is_machine = True
-
-            if is_machine or is_system_python:
-                to_move_to_machine.append(pkg)
-
-        if to_move_to_machine:
-            for pkg in to_move_to_machine:
-                if pkg in user_env.packages:
-                    user_env.packages.remove(pkg)
-                if pkg.norm_name in user_env.dep_graph:
-                    del user_env.dep_graph[pkg.norm_name]
-
-                pkg.metadata["scope"] = "machine"
-
-                if pkg.norm_name not in machine_env.dep_graph:
-                    machine_env.packages.append(pkg)
-                    machine_env.dep_graph[pkg.norm_name] = pkg
-                else:
-                    existing = machine_env.dep_graph[pkg.norm_name]
-                    existing.has_update = pkg.has_update or existing.has_update
-                    existing.latest_version = pkg.latest_version or existing.latest_version
-                    existing.metadata["scope"] = "machine"
-                moved = True
-
-        if moved:
-            machine_env.packages.sort(key=lambda item: (not item.has_update, item.name.lower()))
-            user_env.packages.sort(key=lambda item: (not item.has_update, item.name.lower()))
-
-        return moved
 
     def _on_env_scanned(self, env: Environment):
         for idx, item in enumerate(self.environments):
             if item.path == env.path:
                 self.environments[idx] = env
                 break
-        
-        moved = self._redistribute_packages()
-        if moved:
-            machine_env = next((e for e in self.environments if e.path == "winget://machine"), None)
-            user_env = next((e for e in self.environments if e.path == "winget://user"), None)
-            if machine_env:
-                self.env_scanned.emit(machine_env)
-            if user_env:
-                self.env_scanned.emit(user_env)
-        else:
-            self.env_scanned.emit(env)
+        self.env_scanned.emit(env)
 
     def scan_environment(self, env: Environment):
         if not getattr(env, "is_scanned", False):
@@ -662,12 +793,48 @@ class WingetManager(PackageManager):
 
     def build_install_command(self, env: Environment, package_ref: str) -> list[str]:
         pkg_ref = str(package_ref or "").strip()
+        
+        # Parse scope suffix if present (e.g. "MSIX\Microsoft.WindowsCamera:user")
+        pkg_id = pkg_ref
+        scope = ""
+        if ":" in pkg_ref:
+            parts = pkg_ref.split(":", 1)
+            pkg_id = parts[0]
+            scope = parts[1]
+            
+        package_spec = {
+            "package_id": pkg_id,
+            "scope": scope,
+            "installed_scope": scope
+        }
+        
+        resolved_scope = self._resolve_scope(env, package_spec, self._current_settings().get("default_scope", "all"))
+        
+        # Strip local virtual type prefixes (e.g. 'msix\' or 'arp\') to match online manifests
+        clean_id = pkg_id
+        if clean_id.lower().startswith("msix\\"):
+            # Check for local staged manifest to run instant PowerShell local registration
+            from core.winget_helpers import find_uwp_manifest_path
+            manifest_path = find_uwp_manifest_path(pkg_id)
+            if manifest_path:
+                return [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    f"Add-AppxPackage -DisableDevelopmentMode -Register '{manifest_path}'"
+                ]
+            clean_id = clean_id[5:]
+            resolved_scope = "user"
+        elif clean_id.lower().startswith("arp\\"):
+            clean_id = clean_id[4:]
+
         cmd = build_winget_command(
             "install",
             "--id",
-            pkg_ref,
+            clean_id,
             source_name=self._current_settings().get("default_source", ""),
-            scope_value=self._resolve_scope(env, {"scope": getattr(env, "type", "")}, self._current_settings().get("default_scope", "all")),
+            scope_value=resolved_scope,
             install_mode=self._current_settings().get("install_mode", "default"),
             accept_package_agreements=True,
             exact=True,

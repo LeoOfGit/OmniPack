@@ -90,6 +90,12 @@ QPushButton:pressed {
     background-color: hsv(0, 0, 34);
 }
 
+QPushButton:disabled {
+    color: hsv(0, 0, 140);
+    background-color: hsv(240, 10, 35);
+    border: 1px solid hsv(240, 10, 50);
+}
+
 /* Global Text Inputs / 全局单行/多行输入框 */
 QLineEdit,
 QTextEdit {
@@ -350,6 +356,23 @@ QWidget#ActionBtnSpacer {
     min-height: 30px;
     max-height: 30px;
     padding: 0px;
+}
+
+QPushButton#ActionBtnBatchRemove:disabled,
+QPushButton#DialogActionBtnRemove:disabled,
+QPushButton#ActionBtnRemove:disabled,
+QPushButton#ActionBtnInstall:disabled,
+QPushButton#PkgUpdateBtn:disabled,
+QPushButton#PkgUpdateBtnConstrained:disabled,
+QPushButton#PkgUpdateBtnWarning:disabled,
+QPushButton#PkgUpdateBtnVariant:disabled,
+QPushButton#EnvRuntimeUpdateBtn:disabled,
+QPushButton#EnvActivateBtn:disabled,
+QPushButton#EnvRefreshBtn:disabled,
+QPushButton#EnvUpdateAllBtn:disabled {
+    color: hsv(0, 0, 140) !important;
+    background-color: hsv(240, 10, 35) !important;
+    border: 1px solid hsv(240, 10, 50) !important;
 }
 
 /* Special font sizes for Icon Buttons (symbols) / 符号型图标按钮的字号微调 */

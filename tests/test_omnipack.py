@@ -84,6 +84,12 @@ OmniPack pkg_id   1.0.0     2.0.0      winget
     assert len(res_zh) == 1
     assert res_zh[0]["name"] == "OmniPack"
 
+    # Test with installed/search modes which trigger the regex [^\s\x00]+
+    res_zh_installed = parse_winget_table(output_zh, mode="installed")
+    assert len(res_zh_installed) == 1
+    assert res_zh_installed[0]["name"] == "OmniPack"
+    assert res_zh_installed[0]["source"] == "winget"
+
 def test_marker_parser():
     import re
     buffer = "some output\n__OMNIPACK_OP_DONE_123__:-1\n"
@@ -543,9 +549,351 @@ def test_winget_sanitize_output():
     assert "Name" in clean3
     
     # Verify the table parser works with the dirty output
+    app = QApplication.instance() or QApplication([])
+    panel = PipPanel(MagicMock(), None)
+    panel.terminal = MagicMock()
+    panel.terminal._resolve_shell = MagicMock(return_value="powershell.exe")
+    panel.pip_mgr.build_update_command = MagicMock(return_value=["uv", "pip", "install", "-U"])
+
+    constrained = Package(
+        name="A",
+        version="1.6",
+        latest_version="2.1",
+        has_update=True,
+        is_selected=True,
+        breaks_constraint=True,
+        safe_update_version="1.9",
+    )
+    unconstrained = Package(
+        name="B",
+        version="1.0",
+        latest_version="1.1",
+        has_update=True,
+        is_selected=True,
+    )
+    blocked = Package(
+        name="C",
+        version="1.0",
+        latest_version="2.0",
+        has_update=True,
+        is_selected=True,
+        breaks_constraint=True,
+        safe_update_version="",
+    )
+
+    env_mock = MagicMock()
+    env_mock.path = "test_env"
+    env_mock.is_scanned = True
+    env_mock.packages = [constrained, unconstrained, blocked]
+
+    card_mock = MagicMock()
+    card_mock.env = env_mock
+    panel._env_cards = {"test_env": card_mock}
+
+    panel._batch_update()
+
+    panel.pip_mgr.build_update_command.assert_called_once_with(env_mock, ["A==1.9", "B"])
+
+def test_npm_panel_fs_watcher_sync():
+    from ui.panels.npm_panel import NpmPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    import os
+    
+    app = QApplication.instance() or QApplication([])
+    config_mgr = MagicMock()
+    panel = NpmPanel(config_mgr, None)
+    
+    env_mock = MagicMock()
+    env_mock.path = "/mock/project"
+    panel.npm_mgr.environments = [env_mock]
+    
+    panel._refresh_single_env = MagicMock()
+    
+    changed_path = os.path.normpath(os.path.join(env_mock.path, "node_modules"))
+    panel._on_directory_changed(changed_path)
+    
+    norm_key = panel._path_key(env_mock.path)
+    assert norm_key in panel._fs_debounce_timers
+    
+    panel._on_fs_debounce_timeout(env_mock)
+    panel._refresh_single_env.assert_called_once_with(env_mock.path)
+
+def test_winget_real_write_path():
+    from ui.panels.winget_panel import WingetPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    
+    panel = WingetPanel(MagicMock(), None)
+    panel.winget_mgr = MagicMock()
+    panel.winget_mgr.build_update_command.return_value = ["winget", "upgrade", "foo"]
+    panel.winget_mgr.build_update_fallback_install_command.return_value = ["winget", "install", "foo"]
+    
+    env_mock = MagicMock()
+    panel._get_env = MagicMock(return_value=env_mock)
+    pkg_mock = MagicMock()
+    pkg_mock.name = "foo"
+    panel._find_package = MagicMock(return_value=pkg_mock)
+    panel.terminal = MagicMock()
+    panel.terminal._resolve_shell = MagicMock(return_value="cmd.exe")
+    
+    # This should not raise NameError
+    panel._start_pkg_update("foo", "latest", "env")
+    assert panel.terminal.write.called
+
+def test_cmd_marker_pywinpty():
+    import os
+    if os.name != "nt":
+        return
+    import time
+    from core.terminal.command_renderer import ShellCommandRenderer
+    try:
+        from winpty import PtyProcess
+    except ImportError:
+        return # Skip if pywinpty is not available
+    
+    cmd = ["cmd.exe", "/c", "exit 42"]
+    res = ShellCommandRenderer.render(cmd, "cmd.exe")
+    marker_cmd = ShellCommandRenderer.append_marker(res, "MARKER", "cmd.exe", True)
+    
+    pty = PtyProcess.spawn("cmd.exe")
+    
+    # Mock a terminal with write method that writes to pty
+    class MockTerminal:
+        def write(self, text):
+            pty.write(text)
+            
+    ShellCommandRenderer.write_rendered_command(MockTerminal(), marker_cmd)
+    
+    # Wait for the marker file to appear
+    import tempfile
+    marker_file = os.path.join(tempfile.gettempdir(), "MARKER.done")
+    if os.path.exists(marker_file):
+        os.remove(marker_file)
+
+    output = ""
+    for _ in range(20):
+        try:
+            output += pty.read(1024)
+        except Exception:
+            pass
+        if os.path.exists(marker_file):
+            break
+        time.sleep(0.1)
+    
+    pty.terminate()
+    assert os.path.exists(marker_file)
+    with open(marker_file, "r") as f:
+        assert f.read().strip() == "42"
+    os.remove(marker_file)
+
+def test_winget_batch_write_path():
+    from ui.panels.winget_panel import WingetPanel
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    
+    panel = WingetPanel(MagicMock(), None)
+    panel.winget_mgr = MagicMock()
+    panel.winget_mgr.build_remove_command.return_value = ["winget", "uninstall", "foo"]
+    
+    env_mock = MagicMock()
+    env_mock.path = "test_env"
+    env_mock.is_scanned = True
+    
+    pkg_mock = MagicMock()
+    pkg_mock.name = "foo"
+    pkg_mock.is_selected = True
+    env_mock.packages = [pkg_mock]
+    
+    card_mock = MagicMock()
+    card_mock.env = env_mock
+    panel._env_cards = {"test_env": card_mock}
+    
+    panel.terminal = MagicMock()
+    panel.terminal._resolve_shell = MagicMock(return_value="cmd.exe")
+    
+    from PySide6.QtWidgets import QMessageBox
+    orig_question = QMessageBox.question
+    QMessageBox.question = MagicMock(return_value=QMessageBox.Yes)
+    
+    try:
+        panel._batch_remove()
+        assert panel.terminal.write.called
+    finally:
+        QMessageBox.question = orig_question
+
+def test_winget_sanitize_output():
+    from core.winget_helpers import _sanitize_terminal_output, parse_winget_table
+    
+    # Test ANSI removal
+    raw = "\x1b[2J\x1b[H\x1b[?25lName      Id\n----      --\nFoo       bar"
+    clean = _sanitize_terminal_output(raw)
+    assert "Name      Id" in clean
+    assert "\x1b" not in clean
+    
+    # Test \r and \b processing
+    raw2 = "-\r\\\r|\r/\rName                                   Id\n-----------------------------------------  --\nFoo                                        bar"
+    clean2 = _sanitize_terminal_output(raw2)
+    assert clean2.startswith("Name")
+    
+    raw3 = "  - \b\b\b \\ \b\b\bName   Id\n----   --\nFoo    bar"
+    clean3 = _sanitize_terminal_output(raw3)
+    assert "Name" in clean3
+    
+    # Verify the table parser works with the dirty output
     # Here the raw output has garbage characters that shift the header right by 17 spaces
     raw4 = "   -    -    \\ Name                                   Id\n----------------------------------------------------------------------\nFoo                                        bar"
     rows = parse_winget_table(raw4, mode="installed")
     assert len(rows) == 1
     assert rows[0]["name"] == "Foo"
     assert rows[0]["id"] == "bar"
+
+
+def test_uwp_dynamic_detection(tmp_path):
+    from core.winget_helpers import detect_uwp_package_info
+    
+    # 1. Test with a non-existent manifest
+    is_app, name = detect_uwp_package_info("nonexistent.pkg", None)
+    assert not is_app
+    assert name is None
+    
+    # 2. Test with a mock standard appx manifest
+    manifest_app = tmp_path / "AppxManifest_App.xml"
+    manifest_app.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Properties>
+    <DisplayName>Mock Application</DisplayName>
+  </Properties>
+  <Applications>
+    <Application Id="App">
+    </Application>
+  </Applications>
+</Package>
+""", encoding="utf-8")
+    
+    is_app, name = detect_uwp_package_info("mock.app", str(manifest_app))
+    assert is_app
+    assert name == "Mock Application"
+    
+    # 3. Test with a mock standard framework manifest (no Applications element)
+    manifest_fw = tmp_path / "AppxManifest_Fw.xml"
+    manifest_fw.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Properties>
+    <DisplayName>Mock Framework</DisplayName>
+  </Properties>
+</Package>
+""", encoding="utf-8")
+    
+    is_app, name = detect_uwp_package_info("mock.fw", str(manifest_fw))
+    assert not is_app
+    # Name fallback should be "Mock Framework"
+    assert name == "Mock Framework"
+    
+    # 4. Test with a mock bundle manifest containing an application package
+    manifest_bundle = tmp_path / "AppxBundleManifest.xml"
+    manifest_bundle.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<Bundle xmlns="http://schemas.microsoft.com/appx/manifest/bundle/windows10">
+  <Identity Name="MockBundle" />
+  <Packages>
+    <Package Type="application" FileName="sub.msix" />
+    <Package Type="resource" FileName="sub_res.msix" />
+  </Packages>
+</Bundle>
+""", encoding="utf-8")
+    
+    is_app, name = detect_uwp_package_info("mock.bundle", str(manifest_bundle))
+    assert is_app
+    assert name == "Mock Bundle"
+    
+    # 5. Test with a system path (should return False for is_app)
+    sys_manifest = tmp_path / "Windows" / "SystemApps" / "AppxManifest.xml"
+    sys_manifest.parent.mkdir(parents=True, exist_ok=True)
+    sys_manifest.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Properties>
+    <DisplayName>System App</DisplayName>
+  </Properties>
+  <Applications>
+    <Application Id="App"></Application>
+  </Applications>
+</Package>
+""", encoding="utf-8")
+    
+    is_app, name = detect_uwp_package_info("sys.app", str(sys_manifest))
+    assert not is_app
+
+
+def test_winget_version_specific_matching():
+    from ui.panels.winget_panel import WingetPanel
+    from unittest.mock import MagicMock
+    
+    panel = WingetPanel(MagicMock(), None)
+    panel.winget_mgr = MagicMock()
+    
+    # Mock environment and packages
+    env = MagicMock()
+    
+    pkg_1 = MagicMock()
+    pkg_1.name = "WindowsAppRuntime.1.7"
+    pkg_1.version = "1.7.8"
+    pkg_1.metadata = {"package_id": "Microsoft.WindowsAppRuntime.1.7", "location": "system"}
+    
+    pkg_2 = MagicMock()
+    pkg_2.name = "WindowsAppRuntime.1.7"
+    pkg_2.version = "1.7.9"
+    pkg_2.metadata = {"package_id": "Microsoft.WindowsAppRuntime.1.7", "location": "system"}
+    
+    env.packages = [pkg_1, pkg_2]
+    
+    # 1. Match specific version 1.7.8
+    match = panel._find_package(env, "Microsoft.WindowsAppRuntime.1.7:system:1.7.8")
+    assert match is pkg_1
+    
+    # 2. Match specific version 1.7.9
+    match2 = panel._find_package(env, "Microsoft.WindowsAppRuntime.1.7:system:1.7.9")
+    assert match2 is pkg_2
+    
+    # 3. Match without version (should return first candidate pkg_1)
+    match3 = panel._find_package(env, "Microsoft.WindowsAppRuntime.1.7:system")
+    assert match3 is pkg_1
+
+
+def test_winget_pin_query_resolution():
+    from ui.panels.winget_panel import WingetPanel
+    from unittest.mock import MagicMock
+    
+    panel = WingetPanel(MagicMock(), None)
+    panel.winget_mgr = MagicMock()
+    panel._open_package_config_dialog = MagicMock()
+    panel._get_env = MagicMock()
+    
+    env = MagicMock()
+    env.path = "env_path"
+    panel._get_env.return_value = env
+    
+    pkg_1 = MagicMock()
+    pkg_1.name = "WindowsAppRuntime.1.7"
+    pkg_1.version = "1.7.8"
+    pkg_1.is_missing = False
+    pkg_1.metadata = {"package_id": "Microsoft.WindowsAppRuntime.1.7", "location": "system", "pin_state_known": False}
+    
+    pkg_2 = MagicMock()
+    pkg_2.name = "WindowsAppRuntime.1.7"
+    pkg_2.version = "1.7.9"
+    pkg_2.is_missing = False
+    pkg_2.metadata = {"package_id": "Microsoft.WindowsAppRuntime.1.7", "location": "system", "pin_state_known": False}
+    
+    env.packages = [pkg_1, pkg_2]
+    
+    # Trigger config for 1.7.8
+    panel._config_package("Microsoft.WindowsAppRuntime.1.7:system:1.7.8", "env_path")
+    assert ("env_path", "Microsoft.WindowsAppRuntime.1.7:system:1.7.8") in panel._pin_refresh_targets
+    
+    # Simulate callback
+    panel._on_pin_state_ready("env_path", "Microsoft.WindowsAppRuntime.1.7", False)
+    
+    # Verify it opened the dialog for pkg_1 (1.7.8) and NOT pkg_2 (1.7.9)
+    panel._open_package_config_dialog.assert_called_once_with(env, pkg_1)

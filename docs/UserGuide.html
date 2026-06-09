@@ -190,7 +190,7 @@
 <h1 id="omnipack-用户指南-user-guide">OmniPack 用户指南 (User Guide)</h1>
 <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
 <p>欢迎使用 <b>OmniPack</b>！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。</p>
-<p>想要通过交互式 AI 了解本项目？👉 <img url="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==">![DeepWiki](https://deepwiki.com/LeoOfGit/OmniPack)</a></p>
+<p><span>想要通过交互式 AI 了解本项目？ <a href="https://deepwiki.com/LeoOfGit/OmniPack"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a></span></p>
 <p>本项目更新频繁，本文档的部分插图或描述可能已经过时，具体以实际程序为准。</p>
 <hr>
 <h2 id="目录">目录</h2>
@@ -438,7 +438,7 @@
 </li>
 </ul>
 <blockquote><b>手动操作不受限</b>：以上拦截仅针对 <code>Outdated</code> 过滤的自动选中行为。您仍可手动勾选这些包，或直接点击其 <code>⇧</code> 按钮并确认风险后进行更新。</blockquote>
-<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="583"></div>
+<div class="image-wrap"><img src="./resources/VersionLimits.png" alt="版本限制可视化"></div>
 <hr>
 <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) 项目管理</h2>
 <h3 id="41-项目深度溯源">4.1 项目深度溯源</h3>
@@ -470,33 +470,38 @@
 <hr>
 <h2 id="5-winget-系统包管理-windows-特有">5. WinGet 系统包管理 (Windows 特有)</h2>
 <p>在 Windows 10/11 操作系统下，OmniPack 会自动在状态栏右侧注册 <b>WinGet</b> 包管理面板。它能对您系统上通过 Microsoft Store、WinGet 源或本地安装的桌面应用程序进行统一纳管。</p>
-<h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 双 Scope 环境自动探测 (Dual Scope Environment)</h3>
-<p>在主界面左侧会展示两个虚拟的系统环境：</p>
+<h3 id="51-统一的应用环境与-scope-智能标记-unified-environment-scope-badging">5.1 统一的应用环境与 Scope 智能标记 (Unified Environment &amp; Scope Badging)</h3>
+<p>在主界面左侧提供一个统一的系统环境：</p>
 <ul>
-<li><b>System (Machine)</b>：显示系统全局安装的软件（对应 <code>winget://machine</code>），通常位于 <code>Program Files</code> 目录下，更新时需要管理员权限。
+<li><b>Applications</b>：显示系统内安装的所有桌面软件（对应 <code>winget://all</code>），包括传统 Win32 应用和 UWP/MSIX 现代应用。
 </li>
-<li><b>User</b>：显示当前用户专属安装的软件（对应 <code>winget://user</code>），通常位于用户个人目录下（如 <code>%USERPROFILE%\AppData</code>）。
+<li><b>Scope 智能标记</b>：每个软件项目右侧直接显示部署范围高亮标签：<code>[sys]</code>（系统级）或 <code>[user]</code>（用户级）。若同一个软件在双端同时被安装，系统会自动并列挂载这两个标签。
 </li>
-<li><b>去重与范围智能判定 (Package Redistribution)</b>：
-<ul>
-<li>OmniPack 内置了注册表物理路径审计机制。在扫描软件时，它会读取卸载路径，如果发现某个全局上报的软件其实物理安装在用户目录中，会自动将其归类到 <b>User</b> 虚拟环境中，保证信息的绝对精准。
-</li>
-<li>若同一个软件在系统和用户下都被安装了，卡片上会自动挂载 <code>[Also Installed In User/Machine]</code> 彩色徽章。
+<li><b>经典 Win32 软件智能去重 (ARP Deduplication)</b>：系统采用基于 GUID 与软件名称+版本校验的去重逻辑，完美消除因不同注册表路径别名导致的条目重复列出问题。
 </li>
 </ul>
+<h3 id="52-uwp-备置应用离线感知与重注册-uwp-provisioned-sync-registration">5.2 UWP 备置应用离线感知与重注册 (UWP Provisioned Sync &amp; Registration)</h3>
+<ul>
+<li><b>离线状态感知</b>：即使当前用户未注册该 UWP 应用，OmniPack 也能离线扫描 Windows 注册表 <code>AppxAllUserStore</code> 及 <code>WindowsApps</code> 清单文件，发现系统已备置的安装包（以 Missing 状态并挂载 <code>[Staged]</code> 徽章展示）。
+</li>
+<li><b>复合操作按钮（±）</b>：针对此类已备置但当前用户未激活的 UWP 软件，用户点击复合按钮可通过右键菜单选择 <b>“➕ Register for Current User”</b> 直接在用户账户下秒级注册安装，或选择卸载。
 </li>
 </ul>
-<h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 精准管理与锁定更新 (Full Actions &amp; Pinning)</h3>
+<h3 id="53-精准管理与锁定更新-full-actions-pinning">5.3 精准管理与锁定更新 (Full Actions &amp; Pinning)</h3>
 <ul>
 <li><b>获取更新 (Upgrades)</b>：如果有可用更新，应用卡片上会显示 <code>⇧</code> 按钮。
 </li>
 <li><b>配置与锁定 (Blocking Pin)</b>：
 <ul>
-<li>点击应用卡片上的 <b>⚙ 配置按钮</b>，会弹出专属配置框。
-</li>
-<li>支持设置 <b>锁定更新 (winget blocking pin)</b>。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 <code>[Pinned]</code> 徽章，同时不会被工具栏 &quot;Outdated&quot; 选项自动勾选，避免大面积静默升级破坏特定软件版本。
+<li>点击应用卡片上的 <b>⚙ 配置按钮</b>，会弹出专属配置框。对已安装的软件，支持设置 <b>锁定更新 (winget blocking pin)</b>。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 <code>[Pinned]</code> 徽章，同时不会被工具栏 &quot;Outdated&quot; 选项自动勾选。若软件处于未安装（Missing）状态，该选项将被自动置灰。
 </li>
 <li>在配置框中，您还可以直接查看该软件的<b>物理安装路径 (Uninstall Location)</b> 并进行一键鼠标选定与复制，极其方便定位软件根目录。
+</li>
+</ul>
+</li>
+<li><b>系统保护包卸载拦截 (Non-Removable Safeguards)</b>：
+<ul>
+<li>自动发现具有 <code>NonRemovable</code> 属性的核心系统级应用（如 Microsoft Store, App Installer, Edge 浏览器等）。在列表中将这些应用的 <code>-</code>（卸载）按钮强制置灰禁用并提供悬停警告提示，保护系统核心组件不被误删。
 </li>
 </ul>
 </li>
@@ -659,7 +664,7 @@
 <h1 id="omnipack-用户指南-user-guide">OmniPack User Guide</h1>
 <div class="image-wrap"><img src="../resources/OmniPack.png" alt="OmniPack Logo" width="128"></div>
 <p>Welcome to <b>OmniPack</b>! May this application become a helpful tool for managing your Python virtual environments, Node.js project dependencies, and Windows Package Manager (WinGet).</p>
-<p>Want to explore this project with interactive AI? 👉 <a href="https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==">![DeepWiki</a>](https://deepwiki.com/LeoOfGit/OmniPack)</p>
+<p><span>Want to learn about this project through interactive AI? <a href="https://deepwiki.com/LeoOfGit/OmniPack"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a></span></p>
 <p>This project is updated frequently. Some illustrations or descriptions in this document may be outdated, and the actual application shall prevail.</p>
 <hr>
 <h2 id="目录">Table of Contents</h2>
@@ -907,7 +912,7 @@
 </li>
 </ul>
 <blockquote><b>Manual operations are unrestricted</b>: The interceptions above only affect auto-selection under the <code>Outdated</code> filter. You can still manually check these packages or directly click their <code>\u21e7</code> button and confirm risks to update.</blockquote>
-<div class="image-wrap"><img src="../resources/VersionLimits.png" alt="版本限制可视化" width="583"></div>
+<div class="image-wrap"><img src="./resources/VersionLimits.png" alt="版本限制可视化"></div>
 <hr>
 <h2 id="4-nodejs-npm-项目管理">4. Node.js (npm) Project Management</h2>
 <h3 id="41-项目深度溯源">4.1 Deep Project Source Tracing</h3>
@@ -939,61 +944,66 @@
 <hr>
 <h2 id="5-winget-系统包管理-windows-特有">5. WinGet System Package Management (Windows Specific)</h2>
 <p>Under Windows 10/11 operating systems, OmniPack automatically registers the <b>WinGet</b> package management panel on the right side of the status bar. It enables unified management of desktop applications installed on your system via the Microsoft Store, WinGet source, or local installers.</p>
-<h3 id="51-双-scope-环境自动探测-dual-scope-environment">5.1 Dual Scope Environment Automatic Detection</h3>
-<p>Two virtual system environments will be displayed on the left side of the main interface:</p>
+<h3 id="51-统一的应用环境与-scope-智能标记-unified-environment-scope-badging">5.1 Unified Environment &amp; Scope Badging</h3>
+<p>Provides a unified system environment on the left side of the main interface:</p>
 <ul>
-<li><b>System (Machine)</b>: Displays software installed system-wide (corresponding to <code>winget://machine</code>), usually located in the <code>Program Files</code> directory; updating requires administrator privileges.
+<li><b>Applications</b>: Displays all desktop software installed on the system (corresponding to \<code>winget://all\</code>), including traditional Win32 applications and modern UWP/MSIX applications.
 </li>
-<li><b>User</b>: Displays software installed exclusively for the current user (corresponding to <code>winget://user</code>), usually located in the user&#x27;s personal directory (e.g., <code>%USERPROFILE%\AppData</code>).
+<li><b>Scope Badging</b>: Highlighted deployment scope badges are displayed directly to the right of each software item: \<code>[sys]\</code> (system-level) or \<code>[user]\</code> (user-level). If the same software is installed in both scopes simultaneously, the system will automatically mount these two badges side-by-side.
 </li>
-<li><b>Deduplication &amp; Smart Scope Determination (Package Redistribution)</b>:
+<li><b>Classic Win32 ARP Deduplication</b>: The system adopts a deduplication logic based on GUID and software name + version verification, perfectly eliminating the issue of duplicate entries caused by different registry path aliases.
+</li>
+</ul>
+<h3 id="52-uwp-备置应用离线感知与重注册-uwp-provisioned-sync-registration">5.2 UWP Provisioned Sync &amp; Registration</h3>
 <ul>
-<li>OmniPack has a built-in registry physical path audit mechanism. When scanning software, it reads the uninstallation path; if it detects that a system-wide reported software is actually physically installed in the user directory, it automatically categorizes it into the <b>User</b> virtual environment to ensure absolute accuracy of the information.
+<li><b>Offline Status Awareness</b>: Even if the UWP application is not registered for the current user, OmniPack can scan the Windows registry \<code>AppxAllUserStore\</code> and \<code>WindowsApps\</code> manifest files offline to discover installation packages already provisioned in the system (displayed as &quot;Missing&quot; and mounted with a \<code>[Staged]\</code> badge).
 </li>
-<li>If the same software is installed in both system and user scopes, a colored <code>[Also Installed In User/Machine]</code> badge will automatically be mounted on the card.
+<li><b>Compound Action Button (±)</b>: For UWP software that has been provisioned but not activated for the current user, clicking the compound button allows the user to select <b>&quot;➕ Register for Current User&quot;</b> from the context menu to register and install it under the user account within seconds, or select to uninstall it.
+</li>
+</ul>
+<h3 id="53-精准管理与锁定更新-full-actions-pinning">5.3 Full Actions &amp; Pinning</h3>
+<ul>
+<li><b>Upgrades</b>: If an update is available, a \<code>⇧\</code> button will be displayed on the application card.
+</li>
+<li><b>Configuration &amp; Blocking Pin</b>:
+<ul>
+<li>Clicking the <b>⚙ Configuration Button</b> on the application card will bring up an exclusive configuration dialog. For installed software, it supports setting <b>Blocking Pin (winget)</b>. After checking &quot;Ignore updates for this application (winget blocking pin)&quot;, the application card will be mounted with a \<code>[Pinned]\</code> badge, and it will not be automatically selected by the &quot;Outdated&quot; option in the toolbar. If the software is in an uninstalled (Missing) state, this option will be automatically grayed out.
+</li>
+<li>In the configuration dialog, you can also directly view the software&#x27;s <b>Uninstall Location (physical installation path)</b> and select/copy it with a single click, making it extremely convenient to locate the software&#x27;s root directory.
 </li>
 </ul>
 </li>
-</ul>
-<h3 id="52-精准管理与锁定更新-full-actions-pinning">5.2 Precise Management and Blocking Updates (Full Actions &amp; Pinning)</h3>
+<li><b>Non-Removable Safeguards (System Protection Packages)</b>:
 <ul>
-<li><b>Get Updates (Upgrades)</b>: If an update is available, the application card displays a <code>⇧</code> button.
-</li>
-<li><b>Configuration &amp; Pinning (Blocking Pin)</b>:
-<ul>
-<li>Clicking the <b>⚙ configuration button</b> on an application card pops up its dedicated configuration box.
-</li>
-<li>Supports setting a <b>blocking pin (winget blocking pin)</b>. After checking &quot;Ignore updates for this app (winget blocking pin)&quot;, the app will display a <code>[Pinned]</code> badge on the card and will not be automatically checked by the &quot;Outdated&quot; filter in the toolbar, preventing massive silent upgrades from breaking specific software versions.
-</li>
-<li>In the configuration dialog, you can also inspect the <b>uninstall location path (Uninstall Location)</b> of the software directly and copy it with a single click, making it extremely easy to locate the software root.
+<li>Automatically discovers core system-level applications with the \<code>NonRemovable\</code> attribute (such as Microsoft Store, App Installer, Edge browser, etc.). The \<code>-\</code> (Uninstall) button for these applications in the list is forced to be grayed out and disabled, with a hover warning tooltip provided, protecting core system components from accidental deletion.
 </li>
 </ul>
 </li>
-<li><b>Abnormal Version Warning (⚠ Newer Badge)</b>:
+<li><b>Version Anomaly Warning (⚠ Newer Badge)</b>:
 <ul>
-<li>If you installed a version from the official website that is newer than the one registered in the WinGet cloud registry, the system will mount a <code>[⚠ Newer]</code> badge warning and prevent <code>Outdated</code> from automatically checking it, avoiding accidental downgrades.
+<li>If you install a version from the official website that is newer than the one in the WinGet cloud registry, the system will mount a \<code>[⚠ Newer]\</code> badge warning and prevent the \<code>Outdated\</code> option from automatically selecting it, avoiding accidental downgrades.
 </li>
 </ul>
 </li>
-<li><b>Install New Package (Install)</b>:
+<li><b>Install New Packages</b>:
 <ul>
-<li>Clicking the <code>+</code> button on the card title bar allows you to enter any WinGet software ID (e.g., <code>Google.Chrome</code>) to download and install it silently or interactively.
+<li>Clicking the \<code>+\</code> button on the card&#x27;s header allows you to enter any WinGet software ID (e.g. \<code>Google.Chrome\</code>) to download and install it silently or interactively.
 </li>
 </ul>
 </li>
-<li><b>Intelligent Scope Fallback Mechanism (Scope Fallback)</b>:
+<li><b>Scope Fallback Mechanism</b>:
 <ul>
-<li>If upgrading or installing a large software in the Machine scope fails due to file occupancy or write permission issues, OmniPack automatically performs a Fallback to attempt downloading and installing in the User scope with <code>--scope user</code>, significantly increasing tolerance for automatic software version updates.
+<li>If upgrading or installing large software in the Machine scope fails due to file occupancy or write permission issues, OmniPack will automatically perform a fallback, attempting to download and install to the user scope using \<code>--scope user\</code>, which greatly improves the tolerance for automatic software updates.
 </li>
 </ul>
 </li>
-<li><b>WinGet Self-Upgrade &amp; Package Optimizations</b>:
+<li><b>WinGet Self-Upgrade &amp; Package Detail Optimization</b>:
 <ul>
-<li><b>WinGet Self-Upgrade (Wg Button)</b>: On the WinGet card, the main program reads and displays the current version of Winget (e.g., <code>Winget v1.9.25200</code>). If an update is detected, a flashing <b><code>Wg</code></b> button appears in the header; clicking it upgrades the package manager itself with one click.
+<li><b>WinGet Self-Upgrade (Wg Button)</b>: On the WinGet card, the main program reads and displays the current specific version number of WinGet (e.g. \<code>Winget v1.9.25200\</code>). If an update to WinGet itself is detected, a flashing <b>\<code>Wg\</code></b> button will be displayed on the card header, which can be clicked to automatically upgrade the WinGet core with one click.
 </li>
-<li><b>Appended Package Architectures</b>: The package name automatically appends architecture descriptors (e.g., <code>(x64)</code>, <code>(x86)</code>, <code>(arm64)</code>) resolved dynamically to avoid name collisions.
+<li><b>Package Architecture Suffix Appending</b>: The smart-scraped architecture information (such as \<code>(x64)\</code>, \<code>(x86)\</code>, \<code>(arm64)\</code>, etc.) will be automatically appended to the package name, preventing confusion in the UI between applications of different architectures with the same name.
 </li>
-<li><b>App Type Badge</b>: The package configuration dialog and card display whether the application originates from <code>[Win32]</code> (classic registry installation) or <code>[MSIX]</code> (modern application package) based on ID features.
+<li><b>Application Type Label</b>: On the package detailed configuration box and the card, the source of the application will be clearly displayed as \<code>[Win32]\</code> (classic registry installation) or \<code>[MSIX]\</code> (modern application package) according to the characteristics of the package ID.
 </li>
 </ul>
 </li>

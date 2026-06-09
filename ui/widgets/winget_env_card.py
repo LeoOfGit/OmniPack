@@ -73,9 +73,12 @@ class WingetEnvCard(BaseEnvCard):
         if env_type == "machine":
             self.type_lbl.setText("[Machine]")
             self.type_lbl.setStyleSheet("color: #FF9800;")
-        else:
+        elif env_type == "user":
             self.type_lbl.setText("[User]")
             self.type_lbl.setStyleSheet("color: #42A5F5;")
+        else:
+            self.type_lbl.setText("")
+            self.type_lbl.setStyleSheet("")
 
         runtime_ver = getattr(self.env, "runtime_version", "")
         runtime_latest = getattr(self.env, "runtime_latest_version", "")

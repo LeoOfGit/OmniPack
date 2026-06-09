@@ -1,5 +1,56 @@
 # Changelog - OmniPack
 
+## 🇺🇸 [v16] - WinGet Unified Architecture Unification, UWP Provisioned Sync, Localized Console Table Parsing Repair & Stability Guard
+
+<details>
+<summary><b>🇨🇳 [v16] - WinGet 统一架构合并、UWP 备置应用离线感知、本地化表格解析修复与系统保护卫士 (中文说明)</b></summary>
+
+<br>
+
+本次更新对 WinGet 系统应用管理模块进行了重大架构重构，合并了原本拆分的系统与用户环境卡片，并引入了对 UWP 备置应用的离线感知及注册机制。此外，彻底修复了非英文 Windows 系统下因控制台全角字符导致的应用名称截断，并引入了系统保护应用防误删与经典软件去重功能。
+
+### 📦 WinGet 面板环境卡片合并与统一纳管
+- **统一卡片架构**：移除了原本拆分的 `System (Machine)` 和 `User` 两个独立 WinGet 环境卡片，将其重构为统一的“所有应用（Applications）”环境卡片（类型为 `winget`），优化了 UI 空间的利用并简化了操作逻辑。
+- **智能位置标签**：软件包卡片旁直接根据其实际部署目录标注 `[sys]`（系统级）或 `[user]`（用户级）高亮标签，同时完美支持两个 Scope 同存时的 `[sys] [user]` 双重视角。
+
+### 🧩 UWP/MSIX 备置应用离线状态感知与本地重注册
+- **注册表与清单感知**：引入对 Windows 注册表中 `AppxAllUserStore` 节点以及系统 `WindowsApps` 文件夹下 `AppxManifest.xml` 清单文件的离线检索与信息抓取，使用户能够在不拥有特权的情况下感知系统已备置的包。
+- **离线 UWP 发现与 Staged 标记**：即使当前用户未注册或已卸载了某个自带 UWP 应用，系统依然能在应用列表中发现它，并以带有 `[Staged]` 标记的 Missing 状态展示。
+- **一键重注册（用户范围安装）**：针对此类已备置但未注册的应用，界面提供快捷的复合功能键（±），用户一键即可调动 `Add-AppxPackage` 将其在当前用户账户中重注册与部署。
+
+### 🔒 系统保护应用安全锁与经典 Win32 去重
+- **核心 UWP 卸载拦截**：自动从注册表读取拥有 `NonRemovable`（不可移除）属性的系统级及微软核心应用（如 App Installer, Microsoft Store, Edge 等），并在 UI 列表中强制置灰其卸载（Remove）按钮，同时悬停提示系统保护状态，防误操作导致崩溃。
+- **ARP 经典程序去重 (ARP Deduplication)**：重构去重审计逻辑，通过 GUID 校验以及名称+版本哈希去重，彻底解决了经典 Win32 应用程序因注册表别名在列表中冗余展示的问题。
+
+### 🐛 本地化控制台解析与参数精度纠偏
+- **表头分词正则纠偏**：修复了在解析 WinGet 数据表头时，正则表达式由于排除了全角宽度占位符 `\x00` 而导致将单个词（如“名称”、“版本”）拆分为多个列的缺陷。更新后的正则全面兼容全角字符宽度，防止解析时产生列错位。
+- **解决名称截断与徽章错配**：解决了测试机器上由于列错位导致应用名称只显示前几个字符，以及数据源列被错配导致全部降级显示为 `[L]`（Local 本地源）标签的问题。修复后，系统能够正确识别并渲染 `[W]`（WinGet 官方源）和 `[S]`（MS Store 商店源）标签。
+- **元组动作目标导航**：操作目标（ActionTarget）格式升级为 `target_id:scope:version` 元组定位，以支撑在统一列表中精确控制特定版本或具体范围的应用行为。
+
+</details>
+
+This release introduces a major architectural simplification to the WinGet module, unifying the separate Machine and User environments into a single application management panel and adding deep status scanning for staged UWP apps. It also fixes East-Asian localized table header parsing, prevents accidental removal of system-protected core applications, and removes duplicate Win32 entries.
+
+### 📦 WinGet Panel Unification & Scope Integration
+- **Unified Environment Card**: Consolidated the separate `System (Machine)` and `User` WinGet cards into a single "Applications" environment, streamlining layout flow.
+- **Contextual Scope Tagging**: Explicitly indicates target application boundaries by showing `[sys]` or `[user]` labels directly on package cards (or both when co-existing).
+- **Precise Action Targets**: Action target pointers now follow a structured `target_id:scope:version` format to allow version-specific and scope-specific operations in a shared environment view.
+
+### 🧩 UWP/MSIX Staged App Detection & Re-registration
+- **Staged State Scanning**: Queries the local HKLM registry databases and scans `AppxManifest.xml` packages offline to discover UWP packages provisioned at the system level but not registered for the current user.
+- **Staged Status Visualization**: Lists provisioned apps as missing packages marked with a special `[Staged]` badge.
+- **One-Click Re-registration**: Provides a contextual compound action button (±) that executes standard PowerShell registration (`Add-AppxPackage -Register`) for staged MSIX/Appx packages instantly.
+
+### 🔒 Non-Removable Protection & ARP Deduplication
+- **Core App Lock**: Auto-detects system-protected `NonRemovable` applications (e.g. Microsoft Store, Edge, App Installer) and disables their uninstall controls in the UI with a warning tooltip to prevent system damage.
+- **ARP Deduplication**: Leverages GUID validations alongside normal name/version hashing to clean up duplicate Win32 listings originating from overlapping registry paths.
+
+### 🐛 Localized Console Slicing & Parsing Fixes
+- **Regex Width Corrections**: Restored normal tokenization of Winget table headers on localized systems (e.g. Chinese Windows) by correcting column segmentation regex to handle full-width characters, avoiding column misalignment.
+- **Resolved Truncation & Source Badge Shifts**: Fixed the column mapping offsets that previously sliced application names to 1-2 characters and shifted source classifications, defaulting every package to the local fallback `[L]` badge. Correct `[W]` (WinGet) and `[S]` (MS Store) labels are now fully operational.
+
+---
+
 ## 🇺🇸 [v15] - Cross-Platform Runtime Installers (macOS/Linux), WinGet Automated Setup (Windows), Runtime Setup Guide UI, Virtual Environment File-Lock Guard & Resilient Network API
 
 <details>

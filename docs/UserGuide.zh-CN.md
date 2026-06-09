@@ -4,7 +4,7 @@
 
 欢迎使用 **OmniPack**！愿本程序成为您管理 Python 虚拟环境、Node.js 项目依赖以及 Windows 系统包管理器 WinGet 的得力工具。
 
-想要通过交互式 AI 了解本项目？👉 [![DeepWiki](https://img.shields.io/badge/DeepWiki-LeoOfGit%2FOmniPack-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/LeoOfGit/OmniPack)
+想要通过交互式 AI 了解本项目？👉 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LeoOfGit/OmniPack)
 
 本项目更新频繁，本文档的部分插图或描述可能已经过时，具体以实际程序为准。
 
@@ -203,20 +203,23 @@ OmniPack 将 NPM 的 `Dist-Tags` 机制进行了 GUI 封装。
 
 在 Windows 10/11 操作系统下，OmniPack 会自动在状态栏右侧注册 **WinGet** 包管理面板。它能对您系统上通过 Microsoft Store、WinGet 源或本地安装的桌面应用程序进行统一纳管。
 
-### 5.1 双 Scope 环境自动探测 (Dual Scope Environment)
-在主界面左侧会展示两个虚拟的系统环境：
-- **System (Machine)**：显示系统全局安装的软件（对应 `winget://machine`），通常位于 `Program Files` 目录下，更新时需要管理员权限。
-- **User**：显示当前用户专属安装的软件（对应 `winget://user`），通常位于用户个人目录下（如 `%USERPROFILE%\AppData`）。
-- **去重与范围智能判定 (Package Redistribution)**：
-  - OmniPack 内置了注册表物理路径审计机制。在扫描软件时，它会读取卸载路径，如果发现某个全局上报的软件其实物理安装在用户目录中，会自动将其归类到 **User** 虚拟环境中，保证信息的绝对精准。
-  - 若同一个软件在系统和用户下都被安装了，卡片上会自动挂载 `[Also Installed In User/Machine]` 彩色徽章。
+### 5.1 统一的应用环境与 Scope 智能标记 (Unified Environment & Scope Badging)
+在主界面左侧提供一个统一的系统环境：
+- **Applications**：显示系统内安装的所有桌面软件（对应 `winget://all`），包括传统 Win32 应用和 UWP/MSIX 现代应用。
+- **Scope 智能标记**：每个软件项目右侧直接显示部署范围高亮标签：`[sys]`（系统级）或 `[user]`（用户级）。若同一个软件在双端同时被安装，系统会自动并列挂载这两个标签。
+- **经典 Win32 软件智能去重 (ARP Deduplication)**：系统采用基于 GUID 与软件名称+版本校验的去重逻辑，完美消除因不同注册表路径别名导致的条目重复列出问题。
 
-### 5.2 精准管理与锁定更新 (Full Actions & Pinning)
+### 5.2 UWP 备置应用离线感知与重注册 (UWP Provisioned Sync & Registration)
+- **离线状态感知**：即使当前用户未注册该 UWP 应用，OmniPack 也能离线扫描 Windows 注册表 `AppxAllUserStore` 及 `WindowsApps` 清单文件，发现系统已备置的安装包（以 Missing 状态并挂载 `[Staged]` 徽章展示）。
+- **复合操作按钮（±）**：针对此类已备置但当前用户未激活的 UWP 软件，用户点击复合按钮可通过右键菜单选择 **“➕ Register for Current User”** 直接在用户账户下秒级注册安装，或选择卸载。
+
+### 5.3 精准管理与锁定更新 (Full Actions & Pinning)
 - **获取更新 (Upgrades)**：如果有可用更新，应用卡片上会显示 `⇧` 按钮。
 - **配置与锁定 (Blocking Pin)**：
-  - 点击应用卡片上的 **⚙ 配置按钮**，会弹出专属配置框。
-  - 支持设置 **锁定更新 (winget blocking pin)**。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 `[Pinned]` 徽章，同时不会被工具栏 "Outdated" 选项自动勾选，避免大面积静默升级破坏特定软件版本。
+  - 点击应用卡片上的 **⚙ 配置按钮**，会弹出专属配置框。对已安装的软件，支持设置 **锁定更新 (winget blocking pin)**。勾选“忽略此应用的更新（winget 锁定 Pin）”后，该应用在卡片上会挂载 `[Pinned]` 徽章，同时不会被工具栏 "Outdated" 选项自动勾选。若软件处于未安装（Missing）状态，该选项将被自动置灰。
   - 在配置框中，您还可以直接查看该软件的**物理安装路径 (Uninstall Location)** 并进行一键鼠标选定与复制，极其方便定位软件根目录。
+- **系统保护包卸载拦截 (Non-Removable Safeguards)**：
+  - 自动发现具有 `NonRemovable` 属性的核心系统级应用（如 Microsoft Store, App Installer, Edge 浏览器等）。在列表中将这些应用的 `-`（卸载）按钮强制置灰禁用并提供悬停警告提示，保护系统核心组件不被误删。
 - **版本异常警告 (⚠ Newer Badge)**：
   - 如果您从官网安装了比 WinGet 云端注册表更新的版本，系统会挂载 `[⚠ Newer]` 徽章警告，并阻止 `Outdated` 自动勾选它，防止误退级。
 - **安装新包 (Install)**：
